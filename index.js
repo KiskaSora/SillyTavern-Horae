@@ -3,7 +3,7 @@
  * 基于时间锚点的AI记忆增强系统
  * 
  * 作者: SenriYuki
- * 版本: 1.6.0
+ * 版本: 1.6.1
  */
 
 import { renderExtensionTemplateAsync, getContext, extension_settings } from '/scripts/extensions.js';
@@ -19,7 +19,7 @@ import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTim
 const EXTENSION_NAME = 'horae';
 const EXTENSION_FOLDER = `third-party/SillyTavern-Horae`;
 const TEMPLATE_PATH = `${EXTENSION_FOLDER}/assets/templates`;
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 
 // 配套正则规则（自动注入ST原生正则系统）
 const HORAE_REGEX_RULES = [
@@ -7065,20 +7065,36 @@ async function generateWithDirectApi(prompt) {
     if (!url.endsWith('/chat/completions')) {
         url = url.replace(/\/+$/, '') + '/chat/completions';
     }
-    const messages = [
-        {
-            role: 'system',
-            content: 'You are a professional literary analyst. Your task is to read creative fiction passages and produce concise plot summaries. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.'
-        },
-        { role: 'user', content: prompt }
-    ];
-    // 尝试注入酒馆的破限提示词，防止模型因内容审查返回空回复
+    // 完整复制酒馆预设的消息结构，与 generateRaw 走相同破限链路
+    const messages = [];
     try {
         const { oai_settings } = await import('/scripts/openai.js');
+        // ① 预设主系统提示词（设定 AI 行为基调）
+        if (oai_settings?.main_prompt) {
+            messages.push({ role: 'system', content: oai_settings.main_prompt });
+        }
+        // ② NSFW 允许提示词（如果用户在预设中开启了 NSFW）
+        if (oai_settings?.nsfw_toggle && oai_settings?.nsfw_prompt) {
+            messages.push({ role: 'system', content: oai_settings.nsfw_prompt });
+        }
+        // ③ 摘要任务指令
+        messages.push({
+            role: 'system',
+            content: 'You are also a professional literary analyst. Read the following creative fiction passages and produce a concise plot summary. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.'
+        });
+        // ④ 摘要内容
+        messages.push({ role: 'user', content: prompt });
+        // ⑤ 破限提示词（放最后，优先级最高）
         if (oai_settings?.jailbreak_prompt) {
             messages.push({ role: 'system', content: oai_settings.jailbreak_prompt });
         }
-    } catch (_) { /* 容错：无法获取时使用原始 messages */ }
+    } catch (_) {
+        // 容错：无法读取酒馆预设时退回基本模式
+        messages.push(
+            { role: 'system', content: 'You are a professional literary analyst. Your task is to read creative fiction passages and produce concise plot summaries. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.' },
+            { role: 'user', content: prompt }
+        );
+    }
     const body = {
         model: settings.autoSummaryModel.trim(),
         messages,
