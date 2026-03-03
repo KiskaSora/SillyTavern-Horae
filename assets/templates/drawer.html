@@ -10,7 +10,7 @@
                 <i class="fa-regular fa-clock"></i>
                 Horae 时光记忆
             </div>
-            <span class="horae-version">v1.7.4</span>
+            <span class="horae-version">v1.8.0</span>
         </div>
         
         <!-- 标签页导航 -->
@@ -34,6 +34,10 @@
             <button class="horae-tab" data-tab="locations">
                 <i class="fa-solid fa-map-location-dot"></i>
                 <span>场景</span>
+            </button>
+            <button class="horae-tab" data-tab="rpg" id="horae-tab-btn-rpg" style="display:none;">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>RPG</span>
             </button>
             <button class="horae-tab" data-tab="settings">
                 <i class="fa-solid fa-gear"></i>
@@ -290,6 +294,29 @@
                     </div>
                 </div>
             </div>
+
+            <!-- RPG 页 -->
+            <div id="horae-tab-rpg" class="horae-tab-content">
+                <!-- 属性条配置 -->
+                <div class="horae-rpg-config-section">
+                    <div class="horae-rpg-section-head">
+                        <span>属性条配置</span>
+                        <button id="horae-rpg-add-bar" class="horae-rpg-btn-sm" title="添加属性条"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="horae-rpg-bar-config-list"></div>
+                </div>
+                <!-- 角色属性 -->
+                <div id="horae-rpg-bars-section"></div>
+                <!-- 技能列表 -->
+                <div class="horae-rpg-skills-area">
+                    <div class="horae-rpg-section-head">
+                        <span>技能列表</span>
+                        <button id="horae-rpg-add-skill" class="horae-rpg-btn-sm" title="添加技能"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="horae-rpg-skill-form" style="display:none;"></div>
+                    <div id="horae-rpg-skills-section"></div>
+                </div>
+            </div>
             
             <!-- 设置页 -->
             <div id="horae-tab-settings" class="horae-tab-content">
@@ -528,6 +555,23 @@
                             情绪追踪
                         </label>
                         <span class="horae-setting-sub-hint">追踪在场角色的情绪/心理状态变化，帮助AI保持角色情绪连贯性。AI仅在情绪明显变化时输出。</span>
+                    </div>
+                    <div class="horae-setting-item">
+                        <label>
+                            <input type="checkbox" id="horae-setting-rpg-mode">
+                            RPG 模式
+                        </label>
+                        <span class="horae-setting-sub-hint">启用后，AI 会在 &lt;horaerpg&gt; 标签中输出角色属性条（HP/MP/SP）和技能变化。关闭时不注入提示词、不消耗 Token。</span>
+                        <div id="horae-rpg-sub-options" style="display:none; margin-top:6px; padding-left:18px;">
+                            <label style="display:block;margin-bottom:4px;">
+                                <input type="checkbox" id="horae-setting-rpg-bars" checked>
+                                发送属性条（HP/MP/SP/状态异常）
+                            </label>
+                            <label style="display:block;">
+                                <input type="checkbox" id="horae-setting-rpg-skills" checked>
+                                发送技能列表
+                            </label>
+                        </div>
                     </div>
                     <div class="horae-setting-item" style="border-top: 1px solid var(--horae-border); padding-top: 8px; margin-top: 4px;">
                         <label>
@@ -1010,7 +1054,7 @@
                 </div>
                 
                 <div class="horae-about">
-                    <p>Horae v1.7.4 | 作者: SenriYuki</p>
+                    <p>Horae v1.8.0 | 作者: SenriYuki</p>
                     <p>基于时间锚点的AI记忆增强系统</p>
                 </div>
             </div>

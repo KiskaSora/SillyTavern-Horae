@@ -418,6 +418,13 @@ export function subtractDays(dateStr, days) {
     return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+/** 十二地支 → 起始小时（初=首小时，正=次小时） */
+const EARTHLY_BRANCH_HOURS = {
+    '子': 23, '丑': 1, '寅': 3, '卯': 5,
+    '辰': 7, '巳': 9, '午': 11, '未': 13,
+    '申': 15, '酉': 17, '戌': 19, '亥': 21
+};
+
 /** 获取时间段描述 */
 export function getTimeOfDay(timeStr) {
     if (!timeStr) return '';
@@ -432,6 +439,17 @@ export function getTimeOfDay(timeStr) {
     const matchCN = timeStr.match(/(凌晨|早上|上午|中午|下午|傍晚|晚上|深夜)/);
     if (matchCN) {
         return matchCN[1];
+    }
+    
+    // 十二地支时辰兜底（子丑寅卯辰巳午未申酉戌亥 + 可选"时"/"初"/"正"）
+    if (hour === null) {
+        const branchMatch = timeStr.match(/([子丑寅卯辰巳午未申酉戌亥])时?(?:初|正)?/);
+        if (branchMatch) {
+            const base = EARTHLY_BRANCH_HOURS[branchMatch[0].charAt(0)];
+            if (base !== undefined) {
+                hour = /正/.test(branchMatch[0]) ? (base + 1) % 24 : base;
+            }
+        }
     }
     
     if (hour !== null) {
