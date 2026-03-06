@@ -1,9 +1,9 @@
 /**
- * Horae - 时光记忆插件 
- * 基于时间锚点的AI记忆增强系统
+ * Horae - Плагин Хроники Времени 
+ * Система усиления памяти ИИ на основе временных якорей
  * 
- * 作者: SenriYuki
- * 版本: 1.8.4
+ * Автор: SenriYuki
+ * Версия: 1.8.4
  */
 
 import { renderExtensionTemplateAsync, getContext, extension_settings } from '/scripts/extensions.js';
@@ -15,19 +15,19 @@ import { vectorManager } from './core/vectorManager.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 
 // ============================================
-// 常量定义
+// Константы
 // ============================================
 const EXTENSION_NAME = 'horae';
 const EXTENSION_FOLDER = `third-party/SillyTavern-Horae`;
 const TEMPLATE_PATH = `${EXTENSION_FOLDER}/assets/templates`;
 const VERSION = '1.8.4';
 
-// 配套正则规则（自动注入ST原生正则系统）
+// Сопутствующие правила регулярных выражений (автоматически внедряются в нативную систему ST)
 const HORAE_REGEX_RULES = [
     {
         id: 'horae_hide',
-        scriptName: 'Horae - 隐藏状态标签',
-        description: '隐藏<horae>状态标签，不显示在正文，不发送给AI',
+        scriptName: 'Horae - Скрыть теги состояния',
+        description: 'Скрывает теги состояния <horae>, не отображаются в тексте и не отправляются ИИ',
         findRegex: '/(?:<horae>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horae>|<!--horae[\\s\\S]*?-->)/gim',
         replaceString: '',
         trimStrings: [],
@@ -42,8 +42,8 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_event_display_only',
-        scriptName: 'Horae - 隐藏事件标签',
-        description: '隐藏<horaeevent>事件标签的显示，不发送给AI',
+        scriptName: 'Horae - Скрыть теги событий',
+        description: 'Скрывает отображение тегов событий <horaeevent>, не отправляются ИИ',
         findRegex: '/<horaeevent>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horaeevent>/gim',
         replaceString: '',
         trimStrings: [],
@@ -58,8 +58,8 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_table_hide',
-        scriptName: 'Horae - 隐藏表格标签',
-        description: '隐藏<horaetable>标签，不显示在正文，不发送给AI',
+        scriptName: 'Horae - Скрыть теги таблиц',
+        description: 'Скрывает теги <horaetable>, не отображаются в тексте и не отправляются ИИ',
         findRegex: '/<horaetable[:\\uff1a][\\s\\S]*?<\\/horaetable>/gim',
         replaceString: '',
         trimStrings: [],
@@ -74,8 +74,8 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_rpg_hide',
-        scriptName: 'Horae - 隐藏RPG标签',
-        description: '隐藏<horaerpg>标签，不显示在正文，不发送给AI',
+        scriptName: 'Horae - Скрыть теги RPG',
+        description: 'Скрывает теги <horaerpg>, не отображаются в тексте и не отправляются ИИ',
         findRegex: '/<horaerpg>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horaerpg>/gim',
         replaceString: '',
         trimStrings: [],
@@ -91,7 +91,7 @@ const HORAE_REGEX_RULES = [
 ];
 
 // ============================================
-// 默认设置
+// Настройки по умолчанию
 // ============================================
 const DEFAULT_SETTINGS = {
     enabled: true,
@@ -102,88 +102,88 @@ const DEFAULT_SETTINGS = {
     injectionPosition: 1,
     lastStoryDate: '',
     lastStoryTime: '',
-    favoriteNpcs: [],  // 用户标记的星标NPC列表
-    pinnedNpcs: [],    // 用户手动标记的重要角色列表（特殊边框）
-    // 发送给AI的内容控制
-    sendTimeline: true,    // 发送剧情轨迹（关闭则无法计算相对时间）
-    sendCharacters: true,  // 发送角色信息（服装、好感度）
-    sendItems: true,       // 发送物品栏
-    customTables: [],      // 自定义表格 [{id, name, rows, cols, data, prompt}]
-    customSystemPrompt: '',      // 自定义系统注入提示词（空=使用默认）
-    customBatchPrompt: '',       // 自定义AI摘要提示词（空=使用默认）
-    customAnalysisPrompt: '',    // 自定义AI分析提示词（空=使用默认）
-    customCompressPrompt: '',    // 自定义剧情压缩提示词（空=使用默认）
-    customAutoSummaryPrompt: '', // 自定义自动摘要提示词（空=使用默认；独立于手动压缩）
-    aiScanIncludeNpc: false,     // AI摘要是否提取NPC
-    aiScanIncludeAffection: false, // AI摘要是否提取好感度
-    aiScanIncludeScene: false,    // AI摘要是否提取场景记忆
-    aiScanIncludeRelationship: false, // AI摘要是否提取关系网络
-    panelWidth: 100,               // 消息面板宽度百分比（50-100）
-    panelOffset: 0,                // 消息面板右偏移量（px）
-    themeMode: 'dark',             // 插件主题：dark / light / custom-{index}
-    customCSS: '',                 // 用户自定义CSS
-    customThemes: [],              // 导入的美化主题 [{name, author, variables, css}]
-    globalTables: [],              // 全局表格（跨角色卡共享）
-    showTopIcon: true,             // 显示顶部导航栏图标
-    customTablesPrompt: '',        // 自定义表格填写规则提示词（空=使用默认）
-    sendLocationMemory: false,     // 发送场景记忆（地点固定特征描述）
-    customLocationPrompt: '',      // 自定义场景记忆提示词（空=使用默认）
-    sendRelationships: false,      // 发送关系网络
-    sendMood: false,               // 发送情绪/心理状态追踪
-    customRelationshipPrompt: '',  // 自定义关系网络提示词（空=使用默认）
-    customMoodPrompt: '',          // 自定义情绪追踪提示词（空=使用默认）
-    // 自动摘要
-    autoSummaryEnabled: false,      // 自动摘要开关
-    autoSummaryKeepRecent: 10,      // 保留最近N条消息不压缩
+    favoriteNpcs: [],  // Список NPC со звёздочкой, отмеченных пользователем
+    pinnedNpcs: [],    // Список важных персонажей, помеченных вручную (особая рамка)
+    // Управление отправляемым ИИ содержимым
+    sendTimeline: true,    // Отправлять хронологию сюжета (при отключении невозможен расчёт относительного времени)
+    sendCharacters: true,  // Отправлять информацию о персонажах (одежда, расположение)
+    sendItems: true,       // Отправлять инвентарь
+    customTables: [],      // Пользовательские таблицы [{id, name, rows, cols, data, prompt}]
+    customSystemPrompt: '',      // Пользовательский системный промпт (пусто = по умолчанию)
+    customBatchPrompt: '',       // Пользовательский промпт для ИИ-сводки (пусто = по умолчанию)
+    customAnalysisPrompt: '',    // Пользовательский промпт для ИИ-анализа (пусто = по умолчанию)
+    customCompressPrompt: '',    // Пользовательский промпт для сжатия сюжета (пусто = по умолчанию)
+    customAutoSummaryPrompt: '', // Пользовательский промпт для авто-сводки (пусто = по умолчанию; независимо от ручного сжатия)
+    aiScanIncludeNpc: false,     // Извлекать ли NPC при ИИ-анализе
+    aiScanIncludeAffection: false, // Извлекать ли расположение при ИИ-анализе
+    aiScanIncludeScene: false,    // Извлекать ли память о локациях при ИИ-анализе
+    aiScanIncludeRelationship: false, // Извлекать ли сеть отношений при ИИ-анализе
+    panelWidth: 100,               // Ширина панели сообщений в процентах (50–100)
+    panelOffset: 0,                // Смещение панели сообщений вправо (px)
+    themeMode: 'dark',             // Тема плагина: dark / light / custom-{index}
+    customCSS: '',                 // Пользовательский CSS
+    customThemes: [],              // Импортированные темы оформления [{name, author, variables, css}]
+    globalTables: [],              // Глобальные таблицы (общие для всех карточек персонажей)
+    showTopIcon: true,             // Показывать иконку в верхней панели навигации
+    customTablesPrompt: '',        // Пользовательский промпт для правил заполнения таблиц (пусто = по умолчанию)
+    sendLocationMemory: false,     // Отправлять память о локациях (описание постоянных характеристик мест)
+    customLocationPrompt: '',      // Пользовательский промпт для памяти о локациях (пусто = по умолчанию)
+    sendRelationships: false,      // Отправлять сеть отношений
+    sendMood: false,               // Отправлять данные отслеживания эмоций/психологического состояния
+    customRelationshipPrompt: '',  // Пользовательский промпт для сети отношений (пусто = по умолчанию)
+    customMoodPrompt: '',          // Пользовательский промпт для отслеживания эмоций (пусто = по умолчанию)
+    // Авто-сводка
+    autoSummaryEnabled: false,      // Переключатель авто-сводки
+    autoSummaryKeepRecent: 10,      // Хранить последние N сообщений без сжатия
     autoSummaryBufferMode: 'messages', // 'messages' | 'tokens'
-    autoSummaryBufferLimit: 20,     // 缓冲阈值（楼层数或Token数）
-    autoSummaryBatchMaxMsgs: 50,    // 单次摘要最大消息条数
-    autoSummaryBatchMaxTokens: 80000, // 单次摘要最大Token数
-    autoSummaryUseCustomApi: false, // 是否使用独立API端点
-    autoSummaryApiUrl: '',          // 独立API端点地址（OpenAI兼容）
-    autoSummaryApiKey: '',          // 独立API密钥
-    autoSummaryModel: '',           // 独立API模型名称
-    antiParaphraseMode: false,      // 反转述模式：AI回复时结算上一条USER的内容
-    sideplayMode: false,            // 番外/小剧场模式：启用后可标记消息跳过Horae
-    // RPG 模式
-    rpgMode: false,                 // RPG 模式总开关
-    sendRpgBars: true,              // 发送属性条（HP/MP/SP/状态）
-    sendRpgSkills: true,            // 发送技能列表
-    sendRpgAttributes: true,        // 发送多维属性面板
+    autoSummaryBufferLimit: 20,     // Буферный порог (число сообщений или токенов)
+    autoSummaryBatchMaxMsgs: 50,    // Макс. сообщений за один раз
+    autoSummaryBatchMaxTokens: 80000, // Макс. токенов за один раз
+    autoSummaryUseCustomApi: false, // Использовать ли отдельный API-эндпоинт
+    autoSummaryApiUrl: '',          // Адрес отдельного API-эндпоинта (совместим с OpenAI)
+    autoSummaryApiKey: '',          // Ключ отдельного API
+    autoSummaryModel: '',           // Название модели для отдельного API
+    antiParaphraseMode: false,      // Режим без пересказа: при ответе ИИ учитывает последнее сообщение пользователя
+    sideplayMode: false,            // Режим побочной сцены: после включения можно отмечать сообщения для пропуска Horae
+    // RPG-режим
+    rpgMode: false,                 // Главный переключатель RPG-режима
+    sendRpgBars: true,              // Отправлять полосы атрибутов (HP/MP/SP/состояния)
+    sendRpgSkills: true,            // Отправлять список навыков
+    sendRpgAttributes: true,        // Отправлять многомерную панель атрибутов
     rpgBarConfig: [
         { key: 'hp', name: 'HP', color: '#22c55e' },
         { key: 'mp', name: 'MP', color: '#6366f1' },
         { key: 'sp', name: 'SP', color: '#f59e0b' },
     ],
     rpgAttributeConfig: [
-        { key: 'str', name: '力量', desc: '物理攻击、负重与近战伤害' },
-        { key: 'dex', name: '敏捷', desc: '反射、闪避与远程精准' },
-        { key: 'con', name: '体质', desc: '生命力、耐久与抗毒' },
-        { key: 'int', name: '智力', desc: '学识、魔法与推理能力' },
-        { key: 'wis', name: '感知', desc: '洞察、直觉与意志力' },
-        { key: 'cha', name: '魅力', desc: '说服、领导与人格魅力' },
+        { key: 'str', name: 'Сила', desc: 'Физическая атака, грузоподъёмность и урон в ближнем бою' },
+        { key: 'dex', name: 'Ловкость', desc: 'Рефлексы, уклонение и точность дальнего боя' },
+        { key: 'con', name: 'Телосложение', desc: 'Жизнеспособность, выносливость и сопротивление яду' },
+        { key: 'int', name: 'Интеллект', desc: 'Знания, магия и способность к рассуждению' },
+        { key: 'wis', name: 'Мудрость', desc: 'Проницательность, интуиция и сила воли' },
+        { key: 'cha', name: 'Харизма', desc: 'Убеждение, лидерство и обаяние' },
     ],
-    rpgAttrViewMode: 'radar',       // 'radar' 或 'text'
-    customRpgPrompt: '',            // 自定义RPG提示词（空=默认）
-    rpgDiceEnabled: false,          // RPG骰子面板
-    dicePosX: null,                 // 骰子面板拖拽位置X（null=默认右下角）
-    dicePosY: null,                 // 骰子面板拖拽位置Y
-    // 教学
-    tutorialCompleted: false,       // 新用户导航教学是否已完成
-    // 向量记忆
+    rpgAttrViewMode: 'radar',       // 'radar' или 'text'
+    customRpgPrompt: '',            // Пользовательский промпт для RPG (пусто = по умолчанию)
+    rpgDiceEnabled: false,          // Панель кубиков RPG
+    dicePosX: null,                 // Позиция X панели кубиков (null = правый нижний угол по умолчанию)
+    dicePosY: null,                 // Позиция Y панели кубиков
+    // Обучение
+    tutorialCompleted: false,       // Завершено ли вводное обучение для нового пользователя
+    // Векторная память
     vectorEnabled: false,
-    vectorSource: 'local',             // 'local' = 本地模型, 'api' = 远程 API
+    vectorSource: 'local',             // 'local' = локальная модель, 'api' = удалённый API
     vectorModel: 'Xenova/bge-small-zh-v1.5',
     vectorDtype: 'q8',
-    vectorApiUrl: '',                  // OpenAI 兼容 embedding API 地址
-    vectorApiKey: '',                  // API 密钥
-    vectorApiModel: '',                // 远程 embedding 模型名称
-    vectorPureMode: false,             // 纯向量模式（强模型优化，关闭关键词启发式）
-    vectorRerankEnabled: false,        // 启用 Rerank 二次排序
-    vectorRerankFullText: false,       // Rerank 使用全文而非摘要（需要长上下文模型如 Qwen3-Reranker）
-    vectorRerankModel: '',             // Rerank 模型名称
-    vectorRerankUrl: '',               // Rerank API 地址（留空则复用 embedding 地址）
-    vectorRerankKey: '',               // Rerank API 密钥（留空则复用 embedding 密钥）
+    vectorApiUrl: '',                  // Адрес Embedding API, совместимого с OpenAI
+    vectorApiKey: '',                  // Ключ API
+    vectorApiModel: '',                // Название удалённой Embedding-модели
+    vectorPureMode: false,             // Режим чистых векторов (оптимизация для мощных моделей, отключает эвристику ключевых слов)
+    vectorRerankEnabled: false,        // Включить вторичную сортировку Rerank
+    vectorRerankFullText: false,       // Rerank использует полный текст вместо сводок (требует модель с длинным контекстом, например Qwen3-Reranker)
+    vectorRerankModel: '',             // Название Rerank-модели
+    vectorRerankUrl: '',               // Адрес Rerank API (пусто = использовать адрес Embedding API)
+    vectorRerankKey: '',               // Ключ Rerank API (пусто = использовать ключ Embedding API)
     vectorTopK: 5,
     vectorThreshold: 0.72,
     vectorFullTextCount: 3,
@@ -191,31 +191,31 @@ const DEFAULT_SETTINGS = {
 };
 
 // ============================================
-// 全局变量
+// Глобальные переменные
 // ============================================
 let settings = { ...DEFAULT_SETTINGS };
 let doNavbarIconClick = null;
 let isInitialized = false;
 let _isSummaryGeneration = false;
 let _summaryInProgress = false;
-let itemsMultiSelectMode = false;  // 物品多选模式
-let selectedItems = new Set();     // 选中的物品名称
-let longPressTimer = null;         // 长按计时器
-let agendaMultiSelectMode = false; // 待办多选模式
-let selectedAgendaIndices = new Set(); // 选中的待办索引
-let agendaLongPressTimer = null;   // 待办长按计时器
-let npcMultiSelectMode = false;     // NPC多选模式
-let selectedNpcs = new Set();       // 选中的NPC名称
-let timelineMultiSelectMode = false; // 时间线多选模式
-let selectedTimelineEvents = new Set(); // 选中的事件（"msgIndex-eventIndex"格式）
-let timelineLongPressTimer = null;  // 时间线长按计时器
+let itemsMultiSelectMode = false;  // Режим множественного выбора предметов
+let selectedItems = new Set();     // Названия выбранных предметов
+let longPressTimer = null;         // Таймер долгого нажатия
+let agendaMultiSelectMode = false; // Режим множественного выбора задач
+let selectedAgendaIndices = new Set(); // Индексы выбранных задач
+let agendaLongPressTimer = null;   // Таймер долгого нажатия для задач
+let npcMultiSelectMode = false;     // Режим множественного выбора NPC
+let selectedNpcs = new Set();       // Названия выбранных NPC
+let timelineMultiSelectMode = false; // Режим множественного выбора хронологии
+let selectedTimelineEvents = new Set(); // Выбранные события (формат "msgIndex-eventIndex")
+let timelineLongPressTimer = null;  // Таймер долгого нажатия для хронологии
 
 // ============================================
-// 工具函数
+// Вспомогательные функции
 // ============================================
 
 
-/** 自动注入配套正则到ST原生正则系统（始终置于末尾，避免与其他正则冲突） */
+/** Автоматически внедряет регулярные выражения в нативную систему ST (всегда в конце, чтобы не конфликтовать с другими) */
 function ensureRegexRules() {
     if (!extension_settings.regex) extension_settings.regex = [];
 
@@ -223,7 +223,7 @@ function ensureRegexRules() {
     for (const rule of HORAE_REGEX_RULES) {
         const idx = extension_settings.regex.findIndex(r => r.id === rule.id);
         if (idx !== -1) {
-            // 保留用户的 disabled 状态，移除旧位置
+            // Сохраняет состояние disabled пользователя, удаляет старую позицию
             const userDisabled = extension_settings.regex[idx].disabled;
             extension_settings.regex.splice(idx, 1);
             extension_settings.regex.push({ ...rule, disabled: userDisabled });
@@ -236,24 +236,24 @@ function ensureRegexRules() {
 
     if (changed > 0) {
         saveSettingsDebounced();
-        console.log(`[Horae] 配套正则已同步至列表末尾（共 ${HORAE_REGEX_RULES.length} 条）`);
+        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
     }
 }
 
-/** 获取HTML模板 */
+/** Получить HTML-шаблон */
 async function getTemplate(name) {
     return await renderExtensionTemplateAsync(TEMPLATE_PATH, name);
 }
 
 /**
- * 检查是否为新版导航栏
+ * Проверить, используется ли новая версия навигационной панели
  */
 function isNewNavbarVersion() {
     return typeof doNavbarIconClick === 'function';
 }
 
 /**
- * 初始化导航栏点击函数
+ * Инициализировать функцию клика по навигационной панели
  */
 async function initNavbarFunction() {
     try {
@@ -262,12 +262,12 @@ async function initNavbarFunction() {
             doNavbarIconClick = scriptModule.doNavbarIconClick;
         }
     } catch (error) {
-        console.warn(`[Horae] doNavbarIconClick 不可用，使用旧版抽屉模式`);
+        console.warn(`[Horae] doNavbarIconClick недоступен, используется устаревший режим ящика`);
     }
 }
 
 /**
- * 加载设置
+ * Загрузить настройки
  */
 let _isFirstTimeUser = false;
 function loadSettings() {
@@ -280,21 +280,21 @@ function loadSettings() {
     }
 }
 
-/** 迁移旧版属性配置到 DND 六维 */
+/** Миграция старой конфигурации атрибутов на шесть параметров DnD */
 function _migrateAttrConfig() {
     const cfg = settings.rpgAttributeConfig;
     if (!cfg || !Array.isArray(cfg)) return;
     const oldKeys = cfg.map(a => a.key).sort().join(',');
-    // 旧版默认值（4维: con,int,spr,str）
+    // Старые значения по умолчанию (4 параметра: con,int,spr,str)
     if (oldKeys === 'con,int,spr,str' && cfg.length === 4) {
         settings.rpgAttributeConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgAttributeConfig));
         saveSettings();
-        console.log('[Horae] 已自动迁移属性面板配置到 DND 六维');
+        console.log('[Horae] Конфигурация панели атрибутов автоматически перенесена на шесть параметров DnD');
     }
 }
 
 /**
- * 保存设置
+ * Сохранить настройки
  */
 function saveSettings() {
     extension_settings[EXTENSION_NAME] = settings;
@@ -302,7 +302,7 @@ function saveSettings() {
 }
 
 /**
- * 显示 Toast 消息
+ * Показать всплывающее уведомление
  */
 function showToast(message, type = 'info') {
     if (window.toastr) {
@@ -312,7 +312,7 @@ function showToast(message, type = 'info') {
     }
 }
 
-/** 获取当前对话的自定义表格 */
+/** Получить пользовательские таблицы текущего диалога */
 function getChatTables() {
     const context = getContext();
     if (!context?.chat?.length) return [];
@@ -322,7 +322,7 @@ function getChatTables() {
         return firstMessage.horae_meta.customTables;
     }
     
-    // 兼容旧版：检查chat数组属性
+    // Совместимость с устаревшей версией: проверка свойств массива chat
     if (context.chat.horae_tables) {
         return context.chat.horae_tables;
     }
@@ -330,7 +330,7 @@ function getChatTables() {
     return [];
 }
 
-/** 设置当前对话的自定义表格 */
+/** Установить пользовательские таблицы текущего диалога */
 function setChatTables(tables) {
     const context = getContext();
     if (!context?.chat?.length) return;
@@ -339,7 +339,7 @@ function setChatTables(tables) {
         context.chat[0].horae_meta = createEmptyMeta();
     }
     
-    // 快照 baseData 用于回退
+    // Снимок baseData для отката
     for (const table of tables) {
         table.baseData = JSON.parse(JSON.stringify(table.data || {}));
         table.baseRows = table.rows || 2;
@@ -350,7 +350,7 @@ function setChatTables(tables) {
     getContext().saveChat();
 }
 
-/** 获取全局表格列表（返回结构+当前卡片数据的合并结果） */
+/** Получить список глобальных таблиц (возвращает объединение структуры и данных текущей карточки) */
 function getGlobalTables() {
     const templates = settings.globalTables || [];
     const chat = horaeManager.getChat();
@@ -380,7 +380,7 @@ function getGlobalTables() {
                 baseCols: overlay.baseCols ?? template.baseCols,
             };
         }
-        // 无 per-card 数据：只返回表头
+        // Нет данных для карточки: возвращается только заголовок
         const headerData = {};
         for (const key of Object.keys(template.data || {})) {
             const [r, c] = key.split('-').map(Number);
@@ -396,17 +396,17 @@ function getGlobalTables() {
     });
 }
 
-/** 保存全局表格列表（结构存设置，数据存当前卡片） */
+/** Сохранить список глобальных таблиц (структура → настройки, данные → текущая карточка) */
 function setGlobalTables(tables) {
     const chat = horaeManager.getChat();
 
-    // 保存 per-card 数据到当前卡片
+    // Сохранить данные карточки в текущую карточку
     if (chat?.[0]) {
         if (!chat[0].horae_meta) return;
         if (!chat[0].horae_meta.globalTableData) chat[0].horae_meta.globalTableData = {};
         const perCardData = chat[0].horae_meta.globalTableData;
 
-        // 清除已被删除的表格的 per-card 数据
+        // Очистить данные карточки для удалённых таблиц
         const currentNames = new Set(tables.map(t => (t.name || '').trim()).filter(Boolean));
         for (const key of Object.keys(perCardData)) {
             if (!currentNames.has(key)) delete perCardData[key];
@@ -426,7 +426,7 @@ function setGlobalTables(tables) {
         }
     }
 
-    // 只保存结构（表头）到全局设置
+    // Сохранять только структуру (заголовки) в глобальные настройки
     settings.globalTables = tables.map(table => {
         const headerData = {};
         for (const key of Object.keys(table.data || {})) {
@@ -448,12 +448,12 @@ function setGlobalTables(tables) {
     saveSettings();
 }
 
-/** 获取指定scope的表格 */
+/** Получить таблицы для указанного scope */
 function getTablesByScope(scope) {
     return scope === 'global' ? getGlobalTables() : getChatTables();
 }
 
-/** 保存指定scope的表格 */
+/** Сохранить таблицы для указанного scope */
 function setTablesByScope(scope, tables) {
     if (scope === 'global') {
         setGlobalTables(tables);
@@ -462,17 +462,17 @@ function setTablesByScope(scope, tables) {
     }
 }
 
-/** 获取合并后的所有表格（用于提示词注入） */
+/** Получить все объединённые таблицы (для внедрения в промпт) */
 function getAllTables() {
     return [...getGlobalTables(), ...getChatTables()];
 }
 
 // ============================================
-// 待办事项（Agenda）存储 — 跟随当前对话
+// Хранилище задач (Agenda) — привязано к текущему диалогу
 // ============================================
 
 /**
- * 获取用户手动创建的待办事项（存储在 chat[0]）
+ * Получить задачи, созданные вручную пользователем (хранятся в chat[0])
  */
 function getUserAgenda() {
     const context = getContext();
@@ -486,7 +486,7 @@ function getUserAgenda() {
 }
 
 /**
- * 设置用户手动创建的待办事项（存储在 chat[0]）
+ * Установить задачи, созданные вручную пользователем (хранятся в chat[0])
  */
 function setUserAgenda(agenda) {
     const context = getContext();
@@ -501,13 +501,13 @@ function setUserAgenda(agenda) {
 }
 
 /**
- * 获取所有待办事项（用户 + AI写入），统一格式返回
- * 每项: { text, date, source: 'user'|'ai', done, createdAt, _msgIndex? }
+ * Получить все задачи (пользовательские + ИИ), вернуть в унифицированном формате
+ * Каждый элемент: { text, date, source: 'user'|'ai', done, createdAt, _msgIndex? }
  */
 function getAllAgenda() {
     const all = [];
     
-    // 1. 用户手动创建的
+    // 1. Созданные пользователем вручную
     const userItems = getUserAgenda();
     for (const item of userItems) {
         if (item._deleted) continue;
@@ -522,7 +522,7 @@ function getAllAgenda() {
         });
     }
     
-    // 2. AI写入的（存储在各条消息的 horae_meta.agenda）
+    // 2. Записанные ИИ (хранятся в horae_meta.agenda каждого сообщения)
     const context = getContext();
     if (context?.chat) {
         for (let i = 1; i < context.chat.length; i++) {
@@ -530,7 +530,7 @@ function getAllAgenda() {
             if (meta?.agenda?.length > 0) {
                 for (const item of meta.agenda) {
                     if (item._deleted) continue;
-                    // 去重：检查是否已存在相同内容
+                    // Дедупликация: проверить, существует ли уже такой же элемент
                     const isDupe = all.some(a => a.text === item.text);
                     if (!isDupe) {
                         all.push({
@@ -553,7 +553,7 @@ function getAllAgenda() {
 }
 
 /**
- * 根据全局索引切换待办完成状态
+ * Переключить состояние выполнения задачи по глобальному индексу
  */
 function toggleAgendaDone(agendaItem, done) {
     const context = getContext();
@@ -561,7 +561,7 @@ function toggleAgendaDone(agendaItem, done) {
     
     if (agendaItem._store === 'user') {
         const agenda = getUserAgenda();
-        // 按text查找（更可靠）
+        // Поиск по тексту (более надёжно)
         const found = agenda.find(a => a.text === agendaItem.text);
         if (found) {
             found.done = done;
@@ -580,14 +580,14 @@ function toggleAgendaDone(agendaItem, done) {
 }
 
 /**
- * 删除指定的待办事项
+ * Удалить указанную задачу
  */
 function deleteAgendaItem(agendaItem) {
     const context = getContext();
     if (!context?.chat) return;
     const targetText = agendaItem.text;
     
-    // 标记所有匹配项为 _deleted（防止其他消息中同名项复活）
+    // Пометить все совпадающие элементы как _deleted (предотвращает воскрешение одноимённых элементов из других сообщений)
     if (context.chat[0]?.horae_meta?.agenda) {
         for (const a of context.chat[0].horae_meta.agenda) {
             if (a.text === targetText) a._deleted = true;
@@ -602,7 +602,7 @@ function deleteAgendaItem(agendaItem) {
         }
     }
     
-    // 同时记录已删除文本到 chat[0]，供 rebuild 时参考
+    // Одновременно записывать удалённый текст в chat[0] для использования при перестройке
     if (!context.chat[0].horae_meta) context.chat[0].horae_meta = createEmptyMeta();
     if (!context.chat[0].horae_meta._deletedAgendaTexts) context.chat[0].horae_meta._deletedAgendaTexts = [];
     if (!context.chat[0].horae_meta._deletedAgendaTexts.includes(targetText)) {
@@ -612,7 +612,7 @@ function deleteAgendaItem(agendaItem) {
 }
 
 /**
- * 导出表格为JSON
+ * Экспортировать таблицу в JSON
  */
 function exportTable(tableIndex, scope = 'local') {
     const tables = getTablesByScope(scope);
@@ -629,11 +629,11 @@ function exportTable(tableIndex, scope = 'local') {
     a.click();
 
     URL.revokeObjectURL(url);
-    showToast('表格已导出', 'success');
+    showToast('Таблица экспортирована', 'success');
 }
 
 /**
- * 导入表格
+ * Импортировать таблицу
  */
 function importTable(file) {
     const reader = new FileReader();
@@ -641,24 +641,24 @@ function importTable(file) {
         try {
             const tableData = JSON.parse(e.target.result);
             if (!tableData || typeof tableData !== 'object') {
-                throw new Error('无效的表格数据');
+                throw new Error('Недействительные данные таблицы');
             }
             
             const newTable = {
                 id: Date.now().toString(),
-                name: tableData.name || '导入的表格',
+                name: tableData.name || 'Импортированная таблица',
                 rows: tableData.rows || 2,
                 cols: tableData.cols || 2,
                 data: tableData.data || {},
                 prompt: tableData.prompt || ''
             };
             
-            // 设置 baseData 为完整导入数据，防止 rebuildTableData 时丢失
+            // Установить baseData как полные импортированные данные, чтобы не потерять при rebuildTableData
             newTable.baseData = JSON.parse(JSON.stringify(newTable.data));
             newTable.baseRows = newTable.rows;
             newTable.baseCols = newTable.cols;
             
-            // 清除同名表格的旧 AI 贡献记录，防止 rebuild 时旧数据回流
+            // Очистить старые записи вклада ИИ для таблицы с тем же именем, чтобы предотвратить возврат старых данных при перестройке
             const importName = (newTable.name || '').trim();
             if (importName) {
                 const chat = horaeManager.getChat();
@@ -682,31 +682,31 @@ function importTable(file) {
             setChatTables(tables);
             
             renderCustomTablesList();
-            showToast('表格已导入', 'success');
+            showToast('Таблица импортирована', 'success');
         } catch (err) {
-            showToast('导入失败: ' + err.message, 'error');
+            showToast('Ошибка импорта: ' + err.message, 'error');
         }
     };
     reader.readAsText(file);
 }
 
 // ============================================
-// UI 渲染函数
+// Функции рендеринга UI
 // ============================================
 
 /**
- * 更新状态页面显示
+ * Обновить отображение страницы статуса
  */
 function updateStatusDisplay() {
     const state = horaeManager.getLatestState();
     
-    // 更新时间显示（标准日历显示周几）
+    // Обновить отображение времени (показывать день недели в стандартном календаре)
     const dateEl = document.getElementById('horae-current-date');
     const timeEl = document.getElementById('horae-current-time');
     if (dateEl) {
         const dateStr = state.timestamp?.story_date || '--/--';
         const parsed = parseStoryDate(dateStr);
-        // 标准日历添加周几
+        // Добавить день недели в стандартный календарь
         if (parsed && parsed.type === 'standard') {
             dateEl.textContent = formatStoryDate(parsed, true);
         } else {
@@ -715,25 +715,25 @@ function updateStatusDisplay() {
     }
     if (timeEl) timeEl.textContent = state.timestamp?.story_time || '--:--';
     
-    // 更新地点显示
+    // Обновить отображение места
     const locationEl = document.getElementById('horae-current-location');
-    if (locationEl) locationEl.textContent = state.scene?.location || '未设置';
+    if (locationEl) locationEl.textContent = state.scene?.location || 'Не задано';
     
-    // 更新氛围
+    // Обновить атмосферу
     const atmosphereEl = document.getElementById('horae-current-atmosphere');
     if (atmosphereEl) atmosphereEl.textContent = state.scene?.atmosphere || '';
     
-    // 更新服装列表（仅显示在场角色的服装）
+    // Обновить список одежды (только для присутствующих персонажей)
     const costumesEl = document.getElementById('horae-costumes-list');
     if (costumesEl) {
         const presentChars = state.scene?.characters_present || [];
         const allCostumes = Object.entries(state.costumes || {});
-        // 筛选：仅保留 characters_present 中的角色
+        // Фильтрация: оставить только персонажей из characters_present
         const entries = presentChars.length > 0
             ? allCostumes.filter(([char]) => presentChars.some(p => p === char || char.includes(p) || p.includes(char)))
             : allCostumes;
         if (entries.length === 0) {
-            costumesEl.innerHTML = '<div class="horae-empty-hint">暂无在场角色服装记录</div>';
+            costumesEl.innerHTML = '<div class="horae-empty-hint">Нет записей об одежде присутствующих персонажей</div>';
         } else {
             costumesEl.innerHTML = entries.map(([char, costume]) => `
                 <div class="horae-costume-item">
@@ -744,12 +744,12 @@ function updateStatusDisplay() {
         }
     }
     
-    // 更新物品快速列表
+    // Обновить краткий список предметов
     const itemsEl = document.getElementById('horae-items-quick');
     if (itemsEl) {
         const entries = Object.entries(state.items || {});
         if (entries.length === 0) {
-            itemsEl.innerHTML = '<div class="horae-empty-hint">暂无物品追踪</div>';
+            itemsEl.innerHTML = '<div class="horae-empty-hint">Нет отслеживаемых предметов</div>';
         } else {
             itemsEl.innerHTML = entries.map(([name, info]) => {
                 const icon = info.icon || '📦';
@@ -762,7 +762,7 @@ function updateStatusDisplay() {
 }
 
 /**
- * 更新时间线显示
+ * Обновить отображение хронологии
  */
 function updateTimelineDisplay() {
     const filterLevel = document.getElementById('horae-timeline-filter')?.value || 'all';
@@ -772,7 +772,7 @@ function updateTimelineDisplay() {
     
     if (!listEl) return;
     
-    // 关键字筛选
+    // Фильтрация по ключевым словам
     if (searchKeyword) {
         events = events.filter(e => {
             const summary = (e.event?.summary || '').toLowerCase();
@@ -783,12 +783,12 @@ function updateTimelineDisplay() {
     }
     
     if (events.length === 0) {
-        const filterText = filterLevel === 'all' ? '' : `「${filterLevel}」级别的`;
-        const searchText = searchKeyword ? `含「${searchKeyword}」的` : '';
+        const filterText = filterLevel === 'all' ? '' : `уровня «${filterLevel}»`;
+        const searchText = searchKeyword ? `с «${searchKeyword}»` : '';
         listEl.innerHTML = `
             <div class="horae-empty-state">
                 <i class="fa-regular fa-clock"></i>
-                <span>暂无${searchText}${filterText}事件记录</span>
+                <span>Нет ${searchText}${filterText}записанных событий</span>
             </div>
         `;
         return;
@@ -797,14 +797,14 @@ function updateTimelineDisplay() {
     const state = horaeManager.getLatestState();
     const currentDate = state.timestamp?.story_date || getCurrentSystemTime().date;
     
-    // 更新多选按钮状态
+    // Обновить состояние кнопки множественного выбора
     const msBtn = document.getElementById('horae-btn-timeline-multiselect');
     if (msBtn) {
         msBtn.classList.toggle('active', timelineMultiSelectMode);
-        msBtn.title = timelineMultiSelectMode ? '退出多选' : '多选模式';
+        msBtn.title = timelineMultiSelectMode ? 'Выйти из режима выбора' : 'Режим выбора';
     }
     
-    // 获取摘要映射（summaryId → entry），用于判定压缩状态
+    // Получить карту сводок (summaryId → запись) для определения состояния сжатия
     const chat = horaeManager.getChat();
     const summaries = chat?.[0]?.horae_meta?.autoSummaries || [];
     const activeSummaryIds = new Set(summaries.filter(s => s.active).map(s => s.id));
@@ -814,11 +814,11 @@ function updateTimelineDisplay() {
         const compressedBy = e.event?._compressedBy;
         const summaryId = e.event?._summaryId;
         
-        // 已被压缩的事件：当对应摘要处于 active 状态时隐藏
+        // Сжатые события: скрываются когда соответствующая сводка активна
         if (compressedBy && activeSummaryIds.has(compressedBy)) {
             return '';
         }
-        // 摘要事件：inactive 时渲染为折叠指示条（保留切换按钮）
+        // События сводки: при inactive рендерятся как свёрнутый индикатор (кнопка переключения остаётся)
         if (summaryId && !activeSummaryIds.has(summaryId)) {
             const summaryEntry = summaries.find(s => s.id === summaryId);
             const rangeStr = summaryEntry ? `#${summaryEntry.range[0]}-#${summaryEntry.range[1]}` : '';
@@ -826,14 +826,14 @@ function updateTimelineDisplay() {
             <div class="horae-timeline-item summary horae-summary-collapsed" data-message-id="${e.messageIndex}" data-summary-id="${summaryId}">
                 <div class="horae-timeline-summary-icon"><i class="fa-solid fa-file-lines"></i></div>
                 <div class="horae-timeline-content">
-                    <div class="horae-timeline-summary"><span class="horae-level-badge summary">摘要</span>已展开为原始事件</div>
-                    <div class="horae-timeline-meta">${rangeStr} · ${summaryEntry?.auto ? '自动' : '手动'}摘要</div>
+                    <div class="horae-timeline-summary"><span class="horae-level-badge summary">Сводка</span> развёрнута в исходные события</div>
+                    <div class="horae-timeline-meta">${rangeStr} · ${summaryEntry?.auto ? 'авто' : 'ручная'} сводка</div>
                 </div>
                 <div class="horae-summary-actions">
-                    <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="切换为摘要">
+                    <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="Переключить на сводку">
                         <i class="fa-solid fa-compress"></i>
                     </button>
-                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="删除摘要">
+                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Удалить сводку">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
@@ -859,26 +859,26 @@ function updateTimelineDisplay() {
         const selectedClass = isSelected ? 'selected' : '';
         const checkboxDisplay = timelineMultiSelectMode ? 'flex' : 'none';
         
-        // 被标记为已压缩但摘要为 inactive 的事件，显示虚线框
+        // Событие помечено как сжатое, но сводка inactive — отображается пунктирной рамкой
         const isRestoredFromCompress = compressedBy && !activeSummaryIds.has(compressedBy);
         const compressedClass = isRestoredFromCompress ? 'horae-compressed-restored' : '';
         
         if (isSummary) {
             const summaryContent = e.event?.summary || '';
-            const summaryDisplay = summaryContent || '<span class="horae-summary-hint">点击编辑添加摘要内容。</span>';
+            const summaryDisplay = summaryContent || '<span class="horae-summary-hint">Нажмите «Редактировать» для добавления содержимого сводки.</span>';
             const summaryEntry = summaryId ? summaries.find(s => s.id === summaryId) : null;
             const isActive = summaryEntry?.active;
             const rangeStr = summaryEntry ? `#${summaryEntry.range[0]}-#${summaryEntry.range[1]}` : '';
-            // 有 summaryId 的摘要事件带切换/删除/编辑按钮
+            // Событие сводки с summaryId имеет кнопки переключения/удаления/редактирования
             const toggleBtns = summaryId ? `
                 <div class="horae-summary-actions">
-                    <button class="horae-summary-edit-btn" data-summary-id="${summaryId}" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="编辑摘要内容">
+                    <button class="horae-summary-edit-btn" data-summary-id="${summaryId}" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="Редактировать содержимое сводки">
                         <i class="fa-solid fa-pen"></i>
                     </button>
-                    <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="${isActive ? '切换为原始时间线' : '切换为摘要'}">
+                    <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="${isActive ? 'Переключить на исходную хронологию' : 'Переключить на сводку'}">
                         <i class="fa-solid ${isActive ? 'fa-expand' : 'fa-compress'}"></i>
                     </button>
-                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="删除摘要">
+                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Удалить сводку">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>` : '';
@@ -892,10 +892,10 @@ function updateTimelineDisplay() {
                 </div>
                 <div class="horae-timeline-content">
                     <div class="horae-timeline-summary">${levelBadge}${summaryDisplay}</div>
-                    <div class="horae-timeline-meta">${rangeStr ? rangeStr + ' · ' : ''}${summaryEntry?.auto ? '自动' : ''}摘要 · 消息 #${e.messageIndex}</div>
+                    <div class="horae-timeline-meta">${rangeStr ? rangeStr + ' · ' : ''}${summaryEntry?.auto ? 'Авто-' : ''}сводка · Сообщение #${e.messageIndex}</div>
                 </div>
                 ${toggleBtns}
-                <button class="horae-item-edit-btn" data-edit-type="event" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="编辑" style="${timelineMultiSelectMode ? 'display:none' : ''}${!summaryId ? '' : 'display:none'}">
+                <button class="horae-item-edit-btn" data-edit-type="event" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="Редактировать" style="${timelineMultiSelectMode ? 'display:none' : ''}${!summaryId ? '' : 'display:none'}">
                     <i class="fa-solid fa-pen"></i>
                 </button>
             </div>
@@ -903,7 +903,7 @@ function updateTimelineDisplay() {
         }
         
         const restoreBtn = isRestoredFromCompress ? `
-                <button class="horae-summary-toggle-btn horae-btn-inline-toggle" data-summary-id="${compressedBy}" title="切换回摘要">
+                <button class="horae-summary-toggle-btn horae-btn-inline-toggle" data-summary-id="${compressedBy}" title="Переключить на сводку">
                     <i class="fa-solid fa-compress"></i>
                 </button>` : '';
         
@@ -917,18 +917,18 @@ function updateTimelineDisplay() {
                     <div>${e.timestamp?.story_time || ''}</div>
                 </div>
                 <div class="horae-timeline-content">
-                    <div class="horae-timeline-summary">${levelBadge}${e.event?.summary || '未记录'}</div>
-                    <div class="horae-timeline-meta">${relTime} · 消息 #${e.messageIndex}</div>
+                    <div class="horae-timeline-summary">${levelBadge}${e.event?.summary || 'Не записано'}</div>
+                    <div class="horae-timeline-meta">${relTime} · Сообщение #${e.messageIndex}</div>
                 </div>
                 ${restoreBtn}
-                <button class="horae-item-edit-btn" data-edit-type="event" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="编辑" style="${timelineMultiSelectMode ? 'display:none' : ''}">
+                <button class="horae-item-edit-btn" data-edit-type="event" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="Редактировать" style="${timelineMultiSelectMode ? 'display:none' : ''}">
                     <i class="fa-solid fa-pen"></i>
                 </button>
             </div>
         `;
     }).join('');
     
-    // 绑定事件
+    // Привязать события
     listEl.querySelectorAll('.horae-timeline-item').forEach(item => {
         const eventKey = item.dataset.eventKey;
         
@@ -953,7 +953,7 @@ function updateTimelineDisplay() {
         }
     });
     
-    // 摘要切换/删除按钮
+    // Кнопки переключения/удаления сводки
     listEl.querySelectorAll('.horae-summary-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -976,11 +976,11 @@ function updateTimelineDisplay() {
     bindEditButtons();
 }
 
-/** 批量隐藏/显示聊天消息楼层（调用酒馆原生 /hide /unhide） */
+/** Пакетно скрыть/показать сообщения чата (вызывает нативные команды SillyTavern /hide /unhide) */
 async function setMessagesHidden(chat, indices, hidden) {
     if (!indices?.length) return;
 
-    // 预设内存状态：先写 is_hidden，防止竞态 saveChat 覆盖
+    // Предустановить состояние в памяти: сначала записать is_hidden, чтобы предотвратить перезапись при гонке saveChat
     for (const idx of indices) {
         if (chat[idx]) chat[idx].is_hidden = hidden;
     }
@@ -994,14 +994,14 @@ async function setMessagesHidden(chat, indices, hidden) {
             try {
                 await exec(`${cmd} ${idx}`);
             } catch (cmdErr) {
-                console.warn(`[Horae] ${cmd} ${idx} 失败:`, cmdErr);
+                console.warn(`[Horae] ${cmd} ${idx} ошибка:`, cmdErr);
             }
         }
     } catch (e) {
-        console.warn('[Horae] 无法加载酒馆命令模块，回退到手动设置:', e);
+        console.warn('[Horae] Не удалось загрузить модуль команд SillyTavern, переход к ручной установке:', e);
     }
 
-    // 后验证 + DOM 同步 + 强制 save（不依赖 /hide 是否成功）
+    // Пост-верификация + синхронизация DOM + принудительное сохранение (не зависит от успеха /hide)
     for (const idx of indices) {
         if (!chat[idx]) continue;
         chat[idx].is_hidden = hidden;
@@ -1012,7 +1012,7 @@ async function setMessagesHidden(chat, indices, hidden) {
     await getContext().saveChat();
 }
 
-/** 从摘要条目中取回所有关联的消息索引 */
+/** Получить все связанные индексы сообщений из записи сводки */
 function getSummaryMsgIndices(entry) {
     if (!entry) return [];
     const fromEvents = (entry.originalEvents || []).map(e => e.msgIdx);
@@ -1022,7 +1022,7 @@ function getSummaryMsgIndices(entry) {
     return [...new Set(fromEvents)];
 }
 
-/** 切换摘要的 active 状态（摘要视图 ↔ 原始时间线） */
+/** Переключить состояние active сводки (вид сводки ↔ исходная хронология) */
 async function toggleSummaryActive(summaryId) {
     if (!summaryId) return;
     const chat = horaeManager.getChat();
@@ -1031,22 +1031,22 @@ async function toggleSummaryActive(summaryId) {
     const entry = sums.find(s => s.id === summaryId);
     if (!entry) return;
     entry.active = !entry.active;
-    // 同步消息可见性：active=摘要模式→隐藏原消息，inactive=原始模式→显示原消息
+    // Синхронизировать видимость сообщений: active=режим сводки→скрыть оригиналы, inactive=исходный режим→показать оригиналы
     const indices = getSummaryMsgIndices(entry);
     await setMessagesHidden(chat, indices, entry.active);
     await getContext().saveChat();
     updateTimelineDisplay();
 }
 
-/** 删除摘要并恢复原始事件的压缩标记 */
+/** Удалить сводку и восстановить метки сжатия исходных событий */
 async function deleteSummary(summaryId) {
     if (!summaryId) return;
-    if (!confirm('删除此摘要？原始事件将恢复为普通时间线。')) return;
+    if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
     
     const chat = horaeManager.getChat();
     const firstMeta = chat?.[0]?.horae_meta;
     
-    // 从 autoSummaries 中移除记录（如有）
+    // Удалить запись из autoSummaries (если есть)
     let removedEntry = null;
     if (firstMeta?.autoSummaries) {
         const idx = firstMeta.autoSummaries.findIndex(s => s.id === summaryId);
@@ -1055,7 +1055,7 @@ async function deleteSummary(summaryId) {
         }
     }
     
-    // 清除所有消息中对应的 _compressedBy 标记和摘要事件（无论 autoSummaries 记录是否存在）
+    // Очистить соответствующие метки _compressedBy и события сводки во всех сообщениях (независимо от наличия записи в autoSummaries)
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i]?.horae_meta;
         if (!meta?.events) continue;
@@ -1065,7 +1065,7 @@ async function deleteSummary(summaryId) {
         }
     }
     
-    // 恢复被隐藏的楼层
+    // Восстановить скрытые сообщения
     if (removedEntry) {
         const indices = getSummaryMsgIndices(removedEntry);
         await setMessagesHidden(chat, indices, false);
@@ -1073,10 +1073,10 @@ async function deleteSummary(summaryId) {
     
     await getContext().saveChat();
     updateTimelineDisplay();
-    showToast('摘要已删除，原始事件已恢复', 'success');
+    showToast('Сводка удалена, исходные события восстановлены', 'success');
 }
 
-/** 打开摘要编辑弹窗，允许用户手动修改摘要内容 */
+/** Открыть окно редактирования сводки для ручного изменения содержимого */
 function openSummaryEditModal(summaryId, messageId, eventIndex) {
     closeEditModal();
     const chat = horaeManager.getChat();
@@ -1085,27 +1085,27 @@ function openSummaryEditModal(summaryId, messageId, eventIndex) {
     const meta = chat[messageId]?.horae_meta;
     const evtsArr = meta?.events || [];
     const evt = evtsArr[eventIndex];
-    if (!evt) { showToast('找不到该摘要事件', 'error'); return; }
+    if (!evt) { showToast('Событие сводки не найдено', 'error'); return; }
     const currentText = evt.summary || '';
 
     const modalHtml = `
         <div id="horae-edit-modal" class="horae-modal${isLightMode() ? ' horae-light' : ''}">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-pen"></i> 编辑摘要
+                    <i class="fa-solid fa-pen"></i> Редактировать сводку
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>摘要内容</label>
+                        <label>Содержимое сводки</label>
                         <textarea id="horae-summary-edit-text" rows="10" style="width:100%;min-height:180px;font-size:13px;line-height:1.6;">${escapeHtml(currentText)}</textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="horae-summary-edit-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="horae-summary-edit-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -1121,20 +1121,20 @@ function openSummaryEditModal(summaryId, messageId, eventIndex) {
     document.getElementById('horae-summary-edit-save').addEventListener('click', async (e) => {
         e.stopPropagation();
         const newText = document.getElementById('horae-summary-edit-text').value.trim();
-        if (!newText) { showToast('摘要内容不能为空', 'warning'); return; }
+        if (!newText) { showToast('Содержимое сводки не может быть пустым', 'warning'); return; }
         evt.summary = newText;
         if (summaryEntry) summaryEntry.summaryText = newText;
         await getContext().saveChat();
         closeEditModal();
         updateTimelineDisplay();
-        showToast('摘要已更新', 'success');
+        showToast('Сводка обновлена', 'success');
     });
 
     document.getElementById('horae-summary-edit-cancel').addEventListener('click', () => closeEditModal());
 }
 
 /**
- * 更新待办事项显示
+ * Обновить отображение задач
  */
 function updateAgendaDisplay() {
     const listEl = document.getElementById('horae-agenda-list');
@@ -1143,19 +1143,19 @@ function updateAgendaDisplay() {
     const agenda = getAllAgenda();
     
     if (agenda.length === 0) {
-        listEl.innerHTML = '<div class="horae-empty-hint">暂无待办事项</div>';
-        // 退出多选模式（如果所有待办被删完了）
+        listEl.innerHTML = '<div class="horae-empty-hint">Нет задач</div>';
+        // Выйти из режима множественного выбора (если все задачи удалены)
         if (agendaMultiSelectMode) exitAgendaMultiSelect();
         return;
     }
     
     listEl.innerHTML = agenda.map((item, index) => {
         const sourceIcon = item.source === 'ai'
-            ? '<i class="fa-solid fa-robot horae-agenda-source-ai" title="AI记录"></i>'
-            : '<i class="fa-solid fa-user horae-agenda-source-user" title="用户添加"></i>';
+            ? '<i class="fa-solid fa-robot horae-agenda-source-ai" title="Записано ИИ"></i>'
+            : '<i class="fa-solid fa-user horae-agenda-source-user" title="Добавлено пользователем"></i>';
         const dateDisplay = item.date ? `<span class="horae-agenda-date"><i class="fa-regular fa-calendar"></i> ${escapeHtml(item.date)}</span>` : '';
         
-        // 多选模式：显示 checkbox
+        // Режим множественного выбора: показать checkbox
         const checkboxHtml = agendaMultiSelectMode
             ? `<label class="horae-agenda-select-check"><input type="checkbox" ${selectedAgendaIndices.has(index) ? 'checked' : ''} data-agenda-select="${index}"></label>`
             : '';
@@ -1178,20 +1178,20 @@ function updateAgendaDisplay() {
         const idx = parseInt(el.dataset.agendaIdx);
         
         if (agendaMultiSelectMode) {
-            // 多选模式：点击切换选中
+            // Режим множественного выбора: клик переключает выбор
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleAgendaSelection(idx);
             });
         } else {
-            // 普通模式：点击编辑，长按进入多选
+            // Обычный режим: клик для редактирования, долгое нажатие для входа в режим выбора
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const item = currentAgenda[idx];
                 if (item) openAgendaEditModal(item);
             });
             
-            // 长按进入多选模式（仅绑定在 agenda item 上）
+            // Долгое нажатие для входа в режим множественного выбора（только для элементов agenda)
             el.addEventListener('mousedown', (e) => startAgendaLongPress(e, idx));
             el.addEventListener('touchstart', (e) => startAgendaLongPress(e, idx), { passive: true });
             el.addEventListener('mouseup', cancelAgendaLongPress);
@@ -1203,7 +1203,7 @@ function updateAgendaDisplay() {
     });
 }
 
-// ---- 待办多选模式 ----
+// ---- Режим множественного выбора задач ----
 
 function startAgendaLongPress(e, agendaIdx) {
     if (agendaMultiSelectMode) return;
@@ -1229,13 +1229,13 @@ function enterAgendaMultiSelect(initialIdx) {
     const bar = document.getElementById('horae-agenda-multiselect-bar');
     if (bar) bar.style.display = 'flex';
     
-    // 隐藏添加按钮
+    // Скрыть кнопку добавления
     const addBtn = document.getElementById('horae-btn-add-agenda');
     if (addBtn) addBtn.style.display = 'none';
     
     updateAgendaDisplay();
     updateAgendaSelectedCount();
-    showToast('已进入多选模式，点击选择待办事项', 'info');
+    showToast('Режим множественного выбора активирован. Нажмите для выбора задач', 'info');
 }
 
 function exitAgendaMultiSelect() {
@@ -1245,7 +1245,7 @@ function exitAgendaMultiSelect() {
     const bar = document.getElementById('horae-agenda-multiselect-bar');
     if (bar) bar.style.display = 'none';
     
-    // 恢复添加按钮
+    // Восстановить кнопку добавления
     const addBtn = document.getElementById('horae-btn-add-agenda');
     if (addBtn) addBtn.style.display = '';
     
@@ -1259,7 +1259,7 @@ function toggleAgendaSelection(idx) {
         selectedAgendaIndices.add(idx);
     }
     
-    // 更新该条目的UI
+    // Обновить UI этого элемента
     const item = document.querySelector(`#horae-agenda-list .horae-agenda-item[data-agenda-idx="${idx}"]`);
     if (item) {
         const cb = item.querySelector('input[type="checkbox"]');
@@ -1287,14 +1287,14 @@ function updateAgendaSelectedCount() {
 
 async function deleteSelectedAgenda() {
     if (selectedAgendaIndices.size === 0) {
-        showToast('没有选中任何待办事项', 'warning');
+        showToast('Не выбрано ни одной задачи', 'warning');
         return;
     }
     
-    const confirmed = confirm(`确定要删除选中的 ${selectedAgendaIndices.size} 条待办事项吗？\n\n此操作不可撤销。`);
+    const confirmed = confirm(`Удалить выбранные ${selectedAgendaIndices.size} задач(у/и)? Это действие необратимо.`);
     if (!confirmed) return;
     
-    // 获取当前完整的 agenda 列表，按索引倒序删除
+    // Получить полный список задач, удалять в обратном порядке по индексам
     const agenda = getAllAgenda();
     const sortedIndices = Array.from(selectedAgendaIndices).sort((a, b) => b - a);
     
@@ -1306,16 +1306,16 @@ async function deleteSelectedAgenda() {
     }
     
     await getContext().saveChat();
-    showToast(`已删除 ${selectedAgendaIndices.size} 条待办事项`, 'success');
+    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
     
     exitAgendaMultiSelect();
 }
 
 // ============================================
-// 时间线多选模式 & 长按插入菜单
+// Режим множественного выбора хронологии & контекстное меню по долгому нажатию
 // ============================================
 
-/** 时间线长按开始（弹出插入菜单） */
+/** Начало долгого нажатия на хронологию (показывает меню вставки) */
 let _timelineLongPressFired = false;
 function startTimelineLongPress(e, eventKey) {
     if (timelineMultiSelectMode) return;
@@ -1327,7 +1327,7 @@ function startTimelineLongPress(e, eventKey) {
     }, 800);
 }
 
-/** 取消时间线长按 */
+/** Отменить долгое нажатие на хронологии */
 function cancelTimelineLongPress() {
     if (timelineLongPressTimer) {
         clearTimeout(timelineLongPressTimer);
@@ -1335,7 +1335,7 @@ function cancelTimelineLongPress() {
     }
 }
 
-/** 显示时间线长按上下文菜单 */
+/** Показать контекстное меню долгого нажатия хронологии */
 function showTimelineContextMenu(e, eventKey) {
     closeTimelineContextMenu();
     const [msgIdx, evtIdx] = eventKey.split('-').map(Number);
@@ -1345,32 +1345,32 @@ function showTimelineContextMenu(e, eventKey) {
     menu.className = 'horae-context-menu';
     menu.innerHTML = `
         <div class="horae-context-item" data-action="insert-event-above">
-            <i class="fa-solid fa-arrow-up"></i> 在上方添加事件
+            <i class="fa-solid fa-arrow-up"></i> Добавить событие выше
         </div>
         <div class="horae-context-item" data-action="insert-event-below">
-            <i class="fa-solid fa-arrow-down"></i> 在下方添加事件
+            <i class="fa-solid fa-arrow-down"></i> Добавить событие ниже
         </div>
         <div class="horae-context-separator"></div>
         <div class="horae-context-item" data-action="insert-summary-above">
-            <i class="fa-solid fa-file-lines"></i> 在上方插入摘要
+            <i class="fa-solid fa-file-lines"></i> Вставить сводку выше
         </div>
         <div class="horae-context-item" data-action="insert-summary-below">
-            <i class="fa-solid fa-file-lines"></i> 在下方插入摘要
+            <i class="fa-solid fa-file-lines"></i> Вставить сводку ниже
         </div>
         <div class="horae-context-separator"></div>
         <div class="horae-context-item danger" data-action="delete">
-            <i class="fa-solid fa-trash-can"></i> 删除此事件
+            <i class="fa-solid fa-trash-can"></i> Удалить событие
         </div>
     `;
     
     document.body.appendChild(menu);
     
-    // 阻止菜单自身的所有事件冒泡（防止移动端抽屉收回）
+    // Предотвратить всплытие событий самого меню (чтобы ящик не закрывался на мобильных)
     ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(evType => {
         menu.addEventListener(evType, (ev) => ev.stopPropagation());
     });
     
-    // 定位
+    // Позиционирование
     const rect = e.target.closest('.horae-timeline-item')?.getBoundingClientRect();
     if (rect) {
         let top = rect.bottom + 4;
@@ -1385,7 +1385,7 @@ function showTimelineContextMenu(e, eventKey) {
         menu.style.left = `${(e.clientX || e.touches?.[0]?.clientX || 100)}px`;
     }
     
-    // 绑定菜单项操作（click + touchend 双绑定确保移动端可用）
+    // Привязать действия пунктов меню (двойная привязка click + touchend для поддержки мобильных)
     menu.querySelectorAll('.horae-context-item').forEach(item => {
         let handled = false;
         const handler = (ev) => {
@@ -1402,7 +1402,7 @@ function showTimelineContextMenu(e, eventKey) {
         item.addEventListener('touchend', handler);
     });
     
-    // 点击菜单外区域关闭（仅用 click，不用 touchstart 避免抢占移动端触摸）
+    // Клик вне меню закрывает его (только click, не touchstart, чтобы не перехватывать мобильные касания)
     setTimeout(() => {
         const dismissHandler = (ev) => {
             if (menu.contains(ev.target)) return;
@@ -1413,18 +1413,18 @@ function showTimelineContextMenu(e, eventKey) {
     }, 100);
 }
 
-/** 关闭时间线上下文菜单 */
+/** Закрыть контекстное меню хронологии */
 function closeTimelineContextMenu() {
     const menu = document.getElementById('horae-timeline-context-menu');
     if (menu) menu.remove();
 }
 
-/** 处理时间线上下文菜单操作 */
+/** Обработать действие контекстного меню хронологии */
 async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
     const chat = horaeManager.getChat();
     
     if (action === 'delete') {
-        if (!confirm('确定删除此事件？')) return;
+        if (!confirm('Удалить это событие?')) return;
         const meta = chat[msgIdx]?.horae_meta;
         if (!meta) return;
         if (meta.events && evtIdx < meta.events.length) {
@@ -1433,7 +1433,7 @@ async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
             delete meta.event;
         }
         await getContext().saveChat();
-        showToast('已删除事件', 'success');
+        showToast('Событие удалено', 'success');
         updateTimelineDisplay();
         updateStatusDisplay();
         return;
@@ -1449,7 +1449,7 @@ async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
     }
 }
 
-/** 打开插入事件弹窗 */
+/** Открыть окно вставки события */
 function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
     const state = horaeManager.getLatestState();
     const currentDate = state.timestamp?.story_date || '';
@@ -1459,36 +1459,36 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-timeline"></i> ${isAbove ? '在上方' : '在下方'}添加事件
+                    <i class="fa-solid fa-timeline"></i> ${isAbove ? 'выше' : 'ниже'} добавить событие
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>日期</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="如 2026/2/14">
+                        <label>Дата</label>
+                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
                     </div>
                     <div class="horae-edit-field">
-                        <label>时间</label>
-                        <input type="text" id="insert-event-time" value="${currentTime}" placeholder="如 15:00">
+                        <label>Время</label>
+                        <input type="text" id="insert-event-time" value="${currentTime}" placeholder="Например 15:00">
                     </div>
                     <div class="horae-edit-field">
-                        <label>重要程度</label>
+                        <label>Уровень важности</label>
                         <select id="insert-event-level" class="horae-select">
-                            <option value="一般">一般</option>
-                            <option value="重要">重要</option>
-                            <option value="关键">关键</option>
+                            <option value="一般">Обычное</option>
+                            <option value="重要">Важное</option>
+                            <option value="关键">Ключевое</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>事件摘要</label>
-                        <textarea id="insert-event-summary" rows="3" placeholder="描述此事件的摘要..."></textarea>
+                        <label>Краткое описание события</label>
+                        <textarea id="insert-event-summary" rows="3" placeholder="Опишите событие кратко..."></textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 添加
+                        <i class="fa-solid fa-check"></i> Добавить
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -1505,7 +1505,7 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         const level = document.getElementById('insert-event-level').value;
         const summary = document.getElementById('insert-event-summary').value.trim();
         
-        if (!summary) { showToast('请输入事件摘要', 'warning'); return; }
+        if (!summary) { showToast('Введите краткое описание события', 'warning'); return; }
         
         const newEvent = {
             is_important: level === '重要' || level === '关键',
@@ -1533,7 +1533,7 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         closeEditModal();
         updateTimelineDisplay();
         updateStatusDisplay();
-        showToast('事件已添加', 'success');
+        showToast('Событие добавлено', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -1542,26 +1542,26 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
     });
 }
 
-/** 打开插入摘要弹窗 */
+/** Открыть окно вставки сводки */
 function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
     const modalHtml = `
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-file-lines"></i> ${isAbove ? '在上方' : '在下方'}插入摘要
+                    <i class="fa-solid fa-file-lines"></i> ${isAbove ? 'выше' : 'ниже'} вставить сводку
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>摘要内容</label>
-                        <textarea id="insert-summary-text" rows="5" placeholder="在此输入摘要内容，用于替代被删除的中间时间线...&#10;&#10;提示：请勿删除开头的时间线，否则相对时间计算和年龄自动推进功能将会失效。"></textarea>
+                        <label>Содержимое сводки</label>
+                        <textarea id="insert-summary-text" rows="5" placeholder="Введите содержимое сводки, заменяющей удалённые события хронологии...&#10;&#10;Подсказка: не удаляй хронологию в начале, иначе расчёт относительного времени и автоматическое вычисление возраста перестанут работать."></textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 插入摘要
+                        <i class="fa-solid fa-check"></i> Вставить сводку
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -1574,7 +1574,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
     document.getElementById('edit-modal-save').addEventListener('click', async (e) => {
         e.stopPropagation();
         const summaryText = document.getElementById('insert-summary-text').value.trim();
-        if (!summaryText) { showToast('请输入摘要内容', 'warning'); return; }
+        if (!summaryText) { showToast('Введите содержимое сводки', 'warning'); return; }
         
         const newEvent = {
             is_important: true,
@@ -1595,7 +1595,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
         closeEditModal();
         updateTimelineDisplay();
         updateStatusDisplay();
-        showToast('摘要已插入', 'success');
+        showToast('Сводка вставлена', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -1604,7 +1604,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
     });
 }
 
-/** 进入时间线多选模式 */
+/** Войти в режим множественного выбора хронологии */
 function enterTimelineMultiSelect(initialKey) {
     timelineMultiSelectMode = true;
     selectedTimelineEvents.clear();
@@ -1615,10 +1615,10 @@ function enterTimelineMultiSelect(initialKey) {
     
     updateTimelineDisplay();
     updateTimelineSelectedCount();
-    showToast('已进入多选模式，点击选择事件', 'info');
+    showToast('Режим множественного выбора активирован. Нажмите для выбора событий', 'info');
 }
 
-/** 退出时间线多选模式 */
+/** Выйти из режима множественного выбора хронологии */
 function exitTimelineMultiSelect() {
     timelineMultiSelectMode = false;
     selectedTimelineEvents.clear();
@@ -1629,7 +1629,7 @@ function exitTimelineMultiSelect() {
     updateTimelineDisplay();
 }
 
-/** 切换时间线事件选中状态 */
+/** Переключить состояние выбора события хронологии */
 function toggleTimelineSelection(eventKey) {
     if (selectedTimelineEvents.has(eventKey)) {
         selectedTimelineEvents.delete(eventKey);
@@ -1646,7 +1646,7 @@ function toggleTimelineSelection(eventKey) {
     updateTimelineSelectedCount();
 }
 
-/** 全选时间线事件 */
+/** Выбрать все события хронологии */
 function selectAllTimelineEvents() {
     document.querySelectorAll('#horae-timeline-list .horae-timeline-item').forEach(item => {
         const key = item.dataset.eventKey;
@@ -1656,43 +1656,43 @@ function selectAllTimelineEvents() {
     updateTimelineSelectedCount();
 }
 
-/** 更新时间线选中计数 */
+/** Обновить счётчик выбранных событий хронологии */
 function updateTimelineSelectedCount() {
     const el = document.getElementById('horae-timeline-selected-count');
     if (el) el.textContent = selectedTimelineEvents.size;
 }
 
-/** 选择压缩模式弹窗 */
+/** Окно выбора режима сжатия */
 function showCompressModeDialog(eventCount, msgRange) {
     return new Promise(resolve => {
         const modal = document.createElement('div');
         modal.className = 'horae-modal' + (isLightMode() ? ' horae-light' : '');
         modal.innerHTML = `
             <div class="horae-modal-content" style="max-width: 420px;">
-                <div class="horae-modal-header"><span>压缩模式</span></div>
+                <div class="horae-modal-header"><span>Режим сжатия</span></div>
                 <div class="horae-modal-body" style="padding: 16px;">
                     <p style="margin: 0 0 12px; color: var(--horae-text-muted); font-size: 13px;">
-                        已选中 <strong style="color: var(--horae-primary-light);">${eventCount}</strong> 条事件，
-                        涵盖消息 #${msgRange[0]} ~ #${msgRange[1]}
+                        Выбрано <strong style="color: var(--horae-primary-light);">${eventCount}</strong> событий,
+                        охватывают сообщения #${msgRange[0]} – #${msgRange[1]}
                     </p>
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--horae-border); border-radius: 6px; cursor: pointer; margin-bottom: 8px;">
                         <input type="radio" name="horae-compress-mode" value="event" checked style="margin-top: 3px;">
                         <div>
-                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">事件压缩</div>
-                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">从已提取的事件摘要文本压缩，速度快，但信息仅限于时间线已记录的内容</div>
+                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">Сжатие событий</div>
+                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Сжатие из извлечённого текста сводок событий (быстро, только данные из хронологии)</div>
                         </div>
                     </label>
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--horae-border); border-radius: 6px; cursor: pointer;">
                         <input type="radio" name="horae-compress-mode" value="fulltext" style="margin-top: 3px;">
                         <div>
-                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">全文摘要</div>
-                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">回读选中事件所在消息的完整正文进行摘要，细节更丰富，但消耗更多 Token</div>
+                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">Полнотекстовая сводка</div>
+                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Перечитать полный текст сообщений с выбранными событиями (больше деталей, но расходует больше токенов)</div>
                         </div>
                     </label>
                 </div>
                 <div class="horae-modal-footer">
-                    <button class="horae-btn" id="horae-compress-cancel">取消</button>
-                    <button class="horae-btn primary" id="horae-compress-confirm">继续</button>
+                    <button class="horae-btn" id="horae-compress-cancel">Отмена</button>
+                    <button class="horae-btn primary" id="horae-compress-confirm">Продолжить</button>
                 </div>
             </div>
         `;
@@ -1707,10 +1707,10 @@ function showCompressModeDialog(eventCount, msgRange) {
     });
 }
 
-/** AI智能压缩选中的时间线事件为一条摘要 */
+/** ИИ: умное сжатие выбранных событий хронологии в одну сводку */
 async function compressSelectedTimelineEvents() {
     if (selectedTimelineEvents.size < 2) {
-        showToast('请至少选择2条事件进行压缩', 'warning');
+        showToast('Выберите не менее 2 событий для сжатия', 'warning');
         return;
     }
     
@@ -1735,7 +1735,7 @@ async function compressSelectedTimelineEvents() {
     }
     
     if (events.length < 2) {
-        showToast('有效事件不足2条', 'warning');
+        showToast('Недостаточно действительных событий (менее 2)', 'warning');
         return;
     }
     
@@ -1747,7 +1747,7 @@ async function compressSelectedTimelineEvents() {
     
     let sourceText;
     if (mode === 'fulltext') {
-        // 收集涉及的消息全文
+        // Собрать полные тексты затронутых сообщений
         const msgIndices = [...new Set(events.map(e => e.msgIdx))].sort((a, b) => a - b);
         const fullTexts = msgIndices.map(idx => {
             const msg = chat[idx];
@@ -1786,29 +1786,29 @@ async function compressSelectedTimelineEvents() {
     overlay.className = 'horae-progress-overlay' + (isLightMode() ? ' horae-light' : '');
     overlay.innerHTML = `
         <div class="horae-progress-container">
-            <div class="horae-progress-title">AI 压缩中...</div>
+            <div class="horae-progress-title">ИИ: сжатие...</div>
             <div class="horae-progress-bar"><div class="horae-progress-fill" style="width: 50%"></div></div>
-            <div class="horae-progress-text">${mode === 'fulltext' ? '正在回读全文生成摘要...' : '正在生成摘要...'}</div>
-            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> 取消压缩</button>
+            <div class="horae-progress-text">${mode === 'fulltext' ? 'Перечитываю полный текст для создания сводки...' : 'Создаю сводку...'}</div>
+            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> Отменить сжатие</button>
         </div>
     `;
     document.body.appendChild(overlay);
 
     overlay.querySelector('.horae-progress-cancel').addEventListener('click', () => {
         if (cancelled) return;
-        if (!confirm('取消后摘要将不会保存，确定取消？')) return;
+        if (!confirm('После отмены сводка не будет сохранена. Отменить?')) return;
         cancelled = true;
         fetchAbort.abort();
         try { getContext().stopGeneration(); } catch (_) {}
         cancelResolve();
         overlay.remove();
         window.fetch = _origFetch;
-        showToast('已取消压缩', 'info');
+        showToast('Сжатие отменено', 'info');
     });
     
     try {
         const context = getContext();
-        const userName = context?.name1 || '主角';
+        const userName = context?.name1 || 'Главный герой';
         const eventText = events.map(e => {
             const timeStr = e.time ? `${e.date} ${e.time}` : e.date;
             return `[${e.level}] ${timeStr}: ${e.summary}`;
@@ -1836,18 +1836,18 @@ async function compressSelectedTimelineEvents() {
         
         if (!response || !response.trim()) {
             overlay.remove();
-            showToast('AI未返回有效摘要', 'warning');
+            showToast('ИИ не вернул действительную сводку', 'warning');
             return;
         }
         
         const summaryText = response.trim();
         
-        // 非破坏性压缩：将原始事件和摘要存入 autoSummaries
+        // Неразрушающее сжатие: сохранить исходные события и сводку в autoSummaries
         const firstMsg = chat[0];
         if (!firstMsg.horae_meta) firstMsg.horae_meta = createEmptyMeta();
         if (!firstMsg.horae_meta.autoSummaries) firstMsg.horae_meta.autoSummaries = [];
         
-        // 收集被压缩的原始事件备份
+        // Собрать резервную копию исходных сжатых событий
         const originalEvents = events.map(e => ({
             msgIdx: e.msgIdx,
             evtIdx: e.evtIdx,
@@ -1867,8 +1867,8 @@ async function compressSelectedTimelineEvents() {
         };
         firstMsg.horae_meta.autoSummaries.push(summaryEntry);
         
-        // 标记原始事件为已压缩（不删除），兼容旧 meta.event 单数格式
-        // 标记所有涉及消息的全部事件，避免同一消息中未选中的事件泄露
+        // Пометить исходные события как сжатые (не удалять), совместимость со старым форматом meta.event
+        // Пометить все события во всех затронутых сообщениях, чтобы предотвратить утечку невыбранных событий из того же сообщения
         const compressedMsgIndices = [...new Set(events.map(e => e.msgIdx))];
         for (const msgIdx of compressedMsgIndices) {
             const meta = chat[msgIdx]?.horae_meta;
@@ -1885,7 +1885,7 @@ async function compressSelectedTimelineEvents() {
             }
         }
         
-        // 在最早的消息位置插入摘要事件
+        // Вставить событие сводки на позицию самого раннего сообщения
         const firstEvent = events[0];
         const firstMeta = chat[firstEvent.msgIdx]?.horae_meta;
         if (firstMeta) {
@@ -1899,7 +1899,7 @@ async function compressSelectedTimelineEvents() {
             });
         }
         
-        // 隐藏范围内所有楼层（包括中间的 USER 消息）
+        // Скрыть все сообщения в диапазоне (включая промежуточные сообщения пользователя)
         const hideMin = compressedMsgIndices[0];
         const hideMax = compressedMsgIndices[compressedMsgIndices.length - 1];
         const hideIndices = [];
@@ -1911,29 +1911,29 @@ async function compressSelectedTimelineEvents() {
         exitTimelineMultiSelect();
         updateTimelineDisplay();
         updateStatusDisplay();
-        showToast(`已将 ${events.length} 条事件${mode === 'fulltext' ? '（全文模式）' : ''}压缩为摘要`, 'success');
+        showToast(`${events.length} событий${mode === 'fulltext' ? ' (режим полного текста)' : ''} сжаты в сводку`, 'success');
     } catch (err) {
         window.fetch = _origFetch;
         overlay.remove();
         if (cancelled || err?.name === 'AbortError') return;
-        console.error('[Horae] 压缩失败:', err);
-        showToast('AI压缩失败: ' + (err.message || '未知错误'), 'error');
+        console.error('[Horae] Ошибка сжатия:', err);
+        showToast('Ошибка сжатия ИИ: ' + (err.message || 'Неизвестная ошибка'), 'error');
     }
 }
 
-/** 删除选中的时间线事件 */
+/** Удалить выбранные события хронологии */
 async function deleteSelectedTimelineEvents() {
     if (selectedTimelineEvents.size === 0) {
-        showToast('没有选中任何事件', 'warning');
+        showToast('Не выбрано ни одного события', 'warning');
         return;
     }
     
-    const confirmed = confirm(`确定要删除选中的 ${selectedTimelineEvents.size} 条剧情轨迹吗？\n\n可通过「刷新」按钮旁的撤销恢复。`);
+    const confirmed = confirm(`Удалить выбранные ${selectedTimelineEvents.size} записей хронологии?\n\nМожно восстановить через кнопку «Отменить» рядом с «Обновить».`);
     if (!confirmed) return;
     
     const chat = horaeManager.getChat();
     
-    // 按消息分组，倒序删除事件索引
+    // Группировать по сообщениям, удалять индексы событий в обратном порядке
     const msgMap = new Map();
     for (const key of selectedTimelineEvents) {
         const [msgIdx, evtIdx] = key.split('-').map(Number);
@@ -1958,26 +1958,26 @@ async function deleteSelectedTimelineEvents() {
     }
     
     await getContext().saveChat();
-    showToast(`已删除 ${selectedTimelineEvents.size} 条剧情轨迹`, 'success');
+    showToast(`Удалено ${selectedTimelineEvents.size} записей хронологии`, 'success');
     exitTimelineMultiSelect();
     updateStatusDisplay();
 }
 
 /**
- * 打开待办事项添加/编辑弹窗
- * @param {Object|null} agendaItem - 编辑时传入完整 agenda 对象，新增时传 null
+ * Открыть окно добавления/редактирования задачи
+ * @param {Object|null} agendaItem - при редактировании передаётся полный объект agenda, при добавлении — null
  */
 function openAgendaEditModal(agendaItem = null) {
     const isEdit = agendaItem !== null;
     const currentText = isEdit ? (agendaItem.text || '') : '';
     const currentDate = isEdit ? (agendaItem.date || '') : '';
-    const title = isEdit ? '编辑待办' : '添加待办';
+    const title = isEdit ? 'Редактировать задачу' : 'Добавить задачу';
     
     closeEditModal();
     
     const deleteBtn = isEdit ? `
                     <button id="agenda-modal-delete" class="horae-btn danger">
-                        <i class="fa-solid fa-trash"></i> 删除
+                        <i class="fa-solid fa-trash"></i> Удалить
                     </button>` : '';
     
     const modalHtml = `
@@ -1988,20 +1988,20 @@ function openAgendaEditModal(agendaItem = null) {
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>订立日期 (选填)</label>
-                        <input type="text" id="agenda-edit-date" value="${escapeHtml(currentDate)}" placeholder="如 2026/02/10">
+                        <label>Дата (необязательно)</label>
+                        <input type="text" id="agenda-edit-date" value="${escapeHtml(currentDate)}" placeholder="Например 2026/02/10">
                     </div>
                     <div class="horae-edit-field">
-                        <label>内容</label>
-                        <textarea id="agenda-edit-text" rows="3" placeholder="输入待办事项，相对时间请标注绝对时间，例如：艾伦邀请艾莉絲於情人節晚上(2026/02/14 18:00)约会">${escapeHtml(currentText)}</textarea>
+                        <label>Содержимое</label>
+                        <textarea id="agenda-edit-text" rows="3" placeholder="Введите задачу. Для относительного времени укажите абсолютную дату, напр.: Алан пригласил Алис на вечер в День святого Валентина (2026/02/14 18:00)">${escapeHtml(currentText)}</textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="agenda-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="agenda-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                     ${deleteBtn}
                 </div>
@@ -2027,12 +2027,12 @@ function openAgendaEditModal(agendaItem = null) {
         const text = document.getElementById('agenda-edit-text').value.trim();
         const date = document.getElementById('agenda-edit-date').value.trim();
         if (!text) {
-            showToast('内容不能为空', 'warning');
+            showToast('Содержимое не может быть пустым', 'warning');
             return;
         }
         
         if (isEdit) {
-            // 编辑现有项
+            // Редактировать существующий элемент
             const context = getContext();
             if (agendaItem._store === 'user') {
                 const agenda = getUserAgenda();
@@ -2054,7 +2054,7 @@ function openAgendaEditModal(agendaItem = null) {
                 }
             }
         } else {
-            // 新增
+            // Новый элемент
             const agenda = getUserAgenda();
             agenda.push({ text, date, source: 'user', done: false, createdAt: Date.now() });
             setUserAgenda(agenda);
@@ -2062,7 +2062,7 @@ function openAgendaEditModal(agendaItem = null) {
         
         closeEditModal();
         updateAgendaDisplay();
-        showToast(isEdit ? '待办已更新' : '待办已添加', 'success');
+        showToast(isEdit ? 'Задача обновлена' : 'Задача добавлена', 'success');
     });
     
     document.getElementById('agenda-modal-cancel').addEventListener('click', (e) => {
@@ -2071,40 +2071,40 @@ function openAgendaEditModal(agendaItem = null) {
         closeEditModal();
     });
     
-    // 删除按钮（仅编辑模式）
+    // Кнопка удаления (только в режиме редактирования)
     const deleteEl = document.getElementById('agenda-modal-delete');
     if (deleteEl && isEdit) {
         deleteEl.addEventListener('click', (e) => {
             e.stopPropagation();
             e.stopImmediatePropagation();
             
-            if (!confirm('确定要删除这条待办事项吗？此操作无法撤销。')) return;
+            if (!confirm('Удалить эту задачу? Это действие необратимо.')) return;
             
             deleteAgendaItem(agendaItem);
             closeEditModal();
             updateAgendaDisplay();
-            showToast('待办已删除', 'info');
+            showToast('Задача удалена', 'info');
         });
     }
 }
 
 /**
- * 更新角色页面显示
+ * Обновить отображение страницы персонажей
  */
 function updateCharactersDisplay() {
     const state = horaeManager.getLatestState();
     const presentChars = state.scene?.characters_present || [];
     const favoriteNpcs = settings.favoriteNpcs || [];
     
-    // 获取角色卡主角色名（用于置顶和特殊样式）
+    // Получить имя главного персонажа карточки (для закрепления и специального стиля)
     const context = getContext();
     const mainCharName = context?.name2 || '';
     
-    // 在场角色
+    // Присутствующие персонажи
     const presentEl = document.getElementById('horae-present-characters');
     if (presentEl) {
         if (presentChars.length === 0) {
-            presentEl.innerHTML = '<div class="horae-empty-hint">暂无记录</div>';
+            presentEl.innerHTML = '<div class="horae-empty-hint">Нет записей</div>';
         } else {
             presentEl.innerHTML = presentChars.map(char => {
                 const isMainChar = mainCharName && char.includes(mainCharName);
@@ -2118,15 +2118,15 @@ function updateCharactersDisplay() {
         }
     }
     
-    // 好感度 - 分层显示：重要角色 > 在场角色 > 其他
+    // Расположение — многоуровневое отображение: важные > присутствующие > остальные
     const affectionEl = document.getElementById('horae-affection-list');
     const pinnedNpcsAff = settings.pinnedNpcs || [];
     if (affectionEl) {
         const entries = Object.entries(state.affection || {});
         if (entries.length === 0) {
-            affectionEl.innerHTML = '<div class="horae-empty-hint">暂无好感度记录</div>';
+            affectionEl.innerHTML = '<div class="horae-empty-hint">Нет записей о расположении</div>';
         } else {
-            // 判断是否为重要角色
+            // Определить, является ли персонаж важным
             const isMainCharAff = (key) => {
                 if (pinnedNpcsAff.includes(key)) return true;
                 if (mainCharName && key.includes(mainCharName)) return true;
@@ -2151,7 +2151,7 @@ function updateCharactersDisplay() {
                         <span class="horae-affection-name">${key}</span>
                         <span class="horae-affection-value ${valueClass}">${numValue > 0 ? '+' : ''}${numValue}</span>
                         <span class="horae-affection-level">${level}</span>
-                        <button class="horae-item-edit-btn horae-affection-edit-btn" data-edit-type="affection" data-char="${key}" title="编辑好感度">
+                        <button class="horae-item-edit-btn horae-affection-edit-btn" data-edit-type="affection" data-char="${key}" title="Редактировать расположение">
                             <i class="fa-solid fa-pen"></i>
                         </button>
                     </div>
@@ -2159,7 +2159,7 @@ function updateCharactersDisplay() {
             }).join('');
             
             let html = '';
-            // 角色卡角色置顶
+            // Закрепить персонажей карточки вверху
             if (mainCharAffection.length > 0) {
                 html += renderAffection(mainCharAffection, true);
             }
@@ -2179,15 +2179,15 @@ function updateCharactersDisplay() {
         }
     }
     
-    // NPC列表 - 分层显示：重要角色 > 星标角色 > 普通角色
+    // Список NPC — многоуровневое отображение: важные > со звёздочкой > обычные
     const npcEl = document.getElementById('horae-npc-list');
     const pinnedNpcs = settings.pinnedNpcs || [];
     if (npcEl) {
         const entries = Object.entries(state.npcs || {});
         if (entries.length === 0) {
-            npcEl.innerHTML = '<div class="horae-empty-hint">暂无角色记录</div>';
+            npcEl.innerHTML = '<div class="horae-empty-hint">Нет записей о персонажах</div>';
         } else {
-            // 判断是否为重要角色（角色卡主角 或 手动标记）
+            // Определить, является ли персонаж важным(главный персонаж карточки или помечен вручную)
             const isMainChar = (name) => {
                 if (pinnedNpcs.includes(name)) return true;
                 if (mainCharName && name.includes(mainCharName)) return true;
@@ -2210,16 +2210,16 @@ function updateCharactersDisplay() {
                 } else if (info.description) {
                     descHtml = `<span class="horae-npc-legacy">${info.description}</span>`;
                 } else {
-                    descHtml = '<span class="horae-npc-legacy">无描述</span>';
+                    descHtml = '<span class="horae-npc-legacy">Нет описания</span>';
                 }
                 
-                // 扩展信息行（年龄/种族/职业）
+                // Расширенная информация (возраст/раса/профессия)
                 const extraTags = [];
                 if (info.race) extraTags.push(info.race);
                 if (info.age) {
                     const ageResult = horaeManager.calcCurrentAge(info, state.timestamp?.story_date);
                     if (ageResult.changed) {
-                        extraTags.push(`<span class="horae-age-calc" title="原始:${ageResult.original} (已推算时间推移)">${ageResult.display}岁</span>`);
+                        extraTags.push(`<span class="horae-age-calc" title="Исходное: ${ageResult.original} (с учётом течения времени)">${ageResult.display} лет</span>`);
                     } else {
                         extraTags.push(info.age);
                     }
@@ -2236,7 +2236,7 @@ function updateCharactersDisplay() {
                 const mainClass = isMainChar ? 'main-character' : '';
                 const starIcon = isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star';
                 
-                // 性别图标映射
+                // Маппинг иконок пола
                 let genderIcon, genderClass;
                 if (isMainChar) {
                     genderIcon = 'fa-solid fa-crown';
@@ -2266,10 +2266,10 @@ function updateCharactersDisplay() {
                             </div>
                             <div class="horae-npc-name"><i class="${genderIcon} ${genderClass}"></i> ${name}</div>
                             <div class="horae-npc-actions">
-                                <button class="horae-item-edit-btn" data-edit-type="npc" data-edit-name="${name}" title="编辑" style="opacity:1;position:static;">
+                                <button class="horae-item-edit-btn" data-edit-type="npc" data-edit-name="${name}" title="Редактировать" style="opacity:1;position:static;">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button class="horae-npc-star" title="${isFavorite ? '取消星标' : '添加星标'}">
+                                <button class="horae-npc-star" title="${isFavorite ? 'Убрать звёздочку' : 'Добавить звёздочку'}">
                                     <i class="${starIcon}"></i>
                                 </button>
                             </div>
@@ -2279,43 +2279,43 @@ function updateCharactersDisplay() {
                 `;
             };
             
-            // 性别过滤栏
+            // Панель фильтрации по полу
             let html = `
                 <div class="horae-gender-filter">
-                    <button class="horae-gender-btn active" data-filter="all" title="全部">全部</button>
-                    <button class="horae-gender-btn" data-filter="male" title="男性"><i class="fa-solid fa-person"></i></button>
-                    <button class="horae-gender-btn" data-filter="female" title="女性"><i class="fa-solid fa-person-dress"></i></button>
-                    <button class="horae-gender-btn" data-filter="other" title="其他/未知"><i class="fa-solid fa-user"></i></button>
+                    <button class="horae-gender-btn active" data-filter="all" title="Все">Все</button>
+                    <button class="horae-gender-btn" data-filter="male" title="Мужской"><i class="fa-solid fa-person"></i></button>
+                    <button class="horae-gender-btn" data-filter="female" title="Женский"><i class="fa-solid fa-person-dress"></i></button>
+                    <button class="horae-gender-btn" data-filter="other" title="Другой/Неизвестно"><i class="fa-solid fa-user"></i></button>
                 </div>
             `;
             
-            // 角色卡角色区域（置顶）
+            // Область персонажей карточки (закреплённые)
             if (mainCharEntries.length > 0) {
                 html += '<div class="horae-npc-section main-character-section">';
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> 主要角色</div>';
+                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
                 html += mainCharEntries.map(([name, info]) => renderNpc(name, info, false, true)).join('');
                 html += '</div>';
             }
             
-            // 星标NPC区域
+            // Область NPC со звёздочкой
             if (favoriteEntries.length > 0) {
                 if (mainCharEntries.length > 0) {
                     html += '<div class="horae-npc-section-divider"></div>';
                 }
                 html += '<div class="horae-npc-section favorite-section">';
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-star"></i> 星标NPC</div>';
+                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-star"></i> NPC со звёздочкой</div>';
                 html += favoriteEntries.map(([name, info]) => renderNpc(name, info, true)).join('');
                 html += '</div>';
             }
             
-            // 普通NPC区域
+            // Область обычных NPC
             if (normalEntries.length > 0) {
                 if (mainCharEntries.length > 0 || favoriteEntries.length > 0) {
                     html += '<div class="horae-npc-section-divider"></div>';
                 }
                 html += '<div class="horae-npc-section">';
                 if (mainCharEntries.length > 0 || favoriteEntries.length > 0) {
-                    html += '<div class="horae-npc-section-title">其他NPC</div>';
+                    html += '<div class="horae-npc-section-title">Прочие NPC</div>';
                 }
                 html += normalEntries.map(([name, info]) => renderNpc(name, info, false)).join('');
                 html += '</div>';
@@ -2332,7 +2332,7 @@ function updateCharactersDisplay() {
                 });
             });
             
-            // NPC 多选点击
+            // Клик множественного выбора NPC
             npcEl.querySelectorAll('.horae-npc-item').forEach(item => {
                 item.addEventListener('click', (e) => {
                     if (!npcMultiSelectMode) return;
@@ -2366,14 +2366,14 @@ function updateCharactersDisplay() {
         }
     }
     
-    // 关系网络渲染
+    // Рендеринг сети отношений
     if (settings.sendRelationships) {
         updateRelationshipDisplay();
     }
 }
 
 /**
- * 更新关系网络显示
+ * Обновить отображение сети отношений
  */
 function updateRelationshipDisplay() {
     const listEl = document.getElementById('horae-relationship-list');
@@ -2382,7 +2382,7 @@ function updateRelationshipDisplay() {
     const relationships = horaeManager.getRelationships();
     
     if (relationships.length === 0) {
-        listEl.innerHTML = '<div class="horae-empty-hint">暂无关系记录，AI会在角色互动时自动记录</div>';
+        listEl.innerHTML = '<div class="horae-empty-hint">Нет записей о связях. ИИ запишет их автоматически при взаимодействии персонажей</div>';
         return;
     }
     
@@ -2396,15 +2396,15 @@ function updateRelationshipDisplay() {
                 ${rel.note ? `<span class="horae-rel-note">${rel.note}</span>` : ''}
             </div>
             <div class="horae-rel-actions">
-                <button class="horae-rel-edit" title="编辑"><i class="fa-solid fa-pen"></i></button>
-                <button class="horae-rel-delete" title="删除"><i class="fa-solid fa-trash"></i></button>
+                <button class="horae-rel-edit" title="Редактировать"><i class="fa-solid fa-pen"></i></button>
+                <button class="horae-rel-delete" title="Удалить"><i class="fa-solid fa-trash"></i></button>
             </div>
         </div>
     `).join('');
     
     listEl.innerHTML = html;
     
-    // 绑定编辑/删除事件
+    // Привязать события редактирования/удаления
     listEl.querySelectorAll('.horae-rel-edit').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const idx = parseInt(btn.closest('.horae-relationship-item').dataset.relIndex);
@@ -2417,10 +2417,10 @@ function updateRelationshipDisplay() {
             const idx = parseInt(btn.closest('.horae-relationship-item').dataset.relIndex);
             const rels = horaeManager.getRelationships();
             const rel = rels[idx];
-            if (!confirm(`确定删除 ${rel.from} → ${rel.to} 的关系？`)) return;
+            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
             rels.splice(idx, 1);
             horaeManager.setRelationships(rels);
-            // 同步清理各消息中的同方向关系数据，防止 rebuildRelationships 复活
+            // Синхронно очищать данные об отношениях того же направления во всех сообщениях, чтобы предотвратить воскрешение при rebuildRelationships
             const chat = horaeManager.getChat();
             for (let i = 1; i < chat.length; i++) {
                 const meta = chat[i]?.horae_meta;
@@ -2433,7 +2433,7 @@ function updateRelationshipDisplay() {
             }
             await getContext().saveChat();
             updateRelationshipDisplay();
-            showToast('关系已删除', 'info');
+            showToast('Связь удалена', 'info');
         });
     });
 }
@@ -2448,32 +2448,32 @@ function openRelationshipEditModal(editIndex = null) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-diagram-project"></i> ${isEdit ? '编辑关系' : '添加关系'}
+                    <i class="fa-solid fa-diagram-project"></i> ${isEdit ? 'Редактировать связь' : 'Добавить связь'}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>角色A</label>
-                        <input type="text" id="horae-rel-from" value="${escapeHtml(existing.from)}" placeholder="角色名（关系发起方）">
+                        <label>Персонаж A</label>
+                        <input type="text" id="horae-rel-from" value="${escapeHtml(existing.from)}" placeholder="Имя персонажа (инициатор связи)">
                     </div>
                     <div class="horae-edit-field">
-                        <label>角色B</label>
-                        <input type="text" id="horae-rel-to" value="${escapeHtml(existing.to)}" placeholder="角色名（关系接收方）">
+                        <label>Персонаж B</label>
+                        <input type="text" id="horae-rel-to" value="${escapeHtml(existing.to)}" placeholder="Имя персонажа (получатель связи)">
                     </div>
                     <div class="horae-edit-field">
-                        <label>关系类型</label>
-                        <input type="text" id="horae-rel-type" value="${escapeHtml(existing.type)}" placeholder="如：朋友、恋人、上下级、师徒">
+                        <label>Тип связи</label>
+                        <input type="text" id="horae-rel-type" value="${escapeHtml(existing.type)}" placeholder="Например: друзья, возлюбленные, начальник/подчинённый, учитель/ученик">
                     </div>
                     <div class="horae-edit-field">
-                        <label>备注（可选）</label>
-                        <input type="text" id="horae-rel-note" value="${escapeHtml(existing.note || '')}" placeholder="关系的补充说明">
+                        <label>Примечание (необязательно)</label>
+                        <input type="text" id="horae-rel-note" value="${escapeHtml(existing.note || '')}" placeholder="Дополнительное описание связи">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="horae-rel-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="horae-rel-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -2494,14 +2494,14 @@ function openRelationshipEditModal(editIndex = null) {
         const note = document.getElementById('horae-rel-note').value.trim();
         
         if (!from || !to || !type) {
-            showToast('角色名和关系类型不能为空', 'warning');
+            showToast('Имя персонажа и тип связи не могут быть пустыми', 'warning');
             return;
         }
         
         if (isEdit) {
             const oldRel = rels[editIndex];
             rels[editIndex] = { from, to, type, note, _userEdited: true };
-            // 同步更新各消息中的关系数据，防止 rebuildRelationships 复原旧值
+            // Синхронно обновлять данные об отношениях во всех сообщениях, чтобы rebuildRelationships не восстановил старые значения
             const chat = horaeManager.getChat();
             for (let i = 1; i < chat.length; i++) {
                 const meta = chat[i]?.horae_meta;
@@ -2524,14 +2524,14 @@ function openRelationshipEditModal(editIndex = null) {
         await getContext().saveChat();
         updateRelationshipDisplay();
         closeEditModal();
-        showToast(isEdit ? '关系已更新' : '关系已添加', 'success');
+        showToast(isEdit ? 'Связь обновлена' : 'Связь добавлена', 'success');
     });
     
     document.getElementById('horae-rel-modal-cancel').addEventListener('click', () => closeEditModal());
 }
 
 /**
- * 切换NPC星标状态
+ * Переключить состояние звёздочки NPC
  */
 function toggleNpcFavorite(npcName) {
     if (!settings.favoriteNpcs) {
@@ -2540,13 +2540,13 @@ function toggleNpcFavorite(npcName) {
     
     const index = settings.favoriteNpcs.indexOf(npcName);
     if (index > -1) {
-        // 取消星标
+        // Убрать звёздочку
         settings.favoriteNpcs.splice(index, 1);
-        showToast(`已取消 ${npcName} 的星标`, 'info');
+        showToast(`Звёздочка у ${npcName} убрана`, 'info');
     } else {
-        // 添加星标
+        // Добавить звёздочку
         settings.favoriteNpcs.push(npcName);
-        showToast(`已将 ${npcName} 添加到星标`, 'success');
+        showToast(`${npcName} добавлен в список со звёздочкой`, 'success');
     }
     
     saveSettings();
@@ -2554,7 +2554,7 @@ function toggleNpcFavorite(npcName) {
 }
 
 /**
- * 更新物品页面显示
+ * Обновить отображение страницы предметов
  */
 function updateItemsDisplay() {
     const state = horaeManager.getLatestState();
@@ -2577,15 +2577,15 @@ function updateItemsDisplay() {
             if (info.holder) holders.add(info.holder);
         });
         
-        // 保留当前选项，更新选项列表
-        const holderOptions = ['<option value="all">所有人</option>'];
+        // Сохранить текущий выбор, обновить список опций
+        const holderOptions = ['<option value="all">Все</option>'];
         holders.forEach(holder => {
             holderOptions.push(`<option value="${holder}" ${holder === currentHolder ? 'selected' : ''}>${holder}</option>`);
         });
         holderFilterEl.innerHTML = holderOptions.join('');
     }
     
-    // 搜索物品 - 按关键字
+    // Поиск предметов — по ключевым словам
     if (searchQuery) {
         entries = entries.filter(([name, info]) => {
             const searchTarget = `${name} ${info.icon || ''} ${info.description || ''} ${info.holder || ''} ${info.location || ''}`.toLowerCase();
@@ -2593,20 +2593,20 @@ function updateItemsDisplay() {
         });
     }
     
-    // 筛选物品 - 按重要程度
+    // Фильтрация предметов — по уровню важности
     if (filterValue !== 'all') {
         entries = entries.filter(([name, info]) => info.importance === filterValue);
     }
     
-    // 筛选物品 - 按持有人
+    // Фильтрация предметов — по владельцу
     if (holderFilter !== 'all') {
         entries = entries.filter(([name, info]) => info.holder === holderFilter);
     }
     
     if (entries.length === 0) {
-        let emptyMsg = '暂无追踪的物品';
+        let emptyMsg = 'Нет отслеживаемых предметов';
         if (filterValue !== 'all' || holderFilter !== 'all' || searchQuery) {
-            emptyMsg = '没有符合筛选条件的物品';
+            emptyMsg = 'Нет предметов, соответствующих фильтру';
         }
         listEl.innerHTML = `
             <div class="horae-empty-state">
@@ -2620,24 +2620,24 @@ function updateItemsDisplay() {
     listEl.innerHTML = entries.map(([name, info]) => {
         const icon = info.icon || '📦';
         const importance = info.importance || '';
-        // 支持两种格式：""/"!"/"!!" 和 "一般"/"重要"/"关键"
+        // Поддерживаются два формата: ""/"!"/"!!" и "一般"/"重要"/"关键"
         const isCritical = importance === '!!' || importance === '关键';
         const isImportant = importance === '!' || importance === '重要';
         const importanceClass = isCritical ? 'critical' : isImportant ? 'important' : 'normal';
-        // 显示中文标签
-        const importanceLabel = isCritical ? '关键' : isImportant ? '重要' : '';
+        // Показать метку
+        const importanceLabel = isCritical ? 'Ключевой' : isImportant ? 'Важный' : '';
         const importanceBadge = importanceLabel ? `<span class="horae-item-importance ${importanceClass}">${importanceLabel}</span>` : '';
         
-        // 修复显示格式：持有者 · 位置
+        // Исправить формат отображения: владелец · местоположение
         let positionStr = '';
         if (info.holder && info.location) {
             positionStr = `<span class="holder">${info.holder}</span> · ${info.location}`;
         } else if (info.holder) {
-            positionStr = `<span class="holder">${info.holder}</span> 持有`;
+            positionStr = `<span class="holder">${info.holder}</span> владеет`;
         } else if (info.location) {
-            positionStr = `位于 ${info.location}`;
+            positionStr = `Находится: ${info.location}`;
         } else {
-            positionStr = '位置未知';
+            positionStr = 'Местоположение неизвестно';
         }
         
         const isSelected = selectedItems.has(name);
@@ -2659,7 +2659,7 @@ function updateItemsDisplay() {
                     <div class="horae-full-item-location">${positionStr}</div>
                     ${descHtml}
                 </div>
-                <button class="horae-item-edit-btn" data-edit-type="item" data-edit-name="${name}" title="编辑">
+                <button class="horae-item-edit-btn" data-edit-type="item" data-edit-name="${name}" title="Редактировать">
                     <i class="fa-solid fa-pen"></i>
                 </button>
             </div>
@@ -2671,11 +2671,11 @@ function updateItemsDisplay() {
 }
 
 /**
- * 绑定编辑按钮事件
+ * Привязать события кнопок редактирования
  */
 function bindEditButtons() {
     document.querySelectorAll('.horae-item-edit-btn').forEach(btn => {
-        // 移除旧的监听器（避免重复绑定）
+        // Удалить старые обработчики (избегать двойной привязки)
         btn.replaceWith(btn.cloneNode(true));
     });
     
@@ -2702,13 +2702,13 @@ function bindEditButtons() {
 }
 
 /**
- * 打开物品编辑弹窗
+ * Открыть окно редактирования предмета
  */
 function openItemEditModal(itemName) {
     const state = horaeManager.getLatestState();
     const item = state.items?.[itemName];
     if (!item) {
-        showToast('找不到该物品', 'error');
+        showToast('Предмет не найден', 'error');
         return;
     }
     
@@ -2716,44 +2716,44 @@ function openItemEditModal(itemName) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-pen"></i> 编辑物品
+                    <i class="fa-solid fa-pen"></i> Редактировать предмет
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>物品名称</label>
-                        <input type="text" id="edit-item-name" value="${itemName}" placeholder="物品名称">
+                        <label>Название предмета</label>
+                        <input type="text" id="edit-item-name" value="${itemName}" placeholder="Название предмета">
                     </div>
                     <div class="horae-edit-field">
-                        <label>图标 (emoji)</label>
+                        <label>Иконка (emoji)</label>
                         <input type="text" id="edit-item-icon" value="${item.icon || ''}" maxlength="2" placeholder="📦">
                     </div>
                     <div class="horae-edit-field">
-                        <label>重要程度</label>
+                        <label>Уровень важности</label>
                         <select id="edit-item-importance">
-                            <option value="" ${!item.importance || item.importance === '一般' || item.importance === '' ? 'selected' : ''}>一般</option>
-                            <option value="!" ${item.importance === '!' || item.importance === '重要' ? 'selected' : ''}>重要 !</option>
-                            <option value="!!" ${item.importance === '!!' || item.importance === '关键' ? 'selected' : ''}>关键 !!</option>
+                            <option value="" ${!item.importance || item.importance === '一般' || item.importance === '' ? 'selected' : ''}>Обычный</option>
+                            <option value="!" ${item.importance === '!' || item.importance === '重要' ? 'selected' : ''}>Важный !</option>
+                            <option value="!!" ${item.importance === '!!' || item.importance === '关键' ? 'selected' : ''}>Ключевой !!</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>描述 (特殊功能/来源等)</label>
-                        <textarea id="edit-item-desc" placeholder="如：爱丽丝在约会时赠送的">${item.description || ''}</textarea>
+                        <label>Описание (особые функции/происхождение и т.д.)</label>
+                        <textarea id="edit-item-desc" placeholder="Например: подарено Алисой на свидании">${item.description || ''}</textarea>
                     </div>
                     <div class="horae-edit-field">
-                        <label>持有者</label>
-                        <input type="text" id="edit-item-holder" value="${item.holder || ''}" placeholder="角色名">
+                        <label>Владелец</label>
+                        <input type="text" id="edit-item-holder" value="${item.holder || ''}" placeholder="Имя персонажа">
                     </div>
                     <div class="horae-edit-field">
-                        <label>位置</label>
-                        <input type="text" id="edit-item-location" value="${item.location || ''}" placeholder="如：背包、口袋、家里茶几上">
+                        <label>Местоположение</label>
+                        <input type="text" id="edit-item-location" value="${item.location || ''}" placeholder="Например: рюкзак, карман, стол в доме">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -2768,7 +2768,7 @@ function openItemEditModal(itemName) {
         e.stopImmediatePropagation();
         const newName = document.getElementById('edit-item-name').value.trim();
         if (!newName) {
-            showToast('物品名称不能为空', 'error');
+            showToast('Название предмета не может быть пустым', 'error');
             return;
         }
         
@@ -2780,7 +2780,7 @@ function openItemEditModal(itemName) {
             location: document.getElementById('edit-item-location').value
         };
         
-        // 更新所有消息中的该物品
+        // Обновить этот предмет во всех сообщениях
         const chat = horaeManager.getChat();
         const nameChanged = newName !== itemName;
         
@@ -2801,7 +2801,7 @@ function openItemEditModal(itemName) {
         closeEditModal();
         updateItemsDisplay();
         updateStatusDisplay();
-        showToast(nameChanged ? '物品已重命名并更新' : '物品已更新', 'success');
+        showToast(nameChanged ? 'Предмет переименован и обновлён' : 'Предмет обновлён', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -2812,7 +2812,7 @@ function openItemEditModal(itemName) {
 }
 
 /**
- * 打开好感度编辑弹窗
+ * Открыть диалог редактирования расположения
  */
 function openAffectionEditModal(charName) {
     const state = horaeManager.getLatestState();
@@ -2824,27 +2824,27 @@ function openAffectionEditModal(charName) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-heart"></i> 编辑好感度: ${charName}
+                    <i class="fa-solid fa-heart"></i> Редактировать расположение: ${charName}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>当前好感度</label>
+                        <label>Текущее расположение</label>
                         <input type="number" step="0.1" id="edit-affection-value" value="${numValue}" placeholder="0-100">
                     </div>
                     <div class="horae-edit-field">
-                        <label>好感等级</label>
+                        <label>Уровень расположения</label>
                         <span class="horae-affection-level-preview">${level}</span>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="edit-modal-delete" class="horae-btn danger">
-                        <i class="fa-solid fa-trash"></i> 删除
+                        <i class="fa-solid fa-trash"></i> Удалить
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -2854,7 +2854,7 @@ function openAffectionEditModal(charName) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     preventModalBubble();
     
-    // 实时更新好感等级预览
+    // Обновление предпросмотра уровня расположения в реальном времени
     document.getElementById('edit-affection-value').addEventListener('input', (e) => {
         const val = parseFloat(e.target.value) || 0;
         const newLevel = horaeManager.getAffectionLevel(val);
@@ -2893,14 +2893,14 @@ function openAffectionEditModal(charName) {
         getContext().saveChat();
         closeEditModal();
         updateCharactersDisplay();
-        showToast('好感度已更新', 'success');
+        showToast('Расположение обновлено', 'success');
     });
 
-    // 删除该角色的全部好感度记录
+    // Удалить все записи расположения для персонажа
     document.getElementById('edit-modal-delete').addEventListener('click', (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-        if (!confirm(`确定删除「${charName}」的好感度记录？将从所有消息中移除。`)) return;
+        if (!confirm(`Удалить записи расположения «${charName}»? Будет удалено из всех сообщений.`)) return;
         const chat = horaeManager.getChat();
         let removed = 0;
         for (let i = 0; i < chat.length; i++) {
@@ -2913,7 +2913,7 @@ function openAffectionEditModal(charName) {
         getContext().saveChat();
         closeEditModal();
         updateCharactersDisplay();
-        showToast(`已删除「${charName}」的好感度（${removed} 条记录）`, 'info');
+        showToast(`Расположение «${charName}» удалено (${removed} записей)`, 'info');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -2924,8 +2924,8 @@ function openAffectionEditModal(charName) {
 }
 
 /**
- * 完整级联删除 NPC：从所有消息中清除目标角色的 npcs/affection/relationships/mood/costumes/RPG，
- * 并记录到 chat[0]._deletedNpcs 防止 rebuild 回滚。
+ * Полное каскадное удаление NPC: очищает npcs/affection/relationships/mood/costumes/RPG во всех сообщениях
+ * и записывает в chat[0]._deletedNpcs для предотвращения отката rebuild.
  */
 function _cascadeDeleteNpcs(names) {
     if (!names?.length) return;
@@ -2955,7 +2955,7 @@ function _cascadeDeleteNpcs(names) {
         if (changed && i > 0) injectHoraeTagToMessage(i, meta);
     }
     
-    // RPG 数据
+    // RPG данные
     const rpg = chat[0]?.horae_meta?.rpg;
     if (rpg) {
         for (const name of nameSet) {
@@ -2971,7 +2971,7 @@ function _cascadeDeleteNpcs(names) {
         saveSettings();
     }
     
-    // 防回滚：记录到 chat[0]
+    // Антиоткат: запись в chat[0]
     if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
     if (!chat[0].horae_meta._deletedNpcs) chat[0].horae_meta._deletedNpcs = [];
     for (const name of nameSet) {
@@ -2982,92 +2982,92 @@ function _cascadeDeleteNpcs(names) {
 }
 
 /**
- * 打开NPC编辑弹窗
+ * Открыть диалог редактирования NPC
  */
 function openNpcEditModal(npcName) {
     const state = horaeManager.getLatestState();
     const npc = state.npcs?.[npcName];
     if (!npc) {
-        showToast('找不到该角色', 'error');
+        showToast('Персонаж не найден', 'error');
         return;
     }
     
     const isPinned = (settings.pinnedNpcs || []).includes(npcName);
     
-    // 性别选项
+    // Варианты пола
     const genderVal = npc.gender || '';
     const genderOptions = [
-        { val: '', label: '未知' },
-        { val: '男', label: '男' },
-        { val: '女', label: '女' },
-        { val: '其他', label: '其他' }
+        { val: '', label: 'Неизвестно' },
+        { val: '男', label: 'Мужской' },
+        { val: '女', label: 'Женский' },
+        { val: '其他', label: 'Другой' }
     ].map(o => `<option value="${o.val}" ${genderVal === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
     
     const modalHtml = `
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-pen"></i> 编辑角色: ${npcName}
+                    <i class="fa-solid fa-pen"></i> Редактировать персонажа: ${npcName}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>角色名称${npc._aliases?.length ? ` <span style="font-weight:normal;color:var(--horae-text-dim)">(曾用名: ${npc._aliases.join('、')})</span>` : ''}</label>
-                        <input type="text" id="edit-npc-name" value="${npcName}" placeholder="修改名称后，旧名会自动记为曾用名">
+                        <label>Имя персонажа${npc._aliases?.length ? ` <span style="font-weight:normal;color:var(--horae-text-dim)">(псевдонимы: ${npc._aliases.join('、')})</span>` : ''}</label>
+                        <input type="text" id="edit-npc-name" value="${npcName}" placeholder="При смене имени старое сохранится как псевдоним">
                     </div>
                     <div class="horae-edit-field">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                             <input type="checkbox" id="edit-npc-pinned" ${isPinned ? 'checked' : ''}>
                             <i class="fa-solid fa-crown" style="color:${isPinned ? '#b388ff' : '#666'}"></i>
-                            标记为重要角色（置顶+特殊边框）
+                            Пометить как важного персонажа (закрепить + особая рамка)
                         </label>
                     </div>
                     <div class="horae-edit-field-row">
                         <div class="horae-edit-field horae-edit-field-compact">
-                            <label>性别</label>
+                            <label>Пол</label>
                             <select id="edit-npc-gender">${genderOptions}</select>
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
-                            <label>年龄${(() => {
+                            <label>Возраст${(() => {
                                 const ar = horaeManager.calcCurrentAge(npc, state.timestamp?.story_date);
-                                return ar.changed ? ` <span style="font-weight:normal;color:var(--horae-accent)">(当前推算:${ar.display})</span>` : '';
+                                return ar.changed ? ` <span style="font-weight:normal;color:var(--horae-accent)">(текущий расчёт:${ar.display})</span>` : '';
                             })()}</label>
-                            <input type="text" id="edit-npc-age" value="${npc.age || ''}" placeholder="如：25、约35">
+                            <input type="text" id="edit-npc-age" value="${npc.age || ''}" placeholder="напр.: 25, около 35">
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
-                            <label>种族</label>
-                            <input type="text" id="edit-npc-race" value="${npc.race || ''}" placeholder="如：人类、精灵">
+                            <label>Раса</label>
+                            <input type="text" id="edit-npc-race" value="${npc.race || ''}" placeholder="напр.: человек, эльф">
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
-                            <label>职业</label>
-                            <input type="text" id="edit-npc-job" value="${npc.job || ''}" placeholder="如：佣兵、学生">
+                            <label>Профессия</label>
+                            <input type="text" id="edit-npc-job" value="${npc.job || ''}" placeholder="напр.: наёмник, студент">
                         </div>
                     </div>
                     <div class="horae-edit-field">
-                        <label>外貌特征</label>
-                        <textarea id="edit-npc-appearance" placeholder="如：金发碧眼的年轻女性">${npc.appearance || ''}</textarea>
+                        <label>Внешность</label>
+                        <textarea id="edit-npc-appearance" placeholder="напр.: молодая светловолосая женщина">${npc.appearance || ''}</textarea>
                     </div>
                     <div class="horae-edit-field">
-                        <label>性格</label>
-                        <input type="text" id="edit-npc-personality" value="${npc.personality || ''}" placeholder="如：开朗活泼">
+                        <label>Характер</label>
+                        <input type="text" id="edit-npc-personality" value="${npc.personality || ''}" placeholder="напр.: весёлый, жизнерадостный">
                     </div>
                     <div class="horae-edit-field">
-                        <label>身份关系</label>
-                        <input type="text" id="edit-npc-relationship" value="${npc.relationship || ''}" placeholder="如：主角的邻居">
+                        <label>Статус/отношения</label>
+                        <input type="text" id="edit-npc-relationship" value="${npc.relationship || ''}" placeholder="напр.: сосед главного героя">
                     </div>
                     <div class="horae-edit-field">
-                        <label>补充说明</label>
-                        <input type="text" id="edit-npc-note" value="${npc.note || ''}" placeholder="其他重要信息（可选）">
+                        <label>Дополнительно</label>
+                        <input type="text" id="edit-npc-note" value="${npc.note || ''}" placeholder="прочая важная информация (необязательно)">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-delete" class="horae-btn danger" style="background:#c62828;color:#fff;margin-right:auto;">
-                        <i class="fa-solid fa-trash"></i> 删除角色
+                        <i class="fa-solid fa-trash"></i> Удалить персонажа
                     </button>
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -3077,21 +3077,21 @@ function openNpcEditModal(npcName) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     preventModalBubble();
     
-    // 删除NPC（完整级联：npcs/affection/relationships/mood/costumes/RPG + 防回滚）
+    // Удалить NPC (полный каскад: npcs/affection/relationships/mood/costumes/RPG + антиоткат)
     document.getElementById('edit-modal-delete').addEventListener('click', async (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-        if (!confirm(`确定要删除角色「${npcName}」吗？\n\n将从所有消息中移除该角色的信息（含好感度、关系、RPG数据等），且无法恢复。`)) return;
+        if (!confirm(`Удалить персонажа «${npcName}»?\n\nВся информация о нём будет удалена из всех сообщений (расположение, отношения, RPG-данные и т.д.), восстановление невозможно.`)) return;
         
         _cascadeDeleteNpcs([npcName]);
         
         await getContext().saveChat();
         closeEditModal();
         refreshAllDisplays();
-        showToast(`角色「${npcName}」已删除`, 'success');
+        showToast(`Персонаж «${npcName}» удалён`, 'success');
     });
     
-    // 保存NPC编辑（支持改名 + 曾用名）
+    // Сохранить изменения NPC (поддержка переименования + псевдонимов)
     document.getElementById('edit-modal-save').addEventListener('click', async (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -3109,7 +3109,7 @@ function openNpcEditModal(npcName) {
             note: document.getElementById('edit-npc-note').value
         };
         
-        if (!newName) { showToast('角色名称不能为空', 'warning'); return; }
+        if (!newName) { showToast('Имя персонажа не может быть пустым', 'warning'); return; }
         
         const currentState = horaeManager.getLatestState();
         const ageChanged = newAge !== (npc.age || '');
@@ -3119,7 +3119,7 @@ function openNpcEditModal(npcName) {
         
         const isRename = newName !== npcName;
         
-        // 改名：级联迁移所有消息中的 key + 记录曾用名
+        // Переименование: каскадная миграция ключей во всех сообщениях + запись псевдонима
         if (isRename) {
             const aliases = npc._aliases ? [...npc._aliases] : [];
             if (!aliases.includes(npcName)) aliases.push(npcName);
@@ -3162,7 +3162,7 @@ function openNpcEditModal(npcName) {
                 if (changed && i > 0) injectHoraeTagToMessage(i, meta);
             }
             
-            // RPG 数据迁移
+            // Миграция RPG данных
             const rpg = chat[0]?.horae_meta?.rpg;
             if (rpg) {
                 for (const sub of ['bars', 'status', 'skills', 'attributes']) {
@@ -3173,13 +3173,13 @@ function openNpcEditModal(npcName) {
                 }
             }
             
-            // pinnedNpcs 迁移
+            // Миграция pinnedNpcs
             if (settings.pinnedNpcs) {
                 const idx = settings.pinnedNpcs.indexOf(npcName);
                 if (idx !== -1) settings.pinnedNpcs[idx] = newName;
             }
         } else {
-            // 未改名，只更新属性
+            // Без переименования, только обновление атрибутов
             for (let i = 0; i < chat.length; i++) {
                 const meta = chat[i].horae_meta;
                 if (meta?.npcs?.[npcName]) {
@@ -3189,7 +3189,7 @@ function openNpcEditModal(npcName) {
             }
         }
         
-        // 处理重要角色标记
+        // Обработка пометки «важный персонаж»
         const finalName = isRename ? newName : npcName;
         const newPinned = document.getElementById('edit-npc-pinned').checked;
         if (!settings.pinnedNpcs) settings.pinnedNpcs = [];
@@ -3204,7 +3204,7 @@ function openNpcEditModal(npcName) {
         await getContext().saveChat();
         closeEditModal();
         refreshAllDisplays();
-        showToast(isRename ? `角色已改名为「${newName}」` : '角色已更新', 'success');
+        showToast(isRename ? `Персонаж переименован в «${newName}»` : 'Персонаж обновлён', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -3214,15 +3214,15 @@ function openNpcEditModal(npcName) {
     });
 }
 
-/** 打开事件编辑弹窗 */
+/** Открыть диалог редактирования события */
 function openEventEditModal(messageId, eventIndex = 0) {
     const meta = horaeManager.getMessageMeta(messageId);
     if (!meta) {
-        showToast('找不到该消息的元数据', 'error');
+        showToast('Метаданные сообщения не найдены', 'error');
         return;
     }
     
-    // 兼容新旧事件格式
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const event = eventsArr[eventIndex] || {};
     const totalEvents = eventsArr.length;
@@ -3231,32 +3231,32 @@ function openEventEditModal(messageId, eventIndex = 0) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-pen"></i> 编辑事件 #${messageId}${totalEvents > 1 ? ` (${eventIndex + 1}/${totalEvents})` : ''}
+                    <i class="fa-solid fa-pen"></i> Редактировать событие #${messageId}${totalEvents > 1 ? ` (${eventIndex + 1}/${totalEvents})` : ''}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>事件级别</label>
+                        <label>Уровень события</label>
                         <select id="edit-event-level">
-                            <option value="一般" ${event.level === '一般' || !event.level ? 'selected' : ''}>一般</option>
-                            <option value="重要" ${event.level === '重要' ? 'selected' : ''}>重要</option>
-                            <option value="关键" ${event.level === '关键' ? 'selected' : ''}>关键</option>
-                            <option value="摘要" ${event.level === '摘要' ? 'selected' : ''}>摘要</option>
+                            <option value="一般" ${event.level === '一般' || !event.level ? 'selected' : ''}>Обычное</option>
+                            <option value="重要" ${event.level === '重要' ? 'selected' : ''}>Важное</option>
+                            <option value="关键" ${event.level === '关键' ? 'selected' : ''}>Ключевое</option>
+                            <option value="摘要" ${event.level === '摘要' ? 'selected' : ''}>Сводка</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>事件摘要</label>
-                        <textarea id="edit-event-summary" placeholder="描述这个事件...">${event.summary || ''}</textarea>
+                        <label>Краткое описание события</label>
+                        <textarea id="edit-event-summary" placeholder="Опишите это событие...">${event.summary || ''}</textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="edit-modal-delete" class="horae-btn danger">
-                        <i class="fa-solid fa-trash"></i> 删除
+                        <i class="fa-solid fa-trash"></i> Удалить
                     </button>
                     <button id="edit-modal-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="edit-modal-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -3275,12 +3275,12 @@ function openEventEditModal(messageId, eventIndex = 0) {
             const newLevel = document.getElementById('edit-event-level').value;
             const newSummary = document.getElementById('edit-event-summary').value.trim();
             
-            // 防呆提示：摘要为空等同于删除
+            // Подтверждение: пустое описание = удаление события
             if (!newSummary) {
-                if (!confirm('事件摘要为空！\n\n保存后此事件将被删除。\n\n确定要删除此事件吗？')) {
+                if (!confirm('Описание события пусто!\n\nПосле сохранения событие будет удалено.\n\nПодтвердить удаление?')) {
                     return;
                 }
-                // 用户确认删除，执行删除逻辑
+                // Пользователь подтвердил удаление, выполнить логику удаления
                 if (!chatMeta.events) {
                     chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
                 }
@@ -3292,16 +3292,16 @@ function openEventEditModal(messageId, eventIndex = 0) {
                 await getContext().saveChat();
                 closeEditModal();
                 updateTimelineDisplay();
-                showToast('事件已删除', 'success');
+                showToast('Событие удалено', 'success');
                 return;
             }
             
-            // 确保events数组存在
+            // Убедиться, что массив events существует
             if (!chatMeta.events) {
                 chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
             }
             
-            // 更新或添加事件
+            // Обновить или добавить событие
             const isSummaryLevel = newLevel === '摘要';
             if (chatMeta.events[eventIndex]) {
                 chatMeta.events[eventIndex] = {
@@ -3319,41 +3319,41 @@ function openEventEditModal(messageId, eventIndex = 0) {
                 });
             }
             
-            // 清除旧格式
+            // Очистить старый формат
             delete chatMeta.event;
         }
         
         await getContext().saveChat();
         closeEditModal();
         updateTimelineDisplay();
-        showToast('事件已更新', 'success');
+        showToast('Событие обновлено', 'success');
     });
     
-    // 删除事件（带确认）
+    // Удалить событие (с подтверждением)
     document.getElementById('edit-modal-delete').addEventListener('click', (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-        if (confirm('确定要删除这个事件吗？\n\n⚠️ 此操作无法撤销！')) {
+        if (confirm('Удалить это событие?\n\n⚠️ Это действие необратимо!')) {
             const chat = horaeManager.getChat();
             const chatMeta = chat[messageId]?.horae_meta;
             if (chatMeta) {
-                // 确保events数组存在
+                // Убедиться, что массив events существует
                 if (!chatMeta.events) {
                     chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
                 }
                 
-                // 删除指定索引的事件
+                // Удалить событие по указанному индексу
                 if (chatMeta.events.length > eventIndex) {
                     chatMeta.events.splice(eventIndex, 1);
                 }
                 
-                // 清除旧格式
+                // Очистить старый формат
                 delete chatMeta.event;
                 
                 getContext().saveChat();
                 closeEditModal();
                 updateTimelineDisplay();
-                showToast('事件已删除', 'success');
+                showToast('Событие удалено', 'success');
             }
         }
     });
@@ -3366,14 +3366,14 @@ function openEventEditModal(messageId, eventIndex = 0) {
 }
 
 /**
- * 关闭编辑弹窗
+ * Закрыть диалог редактирования
  */
 function closeEditModal() {
     const modal = document.getElementById('horae-edit-modal');
     if (modal) modal.remove();
 }
 
-/** 阻止编辑弹窗事件冒泡 */
+/** Предотвратить всплытие событий в диалоге */
 function preventModalBubble() {
     const targets = [
         document.getElementById('horae-edit-modal'),
@@ -3381,7 +3381,7 @@ function preventModalBubble() {
     ].filter(Boolean);
 
     targets.forEach(modal => {
-        // 继承主题模式
+        // Наследовать режим темы
         if (isLightMode()) modal.classList.add('horae-light');
 
         ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(evType => {
@@ -3393,10 +3393,10 @@ function preventModalBubble() {
 }
 
 // ============================================
-// Excel风格自定义表格功能
+// Функция пользовательских таблиц в стиле Excel
 // ============================================
 
-// 每个表格独立的 Undo/Redo 栈，key = tableId
+// Независимые стеки Undo/Redo для каждой таблицы, ключ = tableId
 const TABLE_HISTORY_MAX = 20;
 const _perTableUndo = {};  // { tableId: [snapshot, ...] }
 const _perTableRedo = {};  // { tableId: [snapshot, ...] }
@@ -3412,7 +3412,7 @@ function _deepCopyOneTable(scope, tableIndex) {
     return JSON.parse(JSON.stringify(tables[tableIndex]));
 }
 
-/** 在修改前调用：保存指定表格的快照到其独立 undo 栈 */
+/** Вызывать перед изменением: сохранить снимок таблицы в стек undo */
 function pushTableSnapshot(scope, tableIndex) {
     if (tableIndex == null) return;
     const tid = _getTableId(scope, tableIndex);
@@ -3425,14 +3425,14 @@ function pushTableSnapshot(scope, tableIndex) {
     _updatePerTableUndoRedoButtons(tid);
 }
 
-/** 撤回指定表格 */
+/** Отменить действие в таблице */
 function undoSingleTable(tid) {
     const stack = _perTableUndo[tid];
     if (!stack?.length) return;
     const snap = stack.pop();
     const tables = getTablesByScope(snap.scope);
     if (!tables[snap.tableIndex]) return;
-    // 当前状态入 redo
+    // Сохранить текущее состояние в redo
     if (!_perTableRedo[tid]) _perTableRedo[tid] = [];
     _perTableRedo[tid].push({
         scope: snap.scope,
@@ -3442,10 +3442,10 @@ function undoSingleTable(tid) {
     tables[snap.tableIndex] = snap.table;
     setTablesByScope(snap.scope, tables);
     renderCustomTablesList();
-    showToast('已撤回此表格的操作', 'info');
+    showToast('Операция с таблицей отменена', 'info');
 }
 
-/** 复原指定表格 */
+/** Повторить действие в таблице */
 function redoSingleTable(tid) {
     const stack = _perTableRedo[tid];
     if (!stack?.length) return;
@@ -3461,7 +3461,7 @@ function redoSingleTable(tid) {
     tables[snap.tableIndex] = snap.table;
     setTablesByScope(snap.scope, tables);
     renderCustomTablesList();
-    showToast('已复原此表格的操作', 'info');
+    showToast('Операция с таблицей восстановлена', 'info');
 }
 
 function _updatePerTableUndoRedoButtons(tid) {
@@ -3471,7 +3471,7 @@ function _updatePerTableUndoRedoButtons(tid) {
     if (redoBtn) redoBtn.disabled = !_perTableRedo[tid]?.length;
 }
 
-/** 切换聊天时清空所有 undo/redo 栈 */
+/** При смене диалога очищать все стеки undo/redo */
 function clearTableHistory() {
     for (const k of Object.keys(_perTableUndo)) delete _perTableUndo[k];
     for (const k of Object.keys(_perTableRedo)) delete _perTableRedo[k];
@@ -3480,7 +3480,7 @@ function clearTableHistory() {
 let activeContextMenu = null;
 
 /**
- * 渲染自定义表格列表
+ * Рендеринг списка пользовательских таблиц
  */
 function renderCustomTablesList() {
     const listEl = document.getElementById('horae-custom-tables-list');
@@ -3493,14 +3493,14 @@ function renderCustomTablesList() {
         listEl.innerHTML = `
             <div class="horae-custom-tables-empty">
                 <i class="fa-solid fa-table-cells"></i>
-                <div>暂无自定义表格</div>
-                <div style="font-size:11px;opacity:0.7;margin-top:4px;">点击下方按钮添加表格</div>
+                <div>Нет пользовательских таблиц</div>
+                <div style="font-size:11px;opacity:0.7;margin-top:4px;">Нажмите кнопку ниже, чтобы добавить таблицу</div>
             </div>
         `;
         return;
     }
 
-    /** 渲染单个表格 */
+    /** Рендеринг отдельной таблицы */
     function renderOneTable(table, idx, scope) {
         const rows = table.rows || 2;
         const cols = table.cols || 2;
@@ -3510,8 +3510,8 @@ function renderCustomTablesList() {
         const lockedCells = new Set(table.lockedCells || []);
         const isGlobal = scope === 'global';
         const scopeIcon = isGlobal ? 'fa-globe' : 'fa-bookmark';
-        const scopeLabel = isGlobal ? '全局' : '本地';
-        const scopeTitle = isGlobal ? '全局表格，所有对话共享' : '本地表格，仅当前对话';
+        const scopeLabel = isGlobal ? 'Глобальная' : 'Локальная';
+        const scopeTitle = isGlobal ? 'Глобальная таблица, доступна во всех диалогах' : 'Локальная таблица, только текущий диалог';
 
         let tableHtml = '<table class="horae-excel-table">';
         for (let r = 0; r < rows; r++) {
@@ -3527,7 +3527,7 @@ function renderCustomTablesList() {
                 const inputSize = Math.max(4, Math.min(charLen + 2, 40));
                 const lockedClass = cellLocked ? ' horae-cell-locked' : '';
                 tableHtml += `<${tag} data-row="${r}" data-col="${c}" class="${lockedClass}">`;
-                tableHtml += `<input type="text" value="${escapeHtml(cellValue)}" size="${inputSize}" data-scope="${scope}" data-table="${idx}" data-row="${r}" data-col="${c}" placeholder="${isHeader ? '表头' : ''}">`;
+                tableHtml += `<input type="text" value="${escapeHtml(cellValue)}" size="${inputSize}" data-scope="${scope}" data-table="${idx}" data-row="${r}" data-col="${c}" placeholder="${isHeader ? 'Заголовок' : ''}">`;
                 tableHtml += `</${tag}>`;
             }
             tableHtml += '</tr>';
@@ -3543,23 +3543,23 @@ function renderCustomTablesList() {
                 <div class="horae-excel-table-header">
                     <div class="horae-excel-table-title">
                         <i class="fa-solid ${scopeIcon}" title="${scopeTitle}" style="color:${isGlobal ? 'var(--horae-accent)' : 'var(--horae-primary-light)'}; cursor:pointer;" data-toggle-scope="${idx}" data-scope="${scope}"></i>
-                        <span class="horae-table-scope-label" data-toggle-scope="${idx}" data-scope="${scope}" title="点击切换全局/本地">${scopeLabel}</span>
-                        <input type="text" value="${escapeHtml(table.name || '')}" placeholder="表格名称" data-table-name="${idx}" data-scope="${scope}">
+                        <span class="horae-table-scope-label" data-toggle-scope="${idx}" data-scope="${scope}" title="Нажмите для переключения глобальная/локальная">${scopeLabel}</span>
+                        <input type="text" value="${escapeHtml(table.name || '')}" placeholder="название таблицы" data-table-name="${idx}" data-scope="${scope}">
                     </div>
                     <div class="horae-excel-table-actions">
-                        <button class="horae-table-undo-btn" title="撤回" data-table-id="${tid}" ${hasUndo ? '' : 'disabled'}>
+                        <button class="horae-table-undo-btn" title="Отменить" data-table-id="${tid}" ${hasUndo ? '' : 'disabled'}>
                             <i class="fa-solid fa-rotate-left"></i>
                         </button>
-                        <button class="horae-table-redo-btn" title="复原" data-table-id="${tid}" ${hasRedo ? '' : 'disabled'}>
+                        <button class="horae-table-redo-btn" title="Повторить" data-table-id="${tid}" ${hasRedo ? '' : 'disabled'}>
                             <i class="fa-solid fa-rotate-right"></i>
                         </button>
-                        <button class="clear-table-data-btn" title="清空数据（保留表头）" data-table-index="${idx}" data-scope="${scope}">
+                        <button class="clear-table-data-btn" title="Очистить данные (сохранить заголовки)" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-eraser"></i>
                         </button>
-                        <button class="export-table-btn" title="导出表格" data-table-index="${idx}" data-scope="${scope}">
+                        <button class="export-table-btn" title="Экспортировать таблицу" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-download"></i>
                         </button>
-                        <button class="delete-table-btn danger" title="删除表格" data-table-index="${idx}" data-scope="${scope}">
+                        <button class="delete-table-btn danger" title="Удалить таблицу" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
@@ -3568,7 +3568,7 @@ function renderCustomTablesList() {
                     ${tableHtml}
                 </div>
                 <div class="horae-table-prompt-row">
-                    <input type="text" value="${escapeHtml(table.prompt || '')}" placeholder="提示词：告诉AI如何填写此表格..." data-table-prompt="${idx}" data-scope="${scope}">
+                    <input type="text" value="${escapeHtml(table.prompt || '')}" placeholder="промпт: как ИИ должен заполнять эту таблицу..." data-table-prompt="${idx}" data-scope="${scope}">
                 </div>
             </div>
         `;
@@ -3576,11 +3576,11 @@ function renderCustomTablesList() {
 
     let html = '';
     if (globalTables.length > 0) {
-        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-globe"></i> 全局表格</div>`;
+        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-globe"></i> Глобальные таблицы</div>`;
         html += globalTables.map((t, i) => renderOneTable(t, i, 'global')).join('');
     }
     if (chatTables.length > 0) {
-        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-bookmark"></i> 本地表格（当前对话）</div>`;
+        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-bookmark"></i> Локальные таблицы (текущий диалог)</div>`;
         html += chatTables.map((t, i) => renderOneTable(t, i, 'local')).join('');
     }
     listEl.innerHTML = html;
@@ -3589,7 +3589,7 @@ function renderCustomTablesList() {
 }
 
 /**
- * HTML转义
+ * HTML-экранирование
  */
 function escapeHtml(str) {
     if (!str) return '';
@@ -3601,13 +3601,13 @@ function escapeHtml(str) {
 }
 
 /**
- * 绑定Excel表格事件
+ * Привязка событий таблицы Excel
  */
 function bindExcelTableEvents() {
-    /** 从元素属性获取scope */
+    /** Получить scope из атрибутов элемента */
     const getScope = (el) => el.dataset.scope || el.closest('[data-scope]')?.dataset.scope || 'local';
 
-    // 单元格输入事件 - 自动保存 + 动态调整宽度
+    // Событие ввода ячейки — автосохранение + динамическая подстройка ширины
     document.querySelectorAll('.horae-excel-table input').forEach(input => {
         input.addEventListener('focus', (e) => {
             e.target._horaeSnapshotPushed = false;
@@ -3644,7 +3644,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 表格名称输入事件
+    // Событие ввода названия таблицы
     document.querySelectorAll('input[data-table-name]').forEach(input => {
         input.addEventListener('change', (e) => {
             const scope = getScope(e.target);
@@ -3657,7 +3657,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 表格提示词输入事件
+    // Событие ввода промпта таблицы
     document.querySelectorAll('input[data-table-prompt]').forEach(input => {
         input.addEventListener('change', (e) => {
             const scope = getScope(e.target);
@@ -3670,7 +3670,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 导出表格按钮
+    // Кнопка экспорта таблицы
     document.querySelectorAll('.export-table-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3680,7 +3680,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 删除表格按钮
+    // Кнопка удаления таблицы
     document.querySelectorAll('.delete-table-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const container = btn.closest('.horae-excel-table-container');
@@ -3690,7 +3690,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 清空表格数据按钮（保留表头）
+    // Кнопка очистки данных таблицы (сохранить заголовки)
     document.querySelectorAll('.clear-table-data-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -3700,7 +3700,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 全局/本地切换
+    // Переключение глобальная/локальная
     document.querySelectorAll('[data-toggle-scope]').forEach(el => {
         el.addEventListener('click', (e) => {
             const currentScope = el.dataset.scope;
@@ -3709,7 +3709,7 @@ function bindExcelTableEvents() {
         });
     });
     
-    // 所有单元格长按/右键显示菜单
+    // Длинное нажатие/ПКМ на любой ячейке показывает меню
     document.querySelectorAll('.horae-excel-table th, .horae-excel-table td').forEach(cell => {
         let pressTimer = null;
 
@@ -3747,7 +3747,7 @@ function bindExcelTableEvents() {
         });
     });
 
-    // 每个表格独立的撤回/复原按钮
+    // Независимые кнопки Undo/Redo для каждой таблицы
     document.querySelectorAll('.horae-table-undo-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3762,7 +3762,7 @@ function bindExcelTableEvents() {
     });
 }
 
-/** 显示表格右键菜单 */
+/** Показ контекстного меню таблицы */
 let contextMenuCloseHandler = null;
 
 function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
@@ -3783,48 +3783,48 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
 
     let menuItems = '';
 
-    // 行操作（第一列所有行 / 任何单元格都能添加行）
+    // Операции со строками (первый столбец / любая ячейка может добавить строку)
     if (isCorner) {
         menuItems += `
-            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-plus"></i> 添加行</div>
-            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-plus"></i> 添加列</div>
+            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-plus"></i> Добавить строку</div>
+            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-plus"></i> Добавить столбец</div>
         `;
     } else if (isColHeader) {
         const colLocked = lockedCols.has(col);
         menuItems += `
-            <div class="horae-context-menu-item" data-action="add-col-left"><i class="fa-solid fa-arrow-left"></i> 左侧添加列</div>
-            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-arrow-right"></i> 右侧添加列</div>
+            <div class="horae-context-menu-item" data-action="add-col-left"><i class="fa-solid fa-arrow-left"></i> Добавить столбец слева</div>
+            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-arrow-right"></i> Добавить столбец справа</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-col"><i class="fa-solid ${colLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${colLocked ? '解锁此列' : '锁定此列'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-col"><i class="fa-solid ${colLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${colLocked ? 'Разблокировать столбец' : 'Заблокировать столбец'}</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item danger" data-action="delete-col"><i class="fa-solid fa-trash-can"></i> 删除此列</div>
+            <div class="horae-context-menu-item danger" data-action="delete-col"><i class="fa-solid fa-trash-can"></i> Удалить столбец</div>
         `;
     } else if (isRowHeader) {
         const rowLocked = lockedRows.has(row);
         menuItems += `
-            <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> 上方添加行</div>
-            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> 下方添加行</div>
+            <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> Добавить строку выше</div>
+            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> Добавить строку ниже</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-row"><i class="fa-solid ${rowLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${rowLocked ? '解锁此行' : '锁定此行'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-row"><i class="fa-solid ${rowLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${rowLocked ? 'Разблокировать строку' : 'Заблокировать строку'}</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item danger" data-action="delete-row"><i class="fa-solid fa-trash-can"></i> 删除此行</div>
+            <div class="horae-context-menu-item danger" data-action="delete-row"><i class="fa-solid fa-trash-can"></i> Удалить строку</div>
         `;
     } else {
-        // 普通数据单元格
+        // Обычная ячейка с данными
         menuItems += `
-            <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> 上方添加行</div>
-            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> 下方添加行</div>
-            <div class="horae-context-menu-item" data-action="add-col-left"><i class="fa-solid fa-arrow-left"></i> 左侧添加列</div>
-            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-arrow-right"></i> 右侧添加列</div>
+            <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> Добавить строку выше</div>
+            <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> Добавить строку ниже</div>
+            <div class="horae-context-menu-item" data-action="add-col-left"><i class="fa-solid fa-arrow-left"></i> Добавить столбец слева</div>
+            <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-arrow-right"></i> Добавить столбец справа</div>
         `;
     }
 
-    // 所有非角落单元格都可以锁定/解锁单格
+    // Все не угловые ячейки можно заблокировать/разблокировать
     if (!isCorner) {
         const cellLocked = lockedCells.has(cellKey);
         menuItems += `
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-cell"><i class="fa-solid ${cellLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${cellLocked ? '解锁此格' : '锁定此格'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-cell"><i class="fa-solid ${cellLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${cellLocked ? 'Разблокировать ячейку' : 'Заблокировать ячейку'}</div>
         `;
     }
     
@@ -3833,7 +3833,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
     if (isLightMode()) menu.classList.add('horae-light');
     menu.innerHTML = menuItems;
     
-    // 获取位置
+    // Получить позицию
     const x = e.clientX || e.touches?.[0]?.clientX || 100;
     const y = e.clientY || e.touches?.[0]?.clientY || 100;
     menu.style.left = `${x}px`;
@@ -3842,7 +3842,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
     document.body.appendChild(menu);
     activeContextMenu = menu;
     
-    // 确保菜单不超出屏幕
+    // Убедиться, что меню не выходит за пределы экрана
     const rect = menu.getBoundingClientRect();
     if (rect.right > window.innerWidth) {
         menu.style.left = `${window.innerWidth - rect.width - 10}px`;
@@ -3851,7 +3851,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
         menu.style.top = `${window.innerHeight - rect.height - 10}px`;
     }
     
-    // 绑定菜单项点击 - 执行操作后关闭菜单
+    // Привязать клик по пункту меню — выполнить действие и закрыть
     menu.querySelectorAll('.horae-context-menu-item').forEach(item => {
         item.addEventListener('click', (ev) => {
             ev.preventDefault();
@@ -3883,7 +3883,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
         });
     });
     
-    // 延迟绑定，避免当前事件触发
+    // Отложенная привязка, чтобы текущее событие не сработало
     setTimeout(() => {
         contextMenuCloseHandler = (ev) => {
             if (activeContextMenu && !activeContextMenu.contains(ev.target)) {
@@ -3899,7 +3899,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
 }
 
 /**
- * 隐藏右键菜单
+ * Скрыть контекстное меню
  */
 function hideContextMenu() {
     if (contextMenuCloseHandler) {
@@ -3915,11 +3915,11 @@ function hideContextMenu() {
 }
 
 /**
- * 执行表格操作
+ * Выполнение действий с таблицей
  */
 function executeTableAction(tableIndex, row, col, action, scope = 'local') {
     pushTableSnapshot(scope, tableIndex);
-    // 先将DOM中未提交的输入值写入data，防止正在编辑的值丢失
+    // Сначала записать незафиксированные значения из DOM, чтобы не потерять редактируемые данные
     const container = document.querySelector(`.horae-excel-table-container[data-table-index="${tableIndex}"][data-scope="${scope}"]`);
     if (container) {
         const tbl = getTablesByScope(scope)[tableIndex];
@@ -3980,7 +3980,7 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             break;
 
         case 'delete-row':
-            if (oldRows <= 2) { showToast('表格至少需要2行', 'warning'); return; }
+            if (oldRows <= 2) { showToast('В таблице должно быть минимум 2 строки', 'warning'); return; }
             table.rows = oldRows - 1;
             for (const [key, val] of Object.entries(oldData)) {
                 const [r, c] = key.split('-').map(Number);
@@ -3992,7 +3992,7 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             break;
 
         case 'delete-col':
-            if (oldCols <= 2) { showToast('表格至少需要2列', 'warning'); return; }
+            if (oldCols <= 2) { showToast('В таблице должно быть минимум 2 столбца', 'warning'); return; }
             table.cols = oldCols - 1;
             for (const [key, val] of Object.entries(oldData)) {
                 const [r, c] = key.split('-').map(Number);
@@ -4008,10 +4008,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedRows.indexOf(row);
             if (idx >= 0) {
                 table.lockedRows.splice(idx, 1);
-                showToast(`已解锁第 ${row + 1} 行`, 'info');
+                showToast(`Строка ${row + 1} разблокирована`, 'info');
             } else {
                 table.lockedRows.push(row);
-                showToast(`已锁定第 ${row + 1} 行（AI无法编辑）`, 'success');
+                showToast(`Строка ${row + 1} заблокирована (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4021,10 +4021,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedCols.indexOf(col);
             if (idx >= 0) {
                 table.lockedCols.splice(idx, 1);
-                showToast(`已解锁第 ${col + 1} 列`, 'info');
+                showToast(`Столбец ${col + 1} разблокирован`, 'info');
             } else {
                 table.lockedCols.push(col);
-                showToast(`已锁定第 ${col + 1} 列（AI无法编辑）`, 'success');
+                showToast(`Столбец ${col + 1} заблокирован (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4035,10 +4035,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedCells.indexOf(cellKey);
             if (idx >= 0) {
                 table.lockedCells.splice(idx, 1);
-                showToast(`已解锁单元格 [${row},${col}]`, 'info');
+                showToast(`Ячейка [${row},${col}] разблокирована`, 'info');
             } else {
                 table.lockedCells.push(cellKey);
-                showToast(`已锁定单元格 [${row},${col}]（AI无法编辑）`, 'success');
+                showToast(`Ячейка [${row},${col}] заблокирована (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4049,7 +4049,7 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
 }
 
 /**
- * 添加新的2x2表格
+ * Добавить новую таблицу 2x2
  */
 function addNewExcelTable(scope = 'local') {
     const tables = getTablesByScope(scope);
@@ -4071,14 +4071,14 @@ function addNewExcelTable(scope = 'local') {
 
     setTablesByScope(scope, tables);
     renderCustomTablesList();
-    showToast(scope === 'global' ? '已添加全局表格' : '已添加本地表格', 'success');
+    showToast(scope === 'global' ? 'Глобальная таблица добавлена' : 'Локальная таблица добавлена', 'success');
 }
 
 /**
- * 删除表格
+ * Удалить таблицу
  */
 function deleteCustomTable(index, scope = 'local') {
-    if (!confirm('确定要删除此表格吗？')) return;
+    if (!confirm('Удалить эту таблицу?')) return;
     pushTableSnapshot(scope, index);
 
     const tables = getTablesByScope(scope);
@@ -4087,7 +4087,7 @@ function deleteCustomTable(index, scope = 'local') {
     tables.splice(index, 1);
     setTablesByScope(scope, tables);
 
-    // 清除所有消息中引用该表格名的 tableContributions
+    // Очистить tableContributions, ссылающиеся на это имя таблицы, во всех сообщениях
     const chat = horaeManager.getChat();
     if (deletedName) {
         for (let i = 0; i < chat.length; i++) {
@@ -4103,7 +4103,7 @@ function deleteCustomTable(index, scope = 'local') {
         }
     }
 
-    // 全局表格：清除 per-card overlay
+    // Глобальная таблица: очистить per-card overlay
     if (scope === 'global' && deletedName && chat?.[0]?.horae_meta?.globalTableData) {
         delete chat[0].horae_meta.globalTableData[deletedName];
     }
@@ -4111,16 +4111,16 @@ function deleteCustomTable(index, scope = 'local') {
     horaeManager.rebuildTableData();
     getContext().saveChat();
     renderCustomTablesList();
-    showToast('表格已删除', 'info');
+    showToast('Таблица удалена', 'info');
 }
 
-/** 清除指定表格的所有 tableContributions，将当前数据写入 baseData 作为新基准 */
+/** Очистить все tableContributions указанной таблицы, записать текущие данные в baseData как новую базу */
 function purgeTableContributions(tableName, scope = 'local') {
     if (!tableName) return;
     const chat = horaeManager.getChat();
     if (!chat?.length) return;
 
-    // 清除所有消息中该表格的全部 tableContributions（AI 贡献 + 旧用户快照一并清除）
+    // Очистить все tableContributions данной таблицы во всех сообщениях (вклад ИИ + старые снимки пользователя)
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i]?.horae_meta;
         if (meta?.tableContributions) {
@@ -4133,8 +4133,8 @@ function purgeTableContributions(tableName, scope = 'local') {
         }
     }
 
-    // 将当前完整数据（含用户编辑）写入 baseData 作为新基准
-    // 这样即使消息被滑动/重新生成，rebuildTableData 也能从正确的基准恢复
+    // Записать текущие полные данные (включая правки пользователя) в baseData как новую базу
+    // Так rebuildTableData сможет восстановиться с правильной базы, даже если сообщения были перегенерированы
     const tables = getTablesByScope(scope);
     const table = tables.find(t => (t.name || '').trim() === tableName);
     if (table) {
@@ -4150,9 +4150,9 @@ function purgeTableContributions(tableName, scope = 'local') {
     }
 }
 
-/** 清空表格数据区（保留第0行和第0列的表头） */
+/** Очистить область данных таблицы (сохранить заголовки строки 0 и столбца 0) */
 function clearTableData(index, scope = 'local') {
-    if (!confirm('确定要清空此表格的数据区吗？表头将保留。\n\n将同时清除 AI 历史填写记录，防止旧数据回流。')) return;
+    if (!confirm('Очистить область данных этой таблицы? Заголовки будут сохранены.\n\nОдновременно будут удалены исторические записи ИИ, чтобы предотвратить возврат старых данных.')) return;
     pushTableSnapshot(scope, index);
 
     const tables = getTablesByScope(scope);
@@ -4161,7 +4161,7 @@ function clearTableData(index, scope = 'local') {
     const data = table.data || {};
     const tableName = (table.name || '').trim();
 
-    // 删除所有 row>0 且 col>0 的单元格数据
+    // Удалить данные всех ячеек с row>0 и col>0
     for (const key of Object.keys(data)) {
         const [r, c] = key.split('-').map(Number);
         if (r > 0 && c > 0) {
@@ -4171,7 +4171,7 @@ function clearTableData(index, scope = 'local') {
 
     table.data = data;
 
-    // 同步更新 baseData（清除数据区，保留表头）
+    // Синхронно обновить baseData (очистить область данных, сохранить заголовки)
     if (table.baseData) {
         for (const key of Object.keys(table.baseData)) {
             const [r, c] = key.split('-').map(Number);
@@ -4181,7 +4181,7 @@ function clearTableData(index, scope = 'local') {
         }
     }
 
-    // 清除所有消息中该表格的 tableContributions（防止 rebuildTableData 回放旧数据）
+    // Очистить tableContributions данной таблицы во всех сообщениях (предотвратить воспроизведение старых данных при rebuildTableData)
     const chat = horaeManager.getChat();
     if (tableName) {
         for (let i = 0; i < chat.length; i++) {
@@ -4197,15 +4197,15 @@ function clearTableData(index, scope = 'local') {
         }
     }
 
-    // 全局表格：同步清除 per-card overlay 的数据区和 baseData
+    // Глобальная таблица: синхронно очистить область данных и baseData в per-card overlay
     if (scope === 'global' && tableName && chat?.[0]?.horae_meta?.globalTableData?.[tableName]) {
         const overlay = chat[0].horae_meta.globalTableData[tableName];
-        // 清 overlay.data 数据区
+        // Очистить область данных overlay.data
         for (const key of Object.keys(overlay.data || {})) {
             const [r, c] = key.split('-').map(Number);
             if (r > 0 && c > 0) delete overlay.data[key];
         }
-        // 清 overlay.baseData 数据区
+        // Очистить область данных overlay.baseData
         if (overlay.baseData) {
             for (const key of Object.keys(overlay.baseData)) {
                 const [r, c] = key.split('-').map(Number);
@@ -4218,14 +4218,14 @@ function clearTableData(index, scope = 'local') {
     horaeManager.rebuildTableData();
     getContext().saveChat();
     renderCustomTablesList();
-    showToast('表格数据已清空', 'info');
+    showToast('Данные таблицы очищены', 'info');
 }
 
-/** 切换表格的全局/本地属性 */
+/** Переключить таблицу между глобальной/локальной областью */
 function toggleTableScope(tableIndex, currentScope) {
     const newScope = currentScope === 'global' ? 'local' : 'global';
-    const label = newScope === 'global' ? '全局（所有对话共享，数据按角色卡独立）' : '本地（仅当前对话）';
-    if (!confirm(`将此表格转为${label}？`)) return;
+    const label = newScope === 'global' ? 'глобальную (общую для всех диалогов, данные независимы по карточкам)' : 'локальную (только для текущего диалога)';
+    if (!confirm(`Преобразовать эту таблицу в ${label}?`)) return;
     pushTableSnapshot(currentScope, tableIndex);
 
     const srcTables = getTablesByScope(currentScope);
@@ -4233,7 +4233,7 @@ function toggleTableScope(tableIndex, currentScope) {
     const table = JSON.parse(JSON.stringify(srcTables[tableIndex]));
     const tableName = (table.name || '').trim();
 
-    // 从全局转本地时，清除旧的 per-card overlay
+    // При преобразовании из глобальной в локальную очистить старый per-card overlay
     if (currentScope === 'global' && tableName) {
         const chat = horaeManager.getChat();
         if (chat?.[0]?.horae_meta?.globalTableData) {
@@ -4241,23 +4241,23 @@ function toggleTableScope(tableIndex, currentScope) {
         }
     }
 
-    // 从源列表移除
+    // Удалить из исходного списка
     srcTables.splice(tableIndex, 1);
     setTablesByScope(currentScope, srcTables);
 
-    // 加入目标列表
+    // Добавить в целевой список
     const dstTables = getTablesByScope(newScope);
     dstTables.push(table);
     setTablesByScope(newScope, dstTables);
 
     renderCustomTablesList();
     getContext().saveChat();
-    showToast(`表格已转为${label}`, 'success');
+    showToast(`Таблица преобразована в ${label}`, 'success');
 }
 
 
 /**
- * 绑定物品列表事件
+ * Привязать события списка предметов
  */
 function bindItemsEvents() {
     const items = document.querySelectorAll('#horae-items-full-list .horae-full-item');
@@ -4266,7 +4266,7 @@ function bindItemsEvents() {
         const itemName = item.dataset.itemName;
         if (!itemName) return;
         
-        // 长按进入多选模式
+        // Долгое нажатие для входа в режим множественного выбора
         item.addEventListener('mousedown', (e) => startLongPress(e, itemName));
         item.addEventListener('touchstart', (e) => startLongPress(e, itemName), { passive: true });
         item.addEventListener('mouseup', cancelLongPress);
@@ -4274,7 +4274,7 @@ function bindItemsEvents() {
         item.addEventListener('touchend', cancelLongPress);
         item.addEventListener('touchcancel', cancelLongPress);
         
-        // 多选模式下点击切换选中
+        // В режиме выбора клик переключает выбор
         item.addEventListener('click', () => {
             if (itemsMultiSelectMode) {
                 toggleItemSelection(itemName);
@@ -4284,18 +4284,18 @@ function bindItemsEvents() {
 }
 
 /**
- * 开始长按计时
+ * Начать таймер долгого нажатия
  */
 function startLongPress(e, itemName) {
-    if (itemsMultiSelectMode) return; // 已在多选模式
+    if (itemsMultiSelectMode) return; // Уже в режиме множественного выбора
     
     longPressTimer = setTimeout(() => {
         enterMultiSelectMode(itemName);
-    }, 800); // 800ms 长按触发（延长防止误触）
+    }, 800); // 800ms для длинного нажатия (увеличено для предотвращения случайных срабатываний)
 }
 
 /**
- * 取消长按
+ * Отменить долгое нажатие
  */
 function cancelLongPress() {
     if (longPressTimer) {
@@ -4305,7 +4305,7 @@ function cancelLongPress() {
 }
 
 /**
- * 进入多选模式
+ * Войти в режим множественного выбора
  */
 function enterMultiSelectMode(initialItem) {
     itemsMultiSelectMode = true;
@@ -4314,32 +4314,32 @@ function enterMultiSelectMode(initialItem) {
         selectedItems.add(initialItem);
     }
     
-    // 显示多选工具栏
+    // Показать панель множественного выбора
     const bar = document.getElementById('horae-items-multiselect-bar');
     if (bar) bar.style.display = 'flex';
     
-    // 隐藏提示
+    // Скрыть подсказку
     const hint = document.querySelector('#horae-tab-items .horae-items-hint');
     if (hint) hint.style.display = 'none';
     
     updateItemsDisplay();
     updateSelectedCount();
     
-    showToast('已进入多选模式', 'info');
+    showToast('Активирован режим множественного выбора', 'info');
 }
 
 /**
- * 退出多选模式
+ * Выйти из режима множественного выбора
  */
 function exitMultiSelectMode() {
     itemsMultiSelectMode = false;
     selectedItems.clear();
     
-    // 隐藏多选工具栏
+    // Скрыть панель множественного выбора
     const bar = document.getElementById('horae-items-multiselect-bar');
     if (bar) bar.style.display = 'none';
     
-    // 显示提示
+    // Показать подсказку
     const hint = document.querySelector('#horae-tab-items .horae-items-hint');
     if (hint) hint.style.display = 'block';
     
@@ -4347,7 +4347,7 @@ function exitMultiSelectMode() {
 }
 
 /**
- * 切换物品选中状态
+ * Переключить состояние выбора предмета
  */
 function toggleItemSelection(itemName) {
     if (selectedItems.has(itemName)) {
@@ -4356,7 +4356,7 @@ function toggleItemSelection(itemName) {
         selectedItems.add(itemName);
     }
     
-    // 更新UI
+    // Обновить UI
     const item = document.querySelector(`#horae-items-full-list .horae-full-item[data-item-name="${itemName}"]`);
     if (item) {
         const checkbox = item.querySelector('input[type="checkbox"]');
@@ -4368,7 +4368,7 @@ function toggleItemSelection(itemName) {
 }
 
 /**
- * 全选物品
+ * Выбрать все предметы
  */
 function selectAllItems() {
     const items = document.querySelectorAll('#horae-items-full-list .horae-full-item');
@@ -4381,7 +4381,7 @@ function selectAllItems() {
 }
 
 /**
- * 更新选中数量显示
+ * Обновить отображение количества выбранных
  */
 function updateSelectedCount() {
     const countEl = document.getElementById('horae-items-selected-count');
@@ -4389,19 +4389,19 @@ function updateSelectedCount() {
 }
 
 /**
- * 删除选中的物品
+ * Удалить выбранные предметы
  */
 async function deleteSelectedItems() {
     if (selectedItems.size === 0) {
-        showToast('没有选中任何物品', 'warning');
+        showToast('Не выбрано ни одного предмета', 'warning');
         return;
     }
     
-    // 确认对话框
-    const confirmed = confirm(`确定要删除选中的 ${selectedItems.size} 个物品吗？\n\n此操作会从所有历史记录中移除这些物品，不可撤销。`);
+    // Диалог подтверждения
+    const confirmed = confirm(`Удалить выбранные ${selectedItems.size} предмет(а/ов)?\n\nЭто действие удалит предметы из всей истории необратимо.`);
     if (!confirmed) return;
     
-    // 从所有消息的 meta 中删除这些物品
+    // Удалить эти предметы из meta всех сообщений
     const chat = horaeManager.getChat();
     const itemsToDelete = Array.from(selectedItems);
     
@@ -4419,17 +4419,17 @@ async function deleteSelectedItems() {
         }
     }
     
-    // 保存更改
+    // Сохранить изменения
     await getContext().saveChat();
     
-    showToast(`已删除 ${itemsToDelete.length} 个物品`, 'success');
+    showToast(`Удалено ${itemsToDelete.length} предмет(а/ов)`, 'success');
     
     exitMultiSelectMode();
     updateStatusDisplay();
 }
 
 // ============================================
-// NPC 多选模式
+// Режим множественного выбора NPC
 // ============================================
 
 function enterNpcMultiSelect(initialName) {
@@ -4439,7 +4439,7 @@ function enterNpcMultiSelect(initialName) {
     const bar = document.getElementById('horae-npc-multiselect-bar');
     if (bar) bar.style.display = 'flex';
     const btn = document.getElementById('horae-btn-npc-multiselect');
-    if (btn) { btn.classList.add('active'); btn.title = '退出多选'; }
+    if (btn) { btn.classList.add('active'); btn.title = 'Выйти из режима выбора'; }
     updateCharactersDisplay();
     _updateNpcSelectedCount();
 }
@@ -4450,7 +4450,7 @@ function exitNpcMultiSelect() {
     const bar = document.getElementById('horae-npc-multiselect-bar');
     if (bar) bar.style.display = 'none';
     const btn = document.getElementById('horae-btn-npc-multiselect');
-    if (btn) { btn.classList.remove('active'); btn.title = '多选模式'; }
+    if (btn) { btn.classList.remove('active'); btn.title = 'Режим выбора'; }
     updateCharactersDisplay();
 }
 
@@ -4472,17 +4472,17 @@ function _updateNpcSelectedCount() {
 }
 
 async function deleteSelectedNpcs() {
-    if (selectedNpcs.size === 0) { showToast('没有选中任何角色', 'warning'); return; }
-    if (!confirm(`确定要删除选中的 ${selectedNpcs.size} 个角色吗？\n\n此操作会从所有历史记录中移除这些角色的信息（含好感度、关系、RPG数据等），不可撤销。`)) return;
+    if (selectedNpcs.size === 0) { showToast('Не выбрано ни одного персонажа', 'warning'); return; }
+    if (!confirm(`Удалить выбранных ${selectedNpcs.size} персонаж(а/ей)?\n\nЭто удалит информацию из всей истории (включая расположение, связи, RPG-данные) необратимо.`)) return;
     
     _cascadeDeleteNpcs(Array.from(selectedNpcs));
     await getContext().saveChat();
-    showToast(`已删除 ${selectedNpcs.size} 个角色`, 'success');
+    showToast(`Удалено ${selectedNpcs.size} персонаж(а/ей)`, 'success');
     exitNpcMultiSelect();
     refreshAllDisplays();
 }
 
-// 异常状态 → FontAwesome 图标映射
+// Сопоставление аномальных состояний с иконками FontAwesome
 const RPG_STATUS_ICONS = {
     '昏': 'fa-dizzy', '眩': 'fa-dizzy', '晕': 'fa-dizzy',
     '流血': 'fa-droplet', '出血': 'fa-droplet', '血': 'fa-droplet',
@@ -4510,7 +4510,7 @@ const RPG_STATUS_ICONS = {
     '正常': 'fa-circle-check',
 };
 
-/** 根据异常状态文本匹配图标 */
+/** Подобрать иконку по тексту аномального состояния */
 function getStatusIcon(text) {
     for (const [kw, icon] of Object.entries(RPG_STATUS_ICONS)) {
         if (text.includes(kw)) return icon;
@@ -4518,13 +4518,13 @@ function getStatusIcon(text) {
     return 'fa-triangle-exclamation';
 }
 
-/** 根据配置获取属性条颜色 */
+/** Получить цвет полосы атрибута из настроек */
 function getRpgBarColor(key) {
     const cfg = (settings.rpgBarConfig || []).find(b => b.key === key);
     return cfg?.color || '#6366f1';
 }
 
-/** 根据配置获取属性条显示名 */
+/** Получить отображаемое имя полосы атрибута из настроек */
 function getRpgBarName(key, aiLabel) {
     if (aiLabel) return aiLabel;
     const cfg = (settings.rpgBarConfig || []).find(b => b.key === key);
@@ -4532,7 +4532,7 @@ function getRpgBarName(key, aiLabel) {
 }
 
 // ============================================
-// RPG 骰子系统
+// RPG система кубиков
 // ============================================
 
 const RPG_DICE_TYPES = [
@@ -4583,18 +4583,18 @@ function renderDicePanel() {
 
     const html = `
         <div id="horae-rpg-dice-panel" class="horae-rpg-dice-panel">
-            <div class="horae-rpg-dice-toggle" title="骰子面板（可拖拽移动）">
+            <div class="horae-rpg-dice-toggle" title="Панель кубиков (можно перетаскивать)">
                 <i class="fa-solid fa-dice-d20"></i>
             </div>
             <div class="horae-rpg-dice-body" style="display:none;">
                 <div class="horae-rpg-dice-types">${btns}</div>
                 <div class="horae-rpg-dice-config">
-                    <label>数量<input type="number" id="horae-dice-count" value="1" min="1" max="20" class="horae-rpg-dice-input"></label>
-                    <label>加值<input type="number" id="horae-dice-mod" value="0" min="-99" max="99" class="horae-rpg-dice-input"></label>
+                    <label>Количество<input type="number" id="horae-dice-count" value="1" min="1" max="20" class="horae-rpg-dice-input"></label>
+                    <label>Бонус<input type="number" id="horae-dice-mod" value="0" min="-99" max="99" class="horae-rpg-dice-input"></label>
                 </div>
                 <div class="horae-rpg-dice-result" id="horae-dice-result"></div>
                 <button id="horae-dice-inject" class="horae-rpg-dice-inject" style="display:none;">
-                    <i class="fa-solid fa-paper-plane"></i> 注入聊天栏
+                    <i class="fa-solid fa-paper-plane"></i> Вставить в чат
                 </button>
             </div>
         </div>
@@ -4612,7 +4612,7 @@ function renderDicePanel() {
     let lastResult = null;
     let selectedFaces = 20;
 
-    // ---- 拖拽逻辑（mouse + touch 双端通用） ----
+    // ---- Логика перетаскивания (поддерживает mouse + touch) ----
     const toggle = panel.querySelector('.horae-rpg-dice-toggle');
     let dragging = false, dragMoved = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
 
@@ -4630,7 +4630,7 @@ function renderDicePanel() {
         const dx = ev.clientX - startX, dy = ev.clientY - startY;
         if (!dragMoved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
             dragMoved = true;
-            // 首次移动时移除居中 transform，切换为绝对像素定位
+            // При первом движении удаляет центрирующий transform и переходит на абсолютные пиксельные координаты
             if (!panel.classList.contains('horae-dice-placed')) {
                 panel.style.left = origLeft + 'px';
                 panel.style.top = origTop + 'px';
@@ -4665,7 +4665,7 @@ function renderDicePanel() {
     document.addEventListener('touchmove', onDragMove, { passive: false, signal: sig });
     document.addEventListener('touchend', onDragEnd, { signal: sig });
 
-    // 点击展开/收起（仅无拖拽时触发）
+    // Клик для раскрытия/сворачивания (срабатывает только без перетаскивания)
     toggle.addEventListener('click', () => {
         if (dragMoved) return;
         const body = panel.querySelector('.horae-rpg-dice-body');
@@ -4691,12 +4691,12 @@ function renderDicePanel() {
     document.getElementById('horae-dice-inject')?.addEventListener('click', () => {
         if (lastResult) {
             injectDiceToChat(lastResult.display);
-            showToast('骰子结果已注入聊天栏', 'success');
+            showToast('Результат броска вставлен в чат', 'success');
         }
     }, { signal: sig });
 }
 
-/** 应用骰子面板保存的位置；坐标超出当前视口则自动重置 */
+/** Применить сохранённую позицию панели кубиков; автоматически сбросить, если координаты выходят за пределы видимой области */
 function _applyDicePos(panel) {
     if (settings.dicePosX != null && settings.dicePosY != null) {
         const vw = window.innerWidth, vh = window.innerHeight;
@@ -4714,7 +4714,7 @@ function _applyDicePos(panel) {
     }
 }
 
-/** 渲染属性条配置列表 */
+/** Рендеринг списка конфигурации полос атрибутов */
 function renderBarConfig() {
     const list = document.getElementById('horae-rpg-bar-config-list');
     if (!list) return;
@@ -4724,12 +4724,12 @@ function renderBarConfig() {
             <input class="horae-rpg-config-key" value="${escapeHtml(b.key)}" maxlength="10" data-idx="${i}" />
             <input class="horae-rpg-config-name" value="${escapeHtml(b.name)}" maxlength="8" data-idx="${i}" />
             <input type="color" class="horae-rpg-config-color" value="${b.color}" data-idx="${i}" />
-            <button class="horae-rpg-config-del" data-idx="${i}" title="删除"><i class="fa-solid fa-xmark"></i></button>
+            <button class="horae-rpg-config-del" data-idx="${i}" title="Удалить"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-/** 构建角色下拉选项（{{user}} + NPC列表） */
+/** Построить опции выпадающего списка персонажей ({{user}} + список NPC) */
 function buildCharacterOptions() {
     const userName = getContext().name1 || '{{user}}';
     let html = `<option value="__user__">${escapeHtml(userName)}</option>`;
@@ -4741,7 +4741,7 @@ function buildCharacterOptions() {
     return html;
 }
 
-/** 在 Canvas 上绘制雷达图（自适应 DPI） */
+/** Рисовать радар-диаграмму на Canvas (адаптивный DPI) */
 function drawRadarChart(canvas, values, config, maxVal = 100) {
     const n = config.length;
     if (n < 3) return;
@@ -4761,7 +4761,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
 
     const angle = i => -Math.PI / 2 + (2 * Math.PI * i) / n;
 
-    // 底层网格
+    // Фоновая сетка
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.lineWidth = 1;
     for (let lv = 1; lv <= 4; lv++) {
@@ -4774,7 +4774,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
         }
         ctx.stroke();
     }
-    // 辐射线
+    // Радиальные линии
     for (let i = 0; i < n; i++) {
         const a = angle(i);
         ctx.beginPath();
@@ -4782,7 +4782,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
         ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
         ctx.stroke();
     }
-    // 数据区
+    // Область данных
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
         const a = angle(i % n);
@@ -4796,7 +4796,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
     ctx.strokeStyle = 'rgba(124, 58, 237, 0.8)';
     ctx.lineWidth = 2;
     ctx.stroke();
-    // 顶点圆点 + 标签
+    // Точки вершин + метки
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i < n; i++) {
@@ -4807,7 +4807,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
         ctx.arc(cx + dr * Math.cos(a), cy + dr * Math.sin(a), 3, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(124, 58, 237, 1)';
         ctx.fill();
-        // 标签偏移量随维度自适应
+        // Смещение меток адаптируется по количеству измерений
         const labelR = r + 22;
         const lx = cx + labelR * Math.cos(a);
         const ly = cy + labelR * Math.sin(a);
@@ -4819,7 +4819,7 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
     }
 }
 
-/** 同步 RPG 分页可见性及各子区段显隐 */
+/** Синхронизировать видимость вкладки RPG и всех подразделов */
 function _syncRpgTabVisibility() {
     const sendBars = settings.rpgMode && settings.sendRpgBars !== false;
     const sendAttrs = settings.rpgMode && settings.sendRpgAttributes !== false;
@@ -4832,7 +4832,7 @@ function _syncRpgTabVisibility() {
     $('.horae-rpg-skills-area').toggle(sendSkills);
 }
 
-/** 更新 RPG 分页（角色卡模式，按当前消息位置快照） */
+/** Обновить вкладку RPG (режим карточки персонажа, снимок по позиции текущего сообщения) */
 function updateRpgDisplay() {
     if (!settings.rpgMode) return;
     const rpg = horaeManager.getRpgStateAt(0);
@@ -4848,7 +4848,7 @@ function updateRpgDisplay() {
     const moduleCount = [sendBars, hasAttrModule, sendSkills].filter(Boolean).length;
     const useCardLayout = hasAttrModule || moduleCount >= 2;
 
-    // 配置区始终渲染
+    // Раздел конфигурации всегда рендерится
     renderBarConfig();
     renderAttrConfig();
 
@@ -4856,7 +4856,7 @@ function updateRpgDisplay() {
     const charCardsSection = document.getElementById('horae-rpg-char-cards');
     if (!barsSection || !charCardsSection) return;
 
-    // 收集所有角色
+    // Собрать всех персонажей
     const allNames = new Set([
         ...Object.keys(rpg.bars || {}),
         ...Object.keys(rpg.status || {}),
@@ -4865,10 +4865,10 @@ function updateRpgDisplay() {
     ]);
 
     if (useCardLayout) {
-        // 角色卡模式：属性条+折叠卡在同一区块，在场角色优先
+        // Режим карточки персонажа: полосы атрибутов + карточка в одном блоке, присутствующие персонажи в приоритете
         barsSection.style.display = '';
 
-        // 分类：在场（有 bars 或 status）vs 不在场
+        // Классификация: присутствующие (есть bars или status) vs отсутствующие
         const inScene = [], offScene = [];
         for (const name of allNames) {
             const hasBars = rpg.bars[name] && Object.keys(rpg.bars[name]).length > 0;
@@ -4887,10 +4887,10 @@ function updateRpgDisplay() {
             const skills = rpg.skills?.[name] || [];
             const isPresent = inScene.includes(name);
 
-            // 角色容器
+            // Контейнер персонажа
             barsHtml += `<div class="horae-rpg-char-block${isPresent ? '' : ' horae-rpg-offscene'}">`;
 
-            // 属性条（仅在场角色）
+            // Полосы атрибутов (только присутствующие персонажи)
             if (isPresent && sendBars) {
                 barsHtml += `<div class="horae-rpg-char-card horae-rpg-bar-card"><div class="horae-rpg-char-name">${escapeHtml(name)}`;
                 for (const e of effects) {
@@ -4907,14 +4907,14 @@ function updateRpgDisplay() {
                     }
                 }
                 if (effects.length > 0) {
-                    barsHtml += '<div class="horae-rpg-status-label">状态列表</div><div class="horae-rpg-status-detail">';
+                    barsHtml += '<div class="horae-rpg-status-label">Список состояний</div><div class="horae-rpg-status-detail">';
                     for (const e of effects) barsHtml += `<div class="horae-rpg-status-item"><i class="fa-solid ${getStatusIcon(e)} horae-rpg-status-icon"></i><span>${escapeHtml(e)}</span></div>`;
                     barsHtml += '</div>';
                 }
                 barsHtml += '</div>';
             }
 
-            // 角色折叠卡（属性 + 技能）紧贴在属性条下方
+            // Свёрнутая карточка персонажа (атрибуты + навыки) сразу под полосами атрибутов
             const hasDetailContent = (sendAttrs && attrCfg.length > 0) || (sendSkills && skills.length > 0);
             if (hasDetailContent) {
                 barsHtml += `<details class="horae-rpg-char-detail"><summary class="horae-rpg-char-summary"><span class="horae-rpg-char-detail-name">${escapeHtml(name)}</span>`;
@@ -4925,7 +4925,7 @@ function updateRpgDisplay() {
                     const hasAttrs = Object.keys(attrs).length > 0;
                     const viewMode = settings.rpgAttrViewMode || 'radar';
                     barsHtml += '<div class="horae-rpg-attr-section">';
-                    barsHtml += `<div class="horae-rpg-attr-header"><span>属性</span><button class="horae-rpg-charattr-edit" data-char="${escapeHtml(name)}" title="编辑属性"><i class="fa-solid fa-pen-to-square"></i></button></div>`;
+                    barsHtml += `<div class="horae-rpg-attr-header"><span>Атрибуты</span><button class="horae-rpg-charattr-edit" data-char="${escapeHtml(name)}" title="Редактировать атрибуты"><i class="fa-solid fa-pen-to-square"></i></button></div>`;
                     if (hasAttrs) {
                         if (viewMode === 'radar') {
                             barsHtml += `<canvas class="horae-rpg-radar" data-char="${escapeHtml(name)}" width="260" height="260"></canvas>`;
@@ -4937,7 +4937,7 @@ function updateRpgDisplay() {
                             barsHtml += '</div>';
                         }
                     } else {
-                        barsHtml += '<div class="horae-rpg-skills-empty">暂无属性数据，点击 ✎ 手动填写</div>';
+                        barsHtml += '<div class="horae-rpg-skills-empty">Нет данных атрибутов, нажмите ✎ для ручного ввода</div>';
                     }
                     barsHtml += '</div>';
                 }
@@ -4947,7 +4947,7 @@ function updateRpgDisplay() {
                     for (const sk of skills) {
                         barsHtml += `<details class="horae-rpg-skill-detail"><summary class="horae-rpg-skill-summary">${escapeHtml(sk.name)}`;
                         if (sk.level) barsHtml += ` <span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>`;
-                        barsHtml += `<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="删除"><i class="fa-solid fa-xmark"></i></button></summary>`;
+                        barsHtml += `<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Удалить"><i class="fa-solid fa-xmark"></i></button></summary>`;
                         if (sk.desc) barsHtml += `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>`;
                         barsHtml += '</details>';
                     }
@@ -4961,7 +4961,7 @@ function updateRpgDisplay() {
         charCardsSection.innerHTML = '';
         charCardsSection.style.display = 'none';
     } else {
-        // 平铺模式（仅开一个功能）
+        // Плоский режим (только одна функция)
         charCardsSection.innerHTML = '';
         charCardsSection.style.display = 'none';
         let barsHtml = '';
@@ -4978,7 +4978,7 @@ function updateRpgDisplay() {
                 h += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">${escapeHtml(label)}</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-bar-val">${cur}/${max}</span></div>`;
             }
             if (effects.length > 0) {
-                h += '<div class="horae-rpg-status-label">状态列表</div><div class="horae-rpg-status-detail">';
+                h += '<div class="horae-rpg-status-label">Список состояний</div><div class="horae-rpg-status-detail">';
                 for (const e of effects) h += `<div class="horae-rpg-status-item"><i class="fa-solid ${getStatusIcon(e)} horae-rpg-status-icon"></i><span>${escapeHtml(e)}</span></div>`;
                 h += '</div>';
             }
@@ -4988,11 +4988,11 @@ function updateRpgDisplay() {
         barsSection.innerHTML = barsHtml;
     }
 
-    // 技能平铺列表：角色卡模式下隐藏（技能已在角色卡内折叠显示）
+    // Плоский список навыков: скрывается в режиме карточки (навыки уже показаны свёрнуто в карточке)
     const skillsSection = document.getElementById('horae-rpg-skills-section');
     if (skillsSection) {
         if (useCardLayout && sendSkills) {
-            skillsSection.innerHTML = '<div class="horae-rpg-skills-empty">技能已在上方角色卡中折叠显示，点击 + 可手动添加</div>';
+            skillsSection.innerHTML = '<div class="horae-rpg-skills-empty">Навыки уже показаны в карточке персонажа выше. Нажмите + для добавления вручную</div>';
         } else {
             const hasSkills = Object.values(rpg.skills).some(arr => arr?.length > 0);
             let skillsHtml = '';
@@ -5003,18 +5003,18 @@ function updateRpgDisplay() {
                     for (const sk of skills) {
                         const lv = sk.level ? `<span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>` : '';
                         const desc = sk.desc ? `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>` : '';
-                        skillsHtml += `<div class="horae-rpg-skill-card"><div class="horae-rpg-skill-header"><span class="horae-rpg-skill-name">${escapeHtml(sk.name)}</span>${lv}<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="删除"><i class="fa-solid fa-xmark"></i></button></div>${desc}</div>`;
+                        skillsHtml += `<div class="horae-rpg-skill-card"><div class="horae-rpg-skill-header"><span class="horae-rpg-skill-name">${escapeHtml(sk.name)}</span>${lv}<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Удалить"><i class="fa-solid fa-xmark"></i></button></div>${desc}</div>`;
                     }
                     skillsHtml += '</div>';
                 }
             } else {
-                skillsHtml = '<div class="horae-rpg-skills-empty">暂无技能，点击 + 手动添加</div>';
+                skillsHtml = '<div class="horae-rpg-skills-empty">Нет навыков. Нажмите + для добавления вручную</div>';
             }
             skillsSection.innerHTML = skillsHtml;
         }
     }
 
-    // 绘制雷达图
+    // Нарисовать радар-диаграмму
     document.querySelectorAll('.horae-rpg-radar').forEach(canvas => {
         const charName = canvas.dataset.char;
         const vals = rpg.attributes?.[charName] || {};
@@ -5024,7 +5024,7 @@ function updateRpgDisplay() {
     updateAllRpgHuds();
 }
 
-/** 渲染属性面板配置列表 */
+/** Рендеринг списка конфигурации панели атрибутов */
 function renderAttrConfig() {
     const list = document.getElementById('horae-rpg-attr-config-list');
     if (!list) return;
@@ -5033,19 +5033,19 @@ function renderAttrConfig() {
         <div class="horae-rpg-config-row" data-idx="${i}">
             <input class="horae-rpg-config-key" value="${escapeHtml(a.key)}" maxlength="10" data-idx="${i}" data-type="attr" />
             <input class="horae-rpg-config-name" value="${escapeHtml(a.name)}" maxlength="8" data-idx="${i}" data-type="attr" />
-            <input class="horae-rpg-attr-desc" value="${escapeHtml(a.desc || '')}" placeholder="描述" data-idx="${i}" />
-            <button class="horae-rpg-attr-del" data-idx="${i}" title="删除"><i class="fa-solid fa-xmark"></i></button>
+            <input class="horae-rpg-attr-desc" value="${escapeHtml(a.desc || '')}" placeholder="Описание" data-idx="${i}" />
+            <button class="horae-rpg-attr-del" data-idx="${i}" title="Удалить"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-/** 为单个消息面板渲染 RPG HUD（简易状态条） */
+/** Рендеринг RPG HUD (простые полосы состояния) для одной панели сообщения */
 function renderRpgHud(messageEl, messageIndex) {
     const old = messageEl.querySelector('.horae-rpg-hud');
     if (old) old.remove();
     if (!settings.rpgMode || settings.sendRpgBars === false) return;
 
-    // 按该消息位置构建 RPG 快照（跳过之后的消息）
+    // Построить снимок RPG по позиции сообщения (пропустить последующие)
     const chatLen = horaeManager.getChat()?.length || 0;
     const skip = Math.max(0, chatLen - messageIndex - 1);
     const rpg = horaeManager.getRpgStateAt(skip);
@@ -5059,13 +5059,13 @@ function renderRpgHud(messageEl, messageIndex) {
     const barCfg = settings.rpgBarConfig || [];
     const userName = getContext().name1 || '';
 
-    // 筛选在场且有 RPG 数据的角色
+    // Отфильтровать присутствующих персонажей с данными RPG
     const chars = [];
     const allRpgNames = new Set([...Object.keys(rpg.bars), ...Object.keys(rpg.status || {})]);
     for (const p of present) {
         const n = p.trim();
         if (!n) continue;
-        // 匹配 RPG 数据中的名称（考虑 {{user}} / userName）
+        // Сопоставить имена в данных RPG (учитывая {{user}} / userName)
         let match = null;
         if (allRpgNames.has(n)) match = n;
         else if (n === userName && allRpgNames.has(userName)) match = userName;
@@ -5113,10 +5113,10 @@ function renderRpgHud(messageEl, messageIndex) {
     }
 }
 
-/** 刷新所有可见面板的 RPG HUD */
+/** Обновить RPG HUD всех видимых панелей */
 function updateAllRpgHuds() {
     if (!settings.rpgMode || settings.sendRpgBars === false) return;
-    // 单次前向遍历构建每条消息的 RPG 累积快照
+    // Единый прямой проход для построения накопительного снимка RPG каждого сообщения
     const chat = horaeManager.getChat();
     if (!chat?.length) return;
     const snapMap = _buildRpgSnapshotMap(chat);
@@ -5126,7 +5126,7 @@ function updateAllRpgHuds() {
     });
 }
 
-/** 单次遍历构建消息→RPG快照的映射 */
+/** Единый проход для построения маппинга сообщение→снимок RPG */
 function _buildRpgSnapshotMap(chat) {
     const map = new Map();
     const acc = { bars: {}, status: {}, skills: {}, attributes: {} };
@@ -5158,13 +5158,13 @@ function _buildRpgSnapshotMap(chat) {
                 acc.attributes[o] = { ...(acc.attributes[o] || {}), ...vals };
             }
         }
-        // 深拷贝当前累积状态作为快照
+        // Глубокое копирование текущего накопленного состояния как снимка
         map.set(i, JSON.parse(JSON.stringify(acc)));
     }
     return map;
 }
 
-/** 用预构建的快照渲染单条消息的 RPG HUD */
+/** Рендеринг RPG HUD одного сообщения с использованием предварительно построенного снимка */
 function _renderRpgHudFromSnapshot(messageEl, messageIndex, rpg) {
     const old = messageEl.querySelector('.horae-rpg-hud');
     if (old) old.remove();
@@ -5227,7 +5227,7 @@ function _renderRpgHudFromSnapshot(messageEl, messageIndex, rpg) {
 }
 
 /**
- * 刷新所有显示
+ * Обновить все отображения
  */
 function refreshAllDisplays() {
     updateStatusDisplay();
@@ -5242,8 +5242,8 @@ function refreshAllDisplays() {
 }
 
 /**
- * 提取消息事件上的摘要压缩标记（_compressedBy / _summaryId），
- * 用于在 createEmptyMeta() 重置后恢复，防止摘要事件从时间线中逃逸
+ * Извлечь метки сжатия сводки из событий сообщения (_compressedBy / _summaryId),
+ * Используется для восстановления после сброса createEmptyMeta(), предотвращает утечку событий сводки из хронологии
  */
 function _saveCompressedFlags(meta) {
     if (!meta?.events?.length) return null;
@@ -5262,8 +5262,8 @@ function _saveCompressedFlags(meta) {
 }
 
 /**
- * 将保存的压缩标记恢复到重新解析后的事件上；
- * 若新事件数量少于保存的标记，则将多出的摘要事件追加回去
+ * Восстановить сохранённые метки сжатия в повторно разобранные события;
+ * Если новых событий меньше, чем сохранённых меток, лишние события сводки добавляются обратно
  */
 function _restoreCompressedFlags(meta, saved) {
     if (!saved?.length || !meta) return;
@@ -5277,7 +5277,7 @@ function _restoreCompressedFlags(meta, saved) {
             evt._compressedBy = nonSummaryFlags[i]._compressedBy;
         }
     }
-    // 如果非摘要事件数量不匹配，按 summaryId 暴力匹配
+    // Если количество несводочных событий не совпадает, принудительное сопоставление по summaryId
     if (nonSummaryFlags.length > 0 && meta.events.length > 0) {
         const chat = horaeManager.getChat();
         const sums = chat?.[0]?.horae_meta?.autoSummaries || [];
@@ -5288,7 +5288,7 @@ function _restoreCompressedFlags(meta, saved) {
             if (matchFlag) evt._compressedBy = matchFlag._compressedBy;
         }
     }
-    // 将摘要卡片事件追加回去（processAIResponse 不会从原文解析出摘要卡片）
+    // Добавить события карточек сводок обратно (processAIResponse не разбирает карточки сводок из оригинального текста)
     for (const sf of summaryFlags) {
         const alreadyExists = meta.events.some(e => e._summaryId === sf._summaryId);
         if (!alreadyExists && sf._summaryId) {
@@ -5303,8 +5303,8 @@ function _restoreCompressedFlags(meta, saved) {
 }
 
 /**
- * 校验并修复摘要范围内消息的 is_hidden 和 _compressedBy 状态，
- * 防止 SillyTavern 重渲染或 saveChat 竞态导致隐藏/压缩标记丢失
+ * Проверить и исправить состояния is_hidden и _compressedBy в сообщениях в диапазоне сводки,
+ * Предотвратить потерю меток скрытия/сжатия из-за перерендеринга SillyTavern или гонки saveChat
  */
 function enforceHiddenState() {
     const chat = horaeManager.getChat();
@@ -5318,14 +5318,14 @@ function enforceHiddenState() {
         const summaryId = s.id;
         for (let i = s.range[0]; i <= s.range[1]; i++) {
             if (i === 0 || !chat[i]) continue;
-            // 修复 is_hidden
+            // Исправить is_hidden
             if (!chat[i].is_hidden) {
                 chat[i].is_hidden = true;
                 fixed++;
                 const $el = $(`.mes[mesid="${i}"]`);
                 if ($el.length) $el.attr('is_hidden', 'true');
             }
-            // 修复 _compressedBy
+            // Исправить _compressedBy
             const events = chat[i].horae_meta?.events;
             if (events) {
                 for (const evt of events) {
@@ -5338,14 +5338,14 @@ function enforceHiddenState() {
         }
     }
     if (fixed > 0) {
-        console.log(`[Horae] enforceHiddenState: 修复了 ${fixed} 处摘要状态`);
+        console.log(`[Horae] enforceHiddenState: исправлено ${fixed} состояний сводок`);
         getContext().saveChat();
     }
 }
 
 /**
- * 手动一键修复：遍历所有活跃摘要，强制恢复 is_hidden + _compressedBy，
- * 并同步 DOM 属性。返回修复的条目数。
+ * Ручное исправление одним нажатием: перебрать все активные сводки, принудительно восстановить is_hidden + _compressedBy,
+ * синхронизировать DOM атрибуты. Возвращает количество исправлений.
  */
 function repairAllSummaryStates() {
     const chat = horaeManager.getChat();
@@ -5359,14 +5359,14 @@ function repairAllSummaryStates() {
         const summaryId = s.id;
         for (let i = s.range[0]; i <= s.range[1]; i++) {
             if (i === 0 || !chat[i]) continue;
-            // 强制 is_hidden
+            // Принудительное is_hidden
             if (!chat[i].is_hidden) {
                 chat[i].is_hidden = true;
                 fixed++;
             }
             const $el = $(`.mes[mesid="${i}"]`);
             if ($el.length) $el.attr('is_hidden', 'true');
-            // 强制 _compressedBy
+            // Принудительное _compressedBy
             const events = chat[i].horae_meta?.events;
             if (events) {
                 for (const evt of events) {
@@ -5379,13 +5379,13 @@ function repairAllSummaryStates() {
         }
     }
     if (fixed > 0) {
-        console.log(`[Horae] repairAllSummaryStates: 修复了 ${fixed} 处`);
+        console.log(`[Horae] repairAllSummaryStates: исправлено ${fixed}`);
         getContext().saveChat();
     }
     return fixed;
 }
 
-/** 刷新所有已展开的底部面板 */
+/** Обновить все раскрытые нижние панели */
 function refreshVisiblePanels() {
     document.querySelectorAll('.horae-message-panel').forEach(panelEl => {
         const msgEl = panelEl.closest('.mes');
@@ -5404,7 +5404,7 @@ function refreshVisiblePanels() {
 }
 
 /**
- * 更新场景记忆列表显示
+ * Обновить отображение списка памяти о локациях
  */
 function updateLocationMemoryDisplay() {
     const listEl = document.getElementById('horae-location-list');
@@ -5418,16 +5418,16 @@ function updateLocationMemoryDisplay() {
         listEl.innerHTML = `
             <div class="horae-empty-state">
                 <i class="fa-solid fa-map-location-dot"></i>
-                <span>暂无场景记忆</span>
-                <span style="font-size:11px;opacity:0.6;margin-top:4px;">开启「设置 → 场景记忆」后，AI会在首次到达新地点时自动记录</span>
+                <span>Нет памяти о локациях</span>
+                <span style="font-size:11px;opacity:0.6;margin-top:4px;">После включения «Настройки → Память о локациях» ИИ будет автоматически записывать информацию при первом посещении нового места</span>
             </div>`;
         return;
     }
     
-    // 按父级分组：「酒馆·大厅」→ parent=酒馆, child=大厅
+    // Группировка по родителям: «Таверна·Зал» → parent=Таверна, child=Зал
     const SEP = /[·・\-\/\|]/;
     const groups = {};   // { parentName: { info?, children: [{name,info}] } }
-    const standalone = []; // 无子级的独立条目
+    const standalone = []; // Независимые записи без дочерних
     
     for (const [name, info] of entries) {
         const sepMatch = name.match(SEP);
@@ -5435,12 +5435,12 @@ function updateLocationMemoryDisplay() {
             const parent = name.substring(0, sepMatch.index).trim();
             if (!groups[parent]) groups[parent] = { children: [] };
             groups[parent].children.push({ name, info });
-            // 如果恰好也存在同名的父级条目，关联
+            // Если существует родительская запись с таким же именем — связать
             if (locMem[parent]) groups[parent].info = locMem[parent];
         } else if (groups[name]) {
             groups[name].info = info;
         } else {
-            // 检查是否已有子级引用
+            // Проверить, есть ли уже дочерние ссылки
             const hasChildren = entries.some(([n]) => n !== name && n.startsWith(name) && SEP.test(n.charAt(name.length)));
             if (hasChildren) {
                 if (!groups[name]) groups[name] = { children: [] };
@@ -5454,7 +5454,7 @@ function updateLocationMemoryDisplay() {
     const buildCard = (name, info, indent = false) => {
         const isCurrent = name === currentLoc || currentLoc.includes(name) || name.includes(currentLoc);
         const currentClass = isCurrent ? 'horae-location-current' : '';
-        const currentBadge = isCurrent ? '<span class="horae-loc-current-badge">当前</span>' : '';
+        const currentBadge = isCurrent ? '<span class="horae-loc-current-badge">Текущее</span>' : '';
         const dateStr = info.lastUpdated ? new Date(info.lastUpdated).toLocaleDateString() : '';
         const indentClass = indent ? ' horae-loc-child' : '';
         const displayName = indent ? name.split(SEP).pop().trim() : name;
@@ -5463,17 +5463,17 @@ function updateLocationMemoryDisplay() {
                 <div class="horae-loc-header">
                     <div class="horae-loc-name"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(displayName)} ${currentBadge}</div>
                     <div class="horae-loc-actions">
-                        <button class="horae-loc-edit" title="编辑"><i class="fa-solid fa-pen"></i></button>
-                        <button class="horae-loc-delete" title="删除"><i class="fa-solid fa-trash"></i></button>
+                        <button class="horae-loc-edit" title="Редактировать"><i class="fa-solid fa-pen"></i></button>
+                        <button class="horae-loc-delete" title="Удалить"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
-                <div class="horae-loc-desc">${info.desc || '<span class="horae-empty-hint">暂无描述</span>'}</div>
-                ${dateStr ? `<div class="horae-loc-date">更新于 ${dateStr}</div>` : ''}
+                <div class="horae-loc-desc">${info.desc || '<span class="horae-empty-hint">Нет описания</span>'}</div>
+                ${dateStr ? `<div class="horae-loc-date">Обновлено ${dateStr}</div>` : ''}
             </div>`;
     };
     
     let html = '';
-    // 渲染有子级的分组
+    // Рендеринг групп с дочерними
     for (const [parentName, group] of Object.entries(groups)) {
         const isParentCurrent = currentLoc.startsWith(parentName);
         html += `<div class="horae-loc-group${isParentCurrent ? ' horae-loc-group-active' : ''}">
@@ -5487,12 +5487,12 @@ function updateLocationMemoryDisplay() {
         for (const child of group.children) html += buildCard(child.name, child.info, true);
         html += '</div></div>';
     }
-    // 渲染独立条目
+    // Рендеринг независимых записей
     for (const { name, info } of standalone) html += buildCard(name, info, false);
     
     listEl.innerHTML = html;
     
-    // 折叠切换
+    // Переключение свернуть/развернуть
     listEl.querySelectorAll('.horae-loc-group-header').forEach(header => {
         header.addEventListener('click', () => {
             const body = header.nextElementSibling;
@@ -5513,24 +5513,24 @@ function updateLocationMemoryDisplay() {
     listEl.querySelectorAll('.horae-loc-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
             const name = btn.closest('.horae-location-card').dataset.locationName;
-            if (!confirm(`确定删除场景「${name}」的记忆？`)) return;
+            if (!confirm(`Удалить память о локации «${name}»?`)) return;
             const chat = horaeManager.getChat();
             if (chat?.[0]?.horae_meta?.locationMemory) {
-                // 标记为已删除而非直接delete，防止rebuildLocationMemory从历史消息重建
+                // Пометить как удалённое, а не удалять сразу, чтобы rebuildLocationMemory не восстановил из истории
                 chat[0].horae_meta.locationMemory[name] = {
                     ...chat[0].horae_meta.locationMemory[name],
                     _deleted: true
                 };
                 await getContext().saveChat();
                 updateLocationMemoryDisplay();
-                showToast(`场景「${name}」已删除`, 'info');
+                showToast(`Локация «${name}» удалена`, 'info');
             }
         });
     });
 }
 
 /**
- * 打开场景记忆编辑弹窗
+ * Открыть диалог редактирования памяти о локации
  */
 function openLocationEditModal(locationName) {
     closeEditModal();
@@ -5542,24 +5542,24 @@ function openLocationEditModal(locationName) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-map-location-dot"></i> ${isNew ? '添加地点' : '编辑场景记忆'}
+                    <i class="fa-solid fa-map-location-dot"></i> ${isNew ? 'Добавить место' : 'Редактировать память о локации'}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>地点名称</label>
-                        <input type="text" id="horae-loc-edit-name" value="${escapeHtml(locationName || '')}" placeholder="如：无名酒馆·大厅">
+                        <label>Название места</label>
+                        <input type="text" id="horae-loc-edit-name" value="${escapeHtml(locationName || '')}" placeholder="напр.: Безымянная таверна · Зал">
                     </div>
                     <div class="horae-edit-field">
-                        <label>场景描述</label>
-                        <textarea id="horae-loc-edit-desc" rows="5" placeholder="描述该地点的固定物理特征...">${escapeHtml(existing.desc || '')}</textarea>
+                        <label>Описание локации</label>
+                        <textarea id="horae-loc-edit-desc" rows="5" placeholder="Опишите постоянные физические характеристики места...">${escapeHtml(existing.desc || '')}</textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="horae-loc-save" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 保存
+                        <i class="fa-solid fa-check"></i> Сохранить
                     </button>
                     <button id="horae-loc-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -5576,7 +5576,7 @@ function openLocationEditModal(locationName) {
         e.stopPropagation();
         const name = document.getElementById('horae-loc-edit-name').value.trim();
         const desc = document.getElementById('horae-loc-edit-desc').value.trim();
-        if (!name) { showToast('地点名称不能为空', 'warning'); return; }
+        if (!name) { showToast('Название места не может быть пустым', 'warning'); return; }
         
         const chat = horaeManager.getChat();
         if (!chat?.length) return;
@@ -5588,14 +5588,14 @@ function openLocationEditModal(locationName) {
         if (isNew) {
             mem[name] = { desc, firstSeen: now, lastUpdated: now, _userEdited: true };
         } else if (locationName !== name) {
-            // 改名：级联更新子级 + 记录曾用名
+            // Переименование: каскадное обновление дочерних + запись псевдонима
             const SEP = /[·・\-\/\|]/;
             const oldEntry = mem[locationName] || {};
             const aliases = oldEntry._aliases || [];
             if (!aliases.includes(locationName)) aliases.push(locationName);
             delete mem[locationName];
             mem[name] = { ...oldEntry, desc, lastUpdated: now, _userEdited: true, _aliases: aliases };
-            // 检测是否为父级改名，级联所有子级
+            // Проверить переименование родителя, каскадно обновить всех потомков
             const childKeys = Object.keys(mem).filter(k => {
                 const sepMatch = k.match(SEP);
                 return sepMatch && k.substring(0, sepMatch.index).trim() === locationName;
@@ -5617,14 +5617,14 @@ function openLocationEditModal(locationName) {
         await getContext().saveChat();
         closeEditModal();
         updateLocationMemoryDisplay();
-        showToast(isNew ? '地点已添加' : (locationName !== name ? `已改名：${locationName} → ${name}` : '场景记忆已更新'), 'success');
+        showToast(isNew ? 'Место добавлено' : (locationName !== name ? `Переименовано: ${locationName} → ${name}` : 'Память о локации обновлена'), 'success');
     });
     
     document.getElementById('horae-loc-cancel').addEventListener('click', () => closeEditModal());
 }
 
 /**
- * 合并两个地点的场景记忆
+ * Объединить память о двух локациях
  */
 function openLocationMergeModal() {
     closeEditModal();
@@ -5632,7 +5632,7 @@ function openLocationMergeModal() {
     const entries = Object.entries(locMem);
     
     if (entries.length < 2) {
-        showToast('至少需要2个地点才能合并', 'warning');
+        showToast('Для объединения нужно минимум 2 места', 'warning');
         return;
     }
     
@@ -5642,31 +5642,31 @@ function openLocationMergeModal() {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-code-merge"></i> 合并地点
+                    <i class="fa-solid fa-code-merge"></i> Объединить места
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-setting-hint" style="margin-bottom: 12px;">
                         <i class="fa-solid fa-circle-info"></i>
-                        选择两个地点合并为一个。被合并地点的描述将追加到目标地点。
+                        Выберите два места для объединения. Описание источника будет добавлено к целевому месту.
                     </div>
                     <div class="horae-edit-field">
-                        <label>来源地点（将被删除）</label>
+                        <label>Источник (будет удалён)</label>
                         <select id="horae-merge-source">${options}</select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>目标地点（保留）</label>
+                        <label>Цель (сохраняется)</label>
                         <select id="horae-merge-target">${options}</select>
                     </div>
                     <div id="horae-merge-preview" class="horae-merge-preview" style="display:none;">
-                        <strong>合并预览：</strong><br><span id="horae-merge-preview-text"></span>
+                        <strong>Предпросмотр объединения:</strong><br><span id="horae-merge-preview-text"></span>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
                     <button id="horae-merge-confirm" class="horae-btn primary">
-                        <i class="fa-solid fa-check"></i> 合并
+                        <i class="fa-solid fa-check"></i> Объединить
                     </button>
                     <button id="horae-merge-cancel" class="horae-btn">
-                        <i class="fa-solid fa-xmark"></i> 取消
+                        <i class="fa-solid fa-xmark"></i> Отмена
                     </button>
                 </div>
             </div>
@@ -5691,7 +5691,7 @@ function openLocationMergeModal() {
         
         if (source === target) {
             previewEl.style.display = 'block';
-            textEl.textContent = '来源和目标不能相同';
+            textEl.textContent = 'Источник и цель не могут совпадать';
             return;
         }
         
@@ -5699,7 +5699,7 @@ function openLocationMergeModal() {
         const targetDesc = locMem[target]?.desc || '';
         const merged = targetDesc + (targetDesc && sourceDesc ? '\n' : '') + sourceDesc;
         previewEl.style.display = 'block';
-        textEl.textContent = `「${source}」→「${target}」\n合并后描述: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
+        textEl.textContent = `«${source}» → «${target}»\nОписание после объединения: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
     };
     
     document.getElementById('horae-merge-source').addEventListener('change', updatePreview);
@@ -5712,11 +5712,11 @@ function openLocationMergeModal() {
         const target = document.getElementById('horae-merge-target').value;
         
         if (source === target) {
-            showToast('来源和目标不能相同', 'warning');
+            showToast('Источник и цель не могут совпадать', 'warning');
             return;
         }
         
-        if (!confirm(`确定将「${source}」合并到「${target}」？\n「${source}」将被删除。`)) return;
+        if (!confirm(`Объединить «${source}» с «${target}»?\n«${source}» будет удалено.`)) return;
         
         const chat = horaeManager.getChat();
         const mem = chat?.[0]?.horae_meta?.locationMemory;
@@ -5731,7 +5731,7 @@ function openLocationMergeModal() {
         await getContext().saveChat();
         closeEditModal();
         updateLocationMemoryDisplay();
-        showToast(`已将「${source}」合并到「${target}」`, 'success');
+        showToast(`«${source}» объединено с «${target}»`, 'success');
     });
     
     document.getElementById('horae-merge-cancel').addEventListener('click', () => closeEditModal());
@@ -5752,7 +5752,7 @@ function updateTokenCounter() {
 }
 
 /**
- * 滚动到指定消息（支持折叠/懒加载的消息展开跳转）
+ * Прокрутить к указанному сообщению (поддержка раскрытия свёрнутых/ленивозагруженных сообщений)
  */
 async function scrollToMessage(messageId) {
     let messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
@@ -5762,8 +5762,8 @@ async function scrollToMessage(messageId) {
         setTimeout(() => messageEl.classList.remove('horae-highlight'), 2000);
         return;
     }
-    // 消息不在 DOM 中（被酒馆折叠/懒加载），提示用户展开
-    if (!confirm(`目标消息 #${messageId} 距离较远，已被折叠无法直接跳转。\n是否展开并跳转到该消息？`)) return;
+    // Сообщение не в DOM (свёрнуто/лениво загружено), предложить раскрыть
+    if (!confirm(`Целевое сообщение #${messageId} далеко и свёрнуто, прямой переход невозможен.\nРазвернуть и перейти к нему?`)) return;
     try {
         const slashModule = await import('/scripts/slash-commands.js');
         const exec = slashModule.executeSlashCommandsWithOptions;
@@ -5775,33 +5775,33 @@ async function scrollToMessage(messageId) {
             messageEl.classList.add('horae-highlight');
             setTimeout(() => messageEl.classList.remove('horae-highlight'), 2000);
         } else {
-            showToast(`无法展开消息 #${messageId}，请手动滚动查找`, 'warning');
+            showToast(`Не удалось развернуть сообщение #${messageId}, найдите вручную`, 'warning');
         }
     } catch (err) {
-        console.warn('[Horae] 跳转失败:', err);
-        showToast(`跳转失败: ${err.message || '未知错误'}`, 'error');
+        console.warn('[Horae] Переход не удался:', err);
+        showToast(`Переход не удался: ${err.message || 'неизвестная ошибка'}`, 'error');
     }
 }
 
-/** 应用顶部图标可见性 */
+/** Применить видимость верхней иконки */
 function applyTopIconVisibility() {
     const show = settings.showTopIcon !== false;
     if (show) {
         $('#horae_drawer').show();
     } else {
-        // 先关闭抽屉再隐藏
+        // Сначала закрыть панель, затем скрыть
         if ($('#horae_drawer_icon').hasClass('openIcon')) {
             $('#horae_drawer_icon').toggleClass('openIcon closedIcon');
             $('#horae_drawer_content').toggleClass('openDrawer closedDrawer').hide();
         }
         $('#horae_drawer').hide();
     }
-    // 同步两处开关
+    // Синхронизировать оба переключателя
     $('#horae-setting-show-top-icon').prop('checked', show);
     $('#horae-ext-show-top-icon').prop('checked', show);
 }
 
-/** 应用消息面板宽度和偏移设置（底部栏 + RPG HUD 统一跟随） */
+/** Применить настройки ширины и смещения панели сообщений (нижняя панель + RPG HUD) */
 function applyPanelWidth() {
     const width = Math.max(50, Math.min(100, settings.panelWidth || 100));
     const offset = Math.max(0, settings.panelOffset || 0);
@@ -5813,10 +5813,10 @@ function applyPanelWidth() {
     });
 }
 
-/** 内置预设主题 */
+/** Встроенные предустановленные темы */
 const BUILTIN_THEMES = {
     'sakura': {
-        name: '樱花粉',
+        name: 'Сакура',
         variables: {
             '--horae-primary': '#ec4899', '--horae-primary-light': '#f472b6', '--horae-primary-dark': '#be185d',
             '--horae-accent': '#fb923c', '--horae-success': '#34d399', '--horae-warning': '#fbbf24',
@@ -5827,7 +5827,7 @@ const BUILTIN_THEMES = {
         }
     },
     'forest': {
-        name: '森林绿',
+        name: 'Лесной',
         variables: {
             '--horae-primary': '#059669', '--horae-primary-light': '#34d399', '--horae-primary-dark': '#047857',
             '--horae-accent': '#fbbf24', '--horae-success': '#10b981', '--horae-warning': '#f59e0b',
@@ -5838,7 +5838,7 @@ const BUILTIN_THEMES = {
         }
     },
     'ocean': {
-        name: '海洋蓝',
+        name: 'Океанский',
         variables: {
             '--horae-primary': '#3b82f6', '--horae-primary-light': '#60a5fa', '--horae-primary-dark': '#1d4ed8',
             '--horae-accent': '#f59e0b', '--horae-success': '#10b981', '--horae-warning': '#f59e0b',
@@ -5850,7 +5850,7 @@ const BUILTIN_THEMES = {
     }
 };
 
-/** 获取当前主题对象（内置或自定义） */
+/** Получить текущий объект темы (встроенный или пользовательский) */
 function resolveTheme(mode) {
     if (BUILTIN_THEMES[mode]) return BUILTIN_THEMES[mode];
     if (mode.startsWith('custom-')) {
@@ -5867,14 +5867,14 @@ function isLightMode() {
     return !!(theme && theme.isLight);
 }
 
-/** 应用主题模式（dark / light / 内置预设 / custom-{index}） */
+/** Применить режим темы (dark / light / встроенная / custom-{index}) */
 function applyThemeMode() {
     const mode = settings.themeMode || 'dark';
     const theme = resolveTheme(mode);
     const isLight = mode === 'light' || !!(theme && theme.isLight);
     const hasCustomVars = !!(theme && theme.variables);
 
-    // 切换 horae-light 类（日间模式需要此类激活 UI 细节样式如 checkbox 边框等）
+    // Переключить класс horae-light (нужен для дневного режима, активирует детали UI — рамки чекбоксов и т.д.)
     const targets = [
         document.getElementById('horae_drawer'),
         ...document.querySelectorAll('.horae-message-panel'),
@@ -5883,7 +5883,7 @@ function applyThemeMode() {
     ].filter(Boolean);
     targets.forEach(el => el.classList.toggle('horae-light', isLight));
 
-    // 注入主题变量
+    // Инжектировать переменные темы
     let themeStyleEl = document.getElementById('horae-theme-vars');
     if (hasCustomVars) {
         if (!themeStyleEl) {
@@ -5894,7 +5894,7 @@ function applyThemeMode() {
         const vars = Object.entries(theme.variables)
             .map(([k, v]) => `  ${k}: ${v};`)
             .join('\n');
-        // 日间自定义主题：必须追加 .horae-light 选择器以覆盖 style.css 中同名类的默认变量
+        // Дневная пользовательская тема: добавить .horae-light для переопределения переменных класса в style.css
         const needsLightOverride = isLight && mode !== 'light';
         const selectors = needsLightOverride
             ? '#horae_drawer,\n#horae_drawer.horae-light,\n.horae-message-panel,\n.horae-message-panel.horae-light,\n.horae-modal,\n.horae-modal.horae-light,\n.horae-context-menu,\n.horae-context-menu.horae-light,\n.horae-rpg-hud,\n.horae-rpg-hud.horae-light,\n.horae-rpg-dice-panel,\n.horae-rpg-dice-panel.horae-light,\n.horae-progress-overlay,\n.horae-progress-overlay.horae-light'
@@ -5904,7 +5904,7 @@ function applyThemeMode() {
         if (themeStyleEl) themeStyleEl.remove();
     }
 
-    // 注入主题附带CSS
+    // Инжектировать прикреплённый CSS темы
     let themeCssEl = document.getElementById('horae-theme-css');
     if (theme && theme.css) {
         if (!themeCssEl) {
@@ -5918,7 +5918,7 @@ function applyThemeMode() {
     }
 }
 
-/** 注入用户自定义CSS */
+/** Инжектировать пользовательский CSS */
 function applyCustomCSS() {
     let styleEl = document.getElementById('horae-custom-style');
     const css = (settings.customCSS || '').trim();
@@ -5934,16 +5934,16 @@ function applyCustomCSS() {
     styleEl.textContent = css;
 }
 
-/** 导出当前美化为JSON文件 */
+/** Экспортировать текущую тему в JSON */
 function exportTheme() {
     const theme = {
-        name: '我的Horae美化',
+        name: 'Моя тема Horae',
         author: '',
         version: '1.0',
         variables: {},
         css: settings.customCSS || ''
     };
-    // 读取当前主题变量
+    // Считать переменные текущей темы
     const root = document.getElementById('horae_drawer');
     if (root) {
         const style = getComputedStyle(root);
@@ -5966,10 +5966,10 @@ function exportTheme() {
     a.download = 'horae-theme.json';
     a.click();
     URL.revokeObjectURL(url);
-    showToast('美化已导出', 'info');
+    showToast('Тема экспортирована', 'info');
 }
 
-/** 导入美化JSON文件 */
+/** Импортировать тему из JSON */
 function importTheme() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -5981,7 +5981,7 @@ function importTheme() {
             const text = await file.text();
             const theme = JSON.parse(text);
             if (!theme.variables || typeof theme.variables !== 'object') {
-                showToast('无效的美化文件：缺少 variables 字段', 'error');
+                showToast('Неверный файл темы: отсутствует поле variables', 'error');
                 return;
             }
             theme.name = theme.name || file.name.replace('.json', '');
@@ -5989,29 +5989,29 @@ function importTheme() {
             settings.customThemes.push(theme);
             saveSettings();
             refreshThemeSelector();
-            showToast(`已导入美化「${theme.name}」`, 'success');
+            showToast(`Тема «${theme.name}» импортирована`, 'success');
         } catch (err) {
-            showToast('美化文件解析失败', 'error');
-            console.error('[Horae] 导入美化失败:', err);
+            showToast('Ошибка разбора файла темы', 'error');
+            console.error('[Horae] Ошибка импорта темы:', err);
         }
     });
     input.click();
 }
 
-/** 刷新主题选择器下拉选项 */
+/** Обновить выпадающий список тем */
 function refreshThemeSelector() {
     const sel = document.getElementById('horae-setting-theme-mode');
     if (!sel) return;
-    // 清除动态选项（内置预设 + 用户导入）
+    // Очистить динамические опции (встроенные + пользовательские)
     sel.querySelectorAll('option:not([value="dark"]):not([value="light"])').forEach(o => o.remove());
-    // 内置预设主题
+    // Встроенные предустановленные темы
     for (const [key, t] of Object.entries(BUILTIN_THEMES)) {
         const opt = document.createElement('option');
         opt.value = key;
         opt.textContent = `🎨 ${t.name}`;
         sel.appendChild(opt);
     }
-    // 用户导入的主题
+    // Пользовательские импортированные темы
     const themes = settings.customThemes || [];
     themes.forEach((t, i) => {
         const opt = document.createElement('option');
@@ -6022,26 +6022,26 @@ function refreshThemeSelector() {
     sel.value = settings.themeMode || 'dark';
 }
 
-/** 删除已导入的自定义主题 */
+/** Удалить импортированную пользовательскую тему */
 function deleteCustomTheme(index) {
     const themes = settings.customThemes || [];
     if (!themes[index]) return;
-    if (!confirm(`确定删除美化「${themes[index].name}」？`)) return;
+    if (!confirm(`Удалить тему «${themes[index].name}»?`)) return;
     const currentMode = settings.themeMode || 'dark';
     themes.splice(index, 1);
     settings.customThemes = themes;
-    // 如果删除的是当前使用的主题，回退暗色
+    // Если удалённая тема — текущая, откатить на тёмную
     if (currentMode === `custom-${index}` || (currentMode.startsWith('custom-') && parseInt(currentMode.split('-')[1]) >= index)) {
         settings.themeMode = 'dark';
         applyThemeMode();
     }
     saveSettings();
     refreshThemeSelector();
-    showToast('美化已删除', 'info');
+    showToast('Тема удалена', 'info');
 }
 
 // ============================================
-// 自助美化工具 (Theme Designer)
+// Инструмент настройки темы (Theme Designer)
 // ============================================
 
 function _tdHslToHex(h, s, l) {
@@ -6129,7 +6129,7 @@ function _tdGenerateVars(hue, sat, brightness, accentHex, colorLight) {
 
 function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
     const parts = [];
-    // 顶部图标（#horae_drawer）
+    // Верхняя иконка (#horae_drawer)
     if (images.drawer && bgHex) {
         const c = _tdHexToRgb(drawerBg || bgHex);
         const a = (1 - (opacities.drawer || 30) / 100).toFixed(2);
@@ -6140,7 +6140,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
   background-repeat: no-repeat, no-repeat !important;
 }`);
     }
-    // 抽屉头部图片
+    // Изображение шапки панели
     if (images.header) {
         parts.push(`#horae_drawer .drawer-header {
   background-image: url('${images.header}') !important;
@@ -6149,7 +6149,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
   background-repeat: no-repeat !important;
 }`);
     }
-    // 抽屉背景图片
+    // Фоновое изображение панели
     const bodyBg = drawerBg || bgHex;
     if (images.body && bodyBg) {
         const c = _tdHexToRgb(bodyBg);
@@ -6163,7 +6163,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
     } else if (drawerBg) {
         parts.push(`.horae-tab-contents { background-color: ${drawerBg} !important; }`);
     }
-    // 底部消息栏图片 — 仅作用于收缩的 toggle 条，展开内容不叠加图片
+    // Изображение нижней панели сообщений — только для свёрнутой полосы toggle, не применяется к раскрытому содержимому
     if (images.panel && bgHex) {
         const c = _tdHexToRgb(bgHex);
         const a = (1 - (opacities.panel || 30) / 100).toFixed(2);
@@ -6186,7 +6186,7 @@ function openThemeDesigner() {
     const accStr = cs?.getPropertyValue('--horae-accent').trim() || '#f59e0b';
     const initHsl = _tdParseColorHsl(priStr);
 
-    // 尝试从当前自定义主题恢复全部设置
+    // Попробовать восстановить все настройки из текущей пользовательской темы
     let savedImages = { drawer: '', header: '', body: '', panel: '' };
     let savedImgOp = { drawer: 30, header: 50, body: 30, panel: 30 };
     let savedName = '', savedAuthor = '', savedDrawerBg = '';
@@ -6225,8 +6225,8 @@ function openThemeDesigner() {
         const op = st.imgOp[key];
         return `<div class="htd-img-group">
         <div class="htd-img-label">${label}</div>
-        <input type="text" id="htd-img-${key}" class="htd-input" placeholder="输入图片 URL..." value="${escapeHtml(url)}">
-        <div class="htd-img-ctrl"><span>可见度 <em id="htd-imgop-${key}">${op}</em>%</span>
+        <input type="text" id="htd-img-${key}" class="htd-input" placeholder="введите URL изображения..." value="${escapeHtml(url)}">
+        <div class="htd-img-ctrl"><span>Видимость <em id="htd-imgop-${key}">${op}</em>%</span>
             <input type="range" class="htd-slider" id="htd-imgsl-${key}" min="5" max="100" value="${op}"></div>
         <img id="htd-imgpv-${key}" class="htd-img-preview" ${url ? `src="${escapeHtml(url)}"` : 'style="display:none;"'}>
     </div>`;
@@ -6236,28 +6236,28 @@ function openThemeDesigner() {
     modal.className = 'horae-modal horae-theme-designer' + (isLightMode() ? ' horae-light' : '');
     modal.innerHTML = `
     <div class="horae-modal-content htd-content">
-        <div class="htd-header"><i class="fa-solid fa-paint-roller"></i> 自助美化工具</div>
+        <div class="htd-header"><i class="fa-solid fa-paint-roller"></i> Инструмент настройки темы</div>
         <div class="htd-body">
             <div class="htd-section">
-                <div class="htd-section-title">快速调色</div>
+                <div class="htd-section-title">Быстрая настройка цвета</div>
                 <div class="htd-field">
-                    <span class="htd-label">主题色相</span>
+                    <span class="htd-label">Оттенок темы</span>
                     <div class="htd-hue-bar" id="htd-hue-bar"><div class="htd-hue-ind" id="htd-hue-ind"></div></div>
                 </div>
                 <div class="htd-field">
-                    <span class="htd-label">饱和度 <em id="htd-satv">${st.sat}</em>%</span>
+                    <span class="htd-label">Насыщенность <em id="htd-satv">${st.sat}</em>%</span>
                     <input type="range" class="htd-slider" id="htd-sat" min="10" max="100" value="${st.sat}">
                 </div>
                 <div class="htd-field">
-                    <span class="htd-label">亮度 <em id="htd-clv">${st.colorLight}</em></span>
+                    <span class="htd-label">Яркость <em id="htd-clv">${st.colorLight}</em></span>
                     <input type="range" class="htd-slider htd-colorlight" id="htd-cl" min="15" max="85" value="${st.colorLight}">
                 </div>
                 <div class="htd-field">
-                    <span class="htd-label">日夜模式 <em id="htd-briv">${st.bright <= 50 ? '夜' : '日'}</em></span>
+                    <span class="htd-label">Ночной/дневной <em id="htd-briv">${st.bright <= 50 ? 'Ночь' : 'День'}</em></span>
                     <input type="range" class="htd-slider htd-daynight" id="htd-bri" min="0" max="100" value="${st.bright}">
                 </div>
                 <div class="htd-field">
-                    <span class="htd-label">强调色</span>
+                    <span class="htd-label">Акцентный цвет</span>
                     <div class="htd-color-row">
                         <input type="color" id="htd-accent" value="${st.accent}" class="htd-cpick">
                         <span class="htd-hex" id="htd-accent-hex">${st.accent}</span>
@@ -6268,7 +6268,7 @@ function openThemeDesigner() {
 
             <div class="htd-section">
                 <div class="htd-section-title htd-toggle" id="htd-fine-t">
-                    <i class="fa-solid fa-sliders"></i> 精细调色
+                    <i class="fa-solid fa-sliders"></i> Тонкая настройка
                     <i class="fa-solid fa-chevron-down htd-arrow"></i>
                 </div>
                 <div id="htd-fine-body" style="display:none;"></div>
@@ -6276,42 +6276,42 @@ function openThemeDesigner() {
 
             <div class="htd-section">
                 <div class="htd-section-title htd-toggle" id="htd-img-t">
-                    <i class="fa-solid fa-image"></i> 装饰图片
+                    <i class="fa-solid fa-image"></i> Декоративные изображения
                     <i class="fa-solid fa-chevron-down htd-arrow"></i>
                 </div>
                 <div id="htd-imgs-section" style="display:none;">
-                    ${imgHtml('drawer', '顶部图标')}
-                    ${imgHtml('header', '抽屉头部')}
-                    ${imgHtml('body', '抽屉内容背景')}
+                    ${imgHtml('drawer', 'Верхняя иконка')}
+                    ${imgHtml('header', 'Шапка панели')}
+                    ${imgHtml('body', 'Фон содержимого')}
                     <div class="htd-img-group">
-                        <div class="htd-img-label">抽屉背景底色</div>
+                        <div class="htd-img-label">Цвет фона панели</div>
                         <div class="htd-field">
-                            <span class="htd-label"><em id="htd-dbg-hex">${st.drawerBg || '跟随主题'}</em></span>
+                            <span class="htd-label"><em id="htd-dbg-hex">${st.drawerBg || 'По теме'}</em></span>
                             <div class="htd-color-row">
                                 <input type="color" id="htd-dbg" value="${st.drawerBg || '#2d2d3c'}" class="htd-cpick">
-                                <button class="horae-btn" id="htd-dbg-clear" style="font-size:10px;padding:2px 8px;">清除</button>
+                                <button class="horae-btn" id="htd-dbg-clear" style="font-size:10px;padding:2px 8px;">Очистить</button>
                             </div>
                         </div>
                     </div>
-                    ${imgHtml('panel', '底部消息栏')}
+                    ${imgHtml('panel', 'Нижняя панель сообщений')}
                 </div>
             </div>
 
             <div class="htd-section">
                 <div class="htd-section-title htd-toggle" id="htd-rpg-t">
-                    <i class="fa-solid fa-shield-halved"></i> RPG 状态栏
+                    <i class="fa-solid fa-shield-halved"></i> RPG Статус
                     <i class="fa-solid fa-chevron-down htd-arrow"></i>
                 </div>
                 <div id="htd-rpg-section" style="display:none;">
                     <div class="htd-field">
-                        <span class="htd-label">背景色</span>
+                        <span class="htd-label">Цвет фона</span>
                         <div class="htd-color-row">
                             <input type="color" id="htd-rpg-color" value="${st.rpgColor}" class="htd-cpick">
                             <span class="htd-hex" id="htd-rpg-color-hex">${st.rpgColor}</span>
                         </div>
                     </div>
                     <div class="htd-field">
-                        <span class="htd-label">透明度 <em id="htd-rpg-opv">${st.rpgOpacity}</em>%</span>
+                        <span class="htd-label">Прозрачность <em id="htd-rpg-opv">${st.rpgOpacity}</em>%</span>
                         <input type="range" class="htd-slider" id="htd-rpg-op" min="0" max="100" value="${st.rpgOpacity}">
                     </div>
                 </div>
@@ -6319,32 +6319,32 @@ function openThemeDesigner() {
 
             <div class="htd-section">
                 <div class="htd-section-title htd-toggle" id="htd-dice-t">
-                    <i class="fa-solid fa-dice-d20"></i> 骰子面板
+                    <i class="fa-solid fa-dice-d20"></i> Панель кубиков
                     <i class="fa-solid fa-chevron-down htd-arrow"></i>
                 </div>
                 <div id="htd-dice-section" style="display:none;">
                     <div class="htd-field">
-                        <span class="htd-label">背景色</span>
+                        <span class="htd-label">Цвет фона</span>
                         <div class="htd-color-row">
                             <input type="color" id="htd-dice-color" value="${st.diceColor}" class="htd-cpick">
                             <span class="htd-hex" id="htd-dice-color-hex">${st.diceColor}</span>
                         </div>
                     </div>
                     <div class="htd-field">
-                        <span class="htd-label">透明度 <em id="htd-dice-opv">${st.diceOpacity}</em>%</span>
+                        <span class="htd-label">Прозрачность <em id="htd-dice-opv">${st.diceOpacity}</em>%</span>
                         <input type="range" class="htd-slider" id="htd-dice-op" min="0" max="100" value="${st.diceOpacity}">
                     </div>
                 </div>
             </div>
 
             <div class="htd-section htd-save-sec">
-                <div class="htd-field"><span class="htd-label">名称</span><input type="text" id="htd-name" class="htd-input" placeholder="我的美化" value="${escapeHtml(savedName)}"></div>
-                <div class="htd-field"><span class="htd-label">作者</span><input type="text" id="htd-author" class="htd-input" placeholder="匿名" value="${escapeHtml(savedAuthor)}"></div>
+                <div class="htd-field"><span class="htd-label">Название</span><input type="text" id="htd-name" class="htd-input" placeholder="Моя тема" value="${escapeHtml(savedName)}"></div>
+                <div class="htd-field"><span class="htd-label">Автор</span><input type="text" id="htd-author" class="htd-input" placeholder="Аноним" value="${escapeHtml(savedAuthor)}"></div>
                 <div class="htd-btn-row">
-                    <button class="horae-btn primary" id="htd-save"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
-                    <button class="horae-btn" id="htd-export"><i class="fa-solid fa-file-export"></i> 导出</button>
-                    <button class="horae-btn" id="htd-reset"><i class="fa-solid fa-rotate-left"></i> 重置</button>
-                    <button class="horae-btn" id="htd-cancel"><i class="fa-solid fa-xmark"></i> 取消</button>
+                    <button class="horae-btn primary" id="htd-save"><i class="fa-solid fa-floppy-disk"></i> Сохранить</button>
+                    <button class="horae-btn" id="htd-export"><i class="fa-solid fa-file-export"></i> Экспорт</button>
+                    <button class="horae-btn" id="htd-reset"><i class="fa-solid fa-rotate-left"></i> Сбросить</button>
+                    <button class="horae-btn" id="htd-cancel"><i class="fa-solid fa-xmark"></i> Отмена</button>
                 </div>
             </div>
         </div>
@@ -6362,13 +6362,13 @@ function openThemeDesigner() {
         const base = _tdGenerateVars(st.hue, st.sat, st.bright, st.accent, st.colorLight);
         const vars = { ...base, ...st.overrides };
 
-        // RPG HUD 背景变量（透明度：100=全透明, 0=不透明）
+        // Переменная фона RPG HUD (прозрачность: 100=полностью прозрачный, 0=непрозрачный)
         if (st.rpgColor) {
             const rc = _tdHexToRgb(st.rpgColor);
             const ra = (1 - (st.rpgOpacity ?? 85) / 100).toFixed(2);
             vars['--horae-rpg-bg'] = `rgba(${rc.r},${rc.g},${rc.b},${ra})`;
         }
-        // 骰子面板背景变量
+        // Переменная фона панели кубиков
         if (st.diceColor) {
             const dc = _tdHexToRgb(st.diceColor);
             const da = (1 - (st.diceOpacity ?? 15) / 100).toFixed(2);
@@ -6447,7 +6447,7 @@ function openThemeDesigner() {
 
     modal.querySelector('#htd-bri').addEventListener('input', function () {
         st.bright = +this.value;
-        modal.querySelector('#htd-briv').textContent = st.bright <= 50 ? '夜' : '日';
+        modal.querySelector('#htd-briv').textContent = st.bright <= 50 ? 'Ночь' : 'День';
         st.overrides = {};
         update();
     }, { signal: sig });
@@ -6472,11 +6472,11 @@ function openThemeDesigner() {
 
     // ---- Fine pickers ----
     const FINE_VARS = [
-        ['--horae-primary', '主色调'], ['--horae-primary-light', '主色调亮'], ['--horae-primary-dark', '主色调暗'],
-        ['--horae-accent', '强调色'], ['--horae-success', '成功'], ['--horae-warning', '警告'],
-        ['--horae-danger', '危险'], ['--horae-info', '信息'],
-        ['--horae-bg', '背景'], ['--horae-bg-secondary', '次背景'], ['--horae-bg-hover', '悬停背景'],
-        ['--horae-text', '文字'], ['--horae-text-muted', '次要文字']
+        ['--horae-primary', 'Основной цвет'], ['--horae-primary-light', 'Основной светлый'], ['--horae-primary-dark', 'Основной тёмный'],
+        ['--horae-accent', 'Акцент'], ['--horae-success', 'Успех'], ['--horae-warning', 'Предупреждение'],
+        ['--horae-danger', 'Опасность'], ['--horae-info', 'Информация'],
+        ['--horae-bg', 'Фон'], ['--horae-bg-secondary', 'Вторичный фон'], ['--horae-bg-hover', 'Фон при наведении'],
+        ['--horae-text', 'Текст'], ['--horae-text-muted', 'Вторичный текст']
     ];
     function buildFine() {
         const c = modal.querySelector('#htd-fine-body');
@@ -6526,11 +6526,11 @@ function openThemeDesigner() {
     }, { signal: sig });
     modal.querySelector('#htd-dbg-clear').addEventListener('click', () => {
         st.drawerBg = '';
-        modal.querySelector('#htd-dbg-hex').textContent = '跟随主题';
+        modal.querySelector('#htd-dbg-hex').textContent = 'По теме';
         update();
     }, { signal: sig });
 
-    // ---- RPG 状态栏 ----
+    // ---- RPG Статус ----
     modal.querySelector('#htd-rpg-t').addEventListener('click', () => {
         const sec = modal.querySelector('#htd-rpg-section');
         sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
@@ -6546,7 +6546,7 @@ function openThemeDesigner() {
         update();
     }, { signal: sig });
 
-    // ---- 骰子面板 ----
+    // ---- Панель кубиков ----
     modal.querySelector('#htd-dice-t').addEventListener('click', () => {
         const sec = modal.querySelector('#htd-dice-section');
         sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
@@ -6575,7 +6575,7 @@ function openThemeDesigner() {
 
     // ---- Save ----
     modal.querySelector('#htd-save').addEventListener('click', () => {
-        const name = modal.querySelector('#htd-name').value.trim() || '自定义美化';
+        const name = modal.querySelector('#htd-name').value.trim() || 'Пользовательская тема';
         const author = modal.querySelector('#htd-author').value.trim() || '';
         const base = _tdGenerateVars(st.hue, st.sat, st.bright, st.accent, st.colorLight);
         const vars = { ...base, ...st.overrides };
@@ -6607,12 +6607,12 @@ function openThemeDesigner() {
         saveSettings();
         applyThemeMode();
         refreshThemeSelector();
-        showToast(`美化「${name}」已保存并应用`, 'success');
+        showToast(`Тема «${name}» сохранена и применена`, 'success');
     }, { signal: sig });
 
     // ---- Export ----
     modal.querySelector('#htd-export').addEventListener('click', () => {
-        const name = modal.querySelector('#htd-name').value.trim() || '自定义美化';
+        const name = modal.querySelector('#htd-name').value.trim() || 'Пользовательская тема';
         const author = modal.querySelector('#htd-author').value.trim() || '';
         const base = _tdGenerateVars(st.hue, st.sat, st.bright, st.accent, st.colorLight);
         const vars = { ...base, ...st.overrides };
@@ -6638,7 +6638,7 @@ function openThemeDesigner() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `horae-${name}.json`; a.click();
         URL.revokeObjectURL(url);
-        showToast('美化已导出为 JSON', 'info');
+        showToast('Тема экспортирована в JSON', 'info');
     }, { signal: sig });
 
     // ---- Reset ----
@@ -6653,10 +6653,10 @@ function openThemeDesigner() {
         hueInd.style.background = `hsl(265, 100%, 50%)`;
         modal.querySelector('#htd-sat').value = 84; modal.querySelector('#htd-satv').textContent = '84';
         modal.querySelector('#htd-cl').value = 50; modal.querySelector('#htd-clv').textContent = '50';
-        modal.querySelector('#htd-bri').value = 25; modal.querySelector('#htd-briv').textContent = '夜';
+        modal.querySelector('#htd-bri').value = 25; modal.querySelector('#htd-briv').textContent = 'Ночь';
         modal.querySelector('#htd-accent').value = '#f59e0b';
         modal.querySelector('#htd-accent-hex').textContent = '#f59e0b';
-        modal.querySelector('#htd-dbg-hex').textContent = '跟随主题';
+        modal.querySelector('#htd-dbg-hex').textContent = 'По теме';
         modal.querySelector('#htd-rpg-color').value = '#000000';
         modal.querySelector('#htd-rpg-color-hex').textContent = '#000000';
         modal.querySelector('#htd-rpg-op').value = 85;
@@ -6675,14 +6675,14 @@ function openThemeDesigner() {
         const fBody = modal.querySelector('#htd-fine-body');
         if (fBody.style.display !== 'none') buildFine();
         update();
-        showToast('已重置为默认', 'info');
+        showToast('Сброшено до значений по умолчанию', 'info');
     }, { signal: sig });
 
     update();
 }
 
 /**
- * 为消息添加元数据面板
+ * Добавить панель метаданных к сообщению
  */
 function addMessagePanel(messageEl, messageIndex) {
     const existingPanel = messageEl.querySelector('.horae-message-panel');
@@ -6691,7 +6691,7 @@ function addMessagePanel(messageEl, messageIndex) {
     const meta = horaeManager.getMessageMeta(messageIndex);
     if (!meta) return;
     
-    // 格式化时间（标准日历添加周几）
+    // Форматирование времени (добавить день недели в стандартный календарь)
     let time = '--';
     if (meta.timestamp?.story_date) {
         const parsed = parseStoryDate(meta.timestamp.story_date);
@@ -6704,11 +6704,11 @@ function addMessagePanel(messageEl, messageIndex) {
             time += ' ' + meta.timestamp.story_time;
         }
     }
-    // 兼容新旧事件格式
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const eventSummary = eventsArr.length > 0 
         ? eventsArr.map(e => e.summary).join(' | ') 
-        : '无特殊事件';
+        : 'Нет особых событий';
     const charCount = meta.scene?.characters_present?.length || 0;
     const isSkipped = !!meta._skipHorae;
     const sideplayBtnStyle = settings.sideplayMode ? '' : 'display:none;';
@@ -6720,21 +6720,21 @@ function addMessagePanel(messageEl, messageIndex) {
                     <i class="fa-regular ${isSkipped ? 'fa-eye-slash' : 'fa-clock'}"></i>
                 </div>
                 <div class="horae-panel-summary">
-                    ${isSkipped ? '<span class="horae-sideplay-badge">番外</span>' : ''}
-                    <span class="horae-summary-time">${isSkipped ? '（不追踪）' : time}</span>
+                    ${isSkipped ? '<span class="horae-sideplay-badge">Побочная</span>' : ''}
+                    <span class="horae-summary-time">${isSkipped ? '(не отслеживается)' : time}</span>
                     <span class="horae-summary-divider">|</span>
-                    <span class="horae-summary-event">${isSkipped ? '此消息已标记为番外' : eventSummary}</span>
+                    <span class="horae-summary-event">${isSkipped ? 'Сообщение помечено как побочная сцена' : eventSummary}</span>
                     <span class="horae-summary-divider">|</span>
-                    <span class="horae-summary-chars">${isSkipped ? '' : charCount + '人在场'}</span>
+                    <span class="horae-summary-chars">${isSkipped ? '' : charCount + ' в сцене'}</span>
                 </div>
                 <div class="horae-panel-actions">
-                    <button class="horae-btn-sideplay" title="${isSkipped ? '取消番外标记' : '标记为番外（不追踪）'}" style="${sideplayBtnStyle}">
+                    <button class="horae-btn-sideplay" title="${isSkipped ? 'Снять пометку побочной сцены' : 'Пометить как побочную сцену (не отслеживать)'}" style="${sideplayBtnStyle}">
                         <i class="fa-solid ${isSkipped ? 'fa-eye' : 'fa-masks-theater'}"></i>
                     </button>
-                    <button class="horae-btn-rescan" title="重新扫描此消息">
+                    <button class="horae-btn-rescan" title="Повторно сканировать сообщение">
                         <i class="fa-solid fa-rotate"></i>
                     </button>
-                    <button class="horae-btn-expand" title="展开/收起">
+                    <button class="horae-btn-expand" title="Развернуть/Свернуть">
                         <i class="fa-solid fa-chevron-down"></i>
                     </button>
                 </div>
@@ -6753,7 +6753,7 @@ function addMessagePanel(messageEl, messageIndex) {
         if (!settings.showMessagePanel && panelEl) {
             panelEl.style.display = 'none';
         }
-        // 应用自定义宽度和偏移
+        // Применить пользовательские ширину и смещение
         const w = Math.max(50, Math.min(100, settings.panelWidth || 100));
         if (w < 100 && panelEl) {
             panelEl.style.maxWidth = `${w}%`;
@@ -6762,7 +6762,7 @@ function addMessagePanel(messageEl, messageIndex) {
         if (ofs > 0 && panelEl) {
             panelEl.style.marginLeft = `${ofs}px`;
         }
-        // 继承主题模式
+        // Наследовать режим темы
         if (isLightMode() && panelEl) {
             panelEl.classList.add('horae-light');
         }
@@ -6772,7 +6772,7 @@ function addMessagePanel(messageEl, messageIndex) {
 }
 
 /**
- * 构建已删除物品显示
+ * Построить отображение удалённых предметов
  */
 function buildDeletedItemsDisplay(deletedItems) {
     if (!deletedItems || deletedItems.length === 0) {
@@ -6786,7 +6786,7 @@ function buildDeletedItemsDisplay(deletedItems) {
 }
 
 /**
- * 构建待办事项编辑行
+ * Построить строку редактирования задачи
  */
 function buildAgendaEditorRows(agenda) {
     if (!agenda || agenda.length === 0) {
@@ -6794,14 +6794,14 @@ function buildAgendaEditorRows(agenda) {
     }
     return agenda.map(item => `
         <div class="horae-editor-row horae-agenda-edit-row">
-            <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="日期">
-            <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="${escapeHtml(item.text || '')}" placeholder="待办内容（相对时间请标注绝对日期）">
+            <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="дата">
+            <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="${escapeHtml(item.text || '')}" placeholder="содержание задачи (для относительного времени укажите абсолютную дату)">
             <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-/** 关系网络面板渲染 — 数据源为 chat[0].horae_meta，不消耗 AI 输出 */
+/** Рендеринг панели «Сеть отношений» — источник: chat[0].horae_meta, не расходует API */
 function buildPanelRelationships(meta) {
     if (!settings.sendRelationships) return '';
     const presentChars = meta.scene?.characters_present || [];
@@ -6815,7 +6815,7 @@ function buildPanelRelationships(meta) {
     
     return `
         <div class="horae-panel-row full-width">
-            <label><i class="fa-solid fa-diagram-project"></i> 关系网络</label>
+            <label><i class="fa-solid fa-diagram-project"></i> Сеть отношений</label>
             <div class="horae-panel-relationships">${rows}</div>
         </div>`;
 }
@@ -6826,44 +6826,44 @@ function buildPanelMoodEditable(meta) {
     const rows = moodEntries.map(([char, emotion]) => `
         <div class="horae-editor-row horae-mood-row">
             <span class="mood-char">${escapeHtml(char)}</span>
-            <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="情绪状态">
+            <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="эмоциональное состояние">
             <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
     return `
         <div class="horae-panel-row full-width">
-            <label><i class="fa-solid fa-face-smile"></i> 情绪状态</label>
+            <label><i class="fa-solid fa-face-smile"></i> Эмоциональное состояние</label>
             <div class="horae-mood-editor">${rows}</div>
-            <button class="horae-btn-add-mood"><i class="fa-solid fa-plus"></i> 添加</button>
+            <button class="horae-btn-add-mood"><i class="fa-solid fa-plus"></i> Добавить</button>
         </div>`;
 }
 
 function buildPanelContent(messageIndex, meta) {
     const costumeRows = Object.entries(meta.costumes || {}).map(([char, costume]) => `
         <div class="horae-editor-row">
-            <input type="text" class="char-input" value="${escapeHtml(char)}" placeholder="角色名">
-            <input type="text" value="${escapeHtml(costume)}" placeholder="服装描述">
+            <input type="text" class="char-input" value="${escapeHtml(char)}" placeholder="Имя персонажа">
+            <input type="text" value="${escapeHtml(costume)}" placeholder="описание одежды">
             <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
     
-    // 物品分类由主页面管理，底部栏不显示
+    // Категории предметов управляются главной страницей, нижняя панель не показывает
     const itemRows = Object.entries(meta.items || {}).map(([name, info]) => {
         return `
             <div class="horae-editor-row horae-item-row">
                 <input type="text" class="item-icon" value="${escapeHtml(info.icon || '')}" placeholder="📦" maxlength="2">
-                <input type="text" class="item-name" value="${escapeHtml(name)}" placeholder="物品名">
-                <input type="text" class="item-holder" value="${escapeHtml(info.holder || '')}" placeholder="持有者">
-                <input type="text" class="item-location" value="${escapeHtml(info.location || '')}" placeholder="位置">
+                <input type="text" class="item-name" value="${escapeHtml(name)}" placeholder="название предмета">
+                <input type="text" class="item-holder" value="${escapeHtml(info.holder || '')}" placeholder="владелец">
+                <input type="text" class="item-location" value="${escapeHtml(info.location || '')}" placeholder="местоположение">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="horae-editor-row horae-item-desc-row">
-                <input type="text" class="item-description" value="${escapeHtml(info.description || '')}" placeholder="物品描述">
+                <input type="text" class="item-description" value="${escapeHtml(info.description || '')}" placeholder="описание предмета">
             </div>
         `;
     }).join('');
     
-    // 获取前一条消息的好感总值
+    // Получить итоговое значение расположения из предыдущего сообщения
     const prevTotals = {};
     const chat = horaeManager.getChat();
     for (let i = 0; i < messageIndex; i++) {
@@ -6883,7 +6883,7 @@ function buildPanelContent(messageIndex, meta) {
     }
     
     const affectionRows = Object.entries(meta.affection || {}).map(([key, value]) => {
-        // 解析当前层的值
+        // Разобрать значения текущего слоя
         let delta = 0, newTotal = 0;
         const prevVal = prevTotals[key] || 0;
         
@@ -6906,26 +6906,26 @@ function buildPanelContent(messageIndex, meta) {
         return `
             <div class="horae-editor-row horae-affection-row" data-char="${escapeHtml(key)}" data-prev="${prevVal}">
                 <span class="affection-char">${escapeHtml(key)}</span>
-                <input type="text" class="affection-delta" value="${deltaStr}" placeholder="±变化">
-                <input type="number" class="affection-total" value="${roundedTotal}" placeholder="总值" step="any">
+                <input type="text" class="affection-delta" value="${deltaStr}" placeholder="±изменение">
+                <input type="number" class="affection-total" value="${roundedTotal}" placeholder="итого" step="any">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `;
     }).join('');
     
-    // 兼容新旧事件格式
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const firstEvent = eventsArr[0] || {};
     const eventLevel = firstEvent.level || '';
     const eventSummary = firstEvent.summary || '';
-    const multipleEventsNote = eventsArr.length > 1 ? `<span class="horae-note">（此消息有${eventsArr.length}条事件，仅显示第一条）</span>` : '';
+    const multipleEventsNote = eventsArr.length > 1 ? `<span class="horae-note">(В сообщении ${eventsArr.length} событий, показано первое)</span>` : '';
     
     return `
         <div class="horae-panel-grid">
             <div class="horae-panel-row">
-                <label><i class="fa-regular fa-clock"></i> 时间</label>
+                <label><i class="fa-regular fa-clock"></i> Время</label>
                 <div class="horae-panel-value">
-                    <input type="text" class="horae-input-datetime" placeholder="日期 时间（如 2026/2/4 15:00）" value="${escapeHtml((() => {
+                    <input type="text" class="horae-input-datetime" placeholder="дата время (напр. 2026/2/4 15:00)" value="${escapeHtml((() => {
                         let val = meta.timestamp?.story_date || '';
                         if (meta.timestamp?.story_time) val += (val ? ' ' : '') + meta.timestamp.story_time;
                         return val;
@@ -6933,83 +6933,83 @@ function buildPanelContent(messageIndex, meta) {
                 </div>
             </div>
             <div class="horae-panel-row">
-                <label><i class="fa-solid fa-location-dot"></i> 地点</label>
+                <label><i class="fa-solid fa-location-dot"></i> Место</label>
                 <div class="horae-panel-value">
-                    <input type="text" class="horae-input-location" value="${escapeHtml(meta.scene?.location || '')}" placeholder="场景位置">
+                    <input type="text" class="horae-input-location" value="${escapeHtml(meta.scene?.location || '')}" placeholder="местоположение сцены">
                 </div>
             </div>
             <div class="horae-panel-row">
-                <label><i class="fa-solid fa-cloud"></i> 氛围</label>
+                <label><i class="fa-solid fa-cloud"></i> Атмосфера</label>
                 <div class="horae-panel-value">
-                    <input type="text" class="horae-input-atmosphere" value="${escapeHtml(meta.scene?.atmosphere || '')}" placeholder="场景氛围">
+                    <input type="text" class="horae-input-atmosphere" value="${escapeHtml(meta.scene?.atmosphere || '')}" placeholder="атмосфера сцены">
                 </div>
             </div>
             <div class="horae-panel-row">
-                <label><i class="fa-solid fa-users"></i> 在场</label>
+                <label><i class="fa-solid fa-users"></i> В сцене</label>
                 <div class="horae-panel-value">
-                    <input type="text" class="horae-input-characters" value="${escapeHtml((meta.scene?.characters_present || []).join(', '))}" placeholder="角色名，用逗号分隔">
+                    <input type="text" class="horae-input-characters" value="${escapeHtml((meta.scene?.characters_present || []).join(', '))}" placeholder="имена персонажей, через запятую">
                 </div>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-shirt"></i> 服装变化</label>
+                <label><i class="fa-solid fa-shirt"></i> Смена одежды</label>
                 <div class="horae-costume-editor">${costumeRows}</div>
-                <button class="horae-btn-add-costume"><i class="fa-solid fa-plus"></i> 添加</button>
+                <button class="horae-btn-add-costume"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             ${buildPanelMoodEditable(meta)}
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-box-open"></i> 物品获得/变化</label>
+                <label><i class="fa-solid fa-box-open"></i> Получение/смена предметов</label>
                 <div class="horae-items-editor">${itemRows}</div>
-                <button class="horae-btn-add-item"><i class="fa-solid fa-plus"></i> 添加</button>
+                <button class="horae-btn-add-item"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-trash-can"></i> 物品消耗/删除</label>
+                <label><i class="fa-solid fa-trash-can"></i> Расход/удаление предметов</label>
                 <div class="horae-deleted-items-display">${buildDeletedItemsDisplay(meta.deletedItems)}</div>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-bookmark"></i> 事件 ${multipleEventsNote}</label>
+                <label><i class="fa-solid fa-bookmark"></i> Событие ${multipleEventsNote}</label>
                 <div class="horae-event-editor">
                     <select class="horae-input-event-level">
-                        <option value="">无</option>
-                        <option value="一般" ${eventLevel === '一般' ? 'selected' : ''}>一般</option>
-                        <option value="重要" ${eventLevel === '重要' ? 'selected' : ''}>重要</option>
-                        <option value="关键" ${eventLevel === '关键' ? 'selected' : ''}>关键</option>
+                        <option value="">Нет</option>
+                        <option value="一般" ${eventLevel === '一般' ? 'selected' : ''}>Обычное</option>
+                        <option value="重要" ${eventLevel === '重要' ? 'selected' : ''}>Важное</option>
+                        <option value="关键" ${eventLevel === '关键' ? 'selected' : ''}>Ключевое</option>
                     </select>
-                    <input type="text" class="horae-input-event-summary" value="${escapeHtml(eventSummary)}" placeholder="事件摘要">
+                    <input type="text" class="horae-input-event-summary" value="${escapeHtml(eventSummary)}" placeholder="краткое описание события">
                 </div>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-heart"></i> 好感度</label>
+                <label><i class="fa-solid fa-heart"></i> Расположение</label>
                 <div class="horae-affection-editor">${affectionRows}</div>
-                <button class="horae-btn-add-affection"><i class="fa-solid fa-plus"></i> 添加</button>
+                <button class="horae-btn-add-affection"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-list-check"></i> 待办事项</label>
+                <label><i class="fa-solid fa-list-check"></i> Задачи</label>
                 <div class="horae-agenda-editor">${buildAgendaEditorRows(meta.agenda)}</div>
-                <button class="horae-btn-add-agenda-row"><i class="fa-solid fa-plus"></i> 添加</button>
+                <button class="horae-btn-add-agenda-row"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             ${buildPanelRelationships(meta)}
         </div>
         <div class="horae-panel-rescan">
-            <div class="horae-rescan-label"><i class="fa-solid fa-rotate"></i> 重新扫描此消息</div>
+            <div class="horae-rescan-label"><i class="fa-solid fa-rotate"></i> Повторно сканировать сообщение</div>
             <div class="horae-rescan-buttons">
-                <button class="horae-btn-quick-scan horae-btn" title="从现有文本中提取格式化数据（不消耗API）">
-                    <i class="fa-solid fa-bolt"></i> 快速解析
+                <button class="horae-btn-quick-scan horae-btn" title="Извлечь данные из существующего текста (без API)">
+                    <i class="fa-solid fa-bolt"></i> Быстрый разбор
                 </button>
-                <button class="horae-btn-ai-analyze horae-btn" title="使用AI分析消息内容（消耗API）">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI分析
+                <button class="horae-btn-ai-analyze horae-btn" title="Использовать ИИ для анализа (расходует API)">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> ИИ-анализ
                 </button>
             </div>
         </div>
         <div class="horae-panel-footer">
-            <button class="horae-btn-save horae-btn"><i class="fa-solid fa-check"></i> 保存</button>
-            <button class="horae-btn-cancel horae-btn"><i class="fa-solid fa-xmark"></i> 取消</button>
-            <button class="horae-btn-open-drawer horae-btn" title="打开 Horae 面板"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <button class="horae-btn-save horae-btn"><i class="fa-solid fa-check"></i> Сохранить</button>
+            <button class="horae-btn-cancel horae-btn"><i class="fa-solid fa-xmark"></i> Отмена</button>
+            <button class="horae-btn-open-drawer horae-btn" title="Открыть панель Horae"><i class="fa-solid fa-clock-rotate-left"></i></button>
         </div>
     `;
 }
 
 /**
- * 绑定面板事件
+ * Привязать события панели
  */
 function bindPanelEvents(panelEl) {
     if (!panelEl) return;
@@ -7017,7 +7017,7 @@ function bindPanelEvents(panelEl) {
     const messageId = parseInt(panelEl.dataset.messageId);
     const contentEl = panelEl.querySelector('.horae-panel-content');
     
-    // 头部区域事件只绑定一次，避免重复绑定导致 toggle 互相抵消
+    // Событие шапки привязывается один раз, чтобы избежать взаимной отмены toggle
     if (!panelEl._horaeBound) {
         panelEl._horaeBound = true;
         const toggleEl = panelEl.querySelector('.horae-panel-toggle');
@@ -7048,7 +7048,7 @@ function bindPanelEvents(panelEl) {
         });
     }
     
-    // 标记面板已修改
+    // Пометить панель как изменённую
     let panelDirty = false;
     contentEl?.addEventListener('input', () => { panelDirty = true; });
     contentEl?.addEventListener('change', () => { panelDirty = true; });
@@ -7059,7 +7059,7 @@ function bindPanelEvents(panelEl) {
     });
     
     panelEl.querySelector('.horae-btn-cancel')?.addEventListener('click', () => {
-        if (panelDirty && !confirm('有未保存的更改，确定关闭？')) return;
+        if (panelDirty && !confirm('Есть несохранённые изменения. Закрыть?')) return;
         contentEl.style.display = 'none';
         panelDirty = false;
     });
@@ -7072,7 +7072,7 @@ function bindPanelEvents(panelEl) {
             drawerIcon.removeClass('openIcon').addClass('closedIcon');
             drawerContent.removeClass('openDrawer').addClass('closedDrawer').css('display', 'none');
         } else {
-            // 关闭其他抽屉
+            // Закрыть другие ящики
             $('.openDrawer').not('#horae_drawer_content').not('.pinnedOpen').css('display', 'none')
                 .removeClass('openDrawer').addClass('closedDrawer');
             $('.openIcon').not('#horae_drawer_icon').not('.drawerPinnedOpen')
@@ -7089,8 +7089,8 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row">
-                <input type="text" class="char-input" placeholder="角色名">
-                <input type="text" placeholder="服装描述">
+                <input type="text" class="char-input" placeholder="Имя персонажа">
+                <input type="text" placeholder="описание одежды">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
@@ -7102,8 +7102,8 @@ function bindPanelEvents(panelEl) {
         if (!editor) return;
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-mood-row">
-                <input type="text" class="mood-char" placeholder="角色名">
-                <input type="text" class="mood-emotion" placeholder="情绪状态">
+                <input type="text" class="mood-char" placeholder="Имя персонажа">
+                <input type="text" class="mood-emotion" placeholder="эмоциональное состояние">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
@@ -7118,13 +7118,13 @@ function bindPanelEvents(panelEl) {
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-item-row">
                 <input type="text" class="item-icon" placeholder="📦" maxlength="2">
-                <input type="text" class="item-name" placeholder="物品名">
-                <input type="text" class="item-holder" placeholder="持有者">
-                <input type="text" class="item-location" placeholder="位置">
+                <input type="text" class="item-name" placeholder="название предмета">
+                <input type="text" class="item-holder" placeholder="владелец">
+                <input type="text" class="item-location" placeholder="местоположение">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="horae-editor-row horae-item-desc-row">
-                <input type="text" class="item-description" placeholder="物品描述">
+                <input type="text" class="item-description" placeholder="описание предмета">
             </div>
         `);
         bindDeleteButtons(editor);
@@ -7137,9 +7137,9 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-affection-row" data-char="" data-prev="0">
-                <input type="text" class="affection-char-input" placeholder="角色名">
-                <input type="text" class="affection-delta" value="+0" placeholder="±变化">
-                <input type="number" class="affection-total" value="0" placeholder="总值">
+                <input type="text" class="affection-char-input" placeholder="Имя персонажа">
+                <input type="text" class="affection-delta" value="+0" placeholder="±изменение">
+                <input type="number" class="affection-total" value="0" placeholder="итого">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
@@ -7147,7 +7147,7 @@ function bindPanelEvents(panelEl) {
         bindAffectionInputs(editor);
     });
     
-    // 添加待办事项行
+    // Добавить строку задачи
     panelEl.querySelector('.horae-btn-add-agenda-row')?.addEventListener('click', () => {
         const editor = panelEl.querySelector('.horae-agenda-editor');
         const emptyHint = editor.querySelector('.horae-empty-hint');
@@ -7155,51 +7155,51 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-agenda-edit-row">
-                <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="" placeholder="日期">
-                <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="" placeholder="待办内容（相对时间请标注绝对日期）">
+                <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="" placeholder="дата">
+                <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="" placeholder="содержание задачи (для относительного времени укажите абсолютную дату)">
                 <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
         bindDeleteButtons(editor);
     });
     
-    // 绑定好感度输入联动
+    // Привязать взаимосвязь полей расположения
     bindAffectionInputs(panelEl.querySelector('.horae-affection-editor'));
     
-    // 绑定现有删除按钮
+    // Привязать существующие кнопки удаления
     bindDeleteButtons(panelEl);
     
-    // 快速解析按钮（不消耗API）
+    // Кнопка быстрого разбора (без расхода API)
     panelEl.querySelector('.horae-btn-quick-scan')?.addEventListener('click', async () => {
         const chat = horaeManager.getChat();
         const message = chat[messageId];
         if (!message) {
-            showToast('无法获取消息内容', 'error');
+            showToast('Не удалось получить содержимое сообщения', 'error');
             return;
         }
         
-        // 先尝试解析标准标签
+        // Сначала попробовать разобрать стандартные теги
         let parsed = horaeManager.parseHoraeTag(message.mes);
         
-        // 如果没有标签，尝试宽松解析
+        // Если нет тегов, попробовать нестрогий разбор
         if (!parsed) {
             parsed = horaeManager.parseLooseFormat(message.mes);
         }
         
         if (parsed) {
-            // 获取现有元数据并合并
+            // Получить существующие метаданные и объединить
             const existingMeta = horaeManager.getMessageMeta(messageId) || createEmptyMeta();
             const newMeta = horaeManager.mergeParsedToMeta(existingMeta, parsed);
-            // 处理表格更新
+            // Обработать обновление таблиц
             if (newMeta._tableUpdates) {
                 horaeManager.applyTableUpdates(newMeta._tableUpdates);
                 delete newMeta._tableUpdates;
             }
-            // 处理已完成待办
+            // Обработать выполненные задачи
             if (parsed.deletedAgenda && parsed.deletedAgenda.length > 0) {
                 horaeManager.removeCompletedAgenda(parsed.deletedAgenda);
             }
-            // 全局同步
+            // Глобальная синхронизация
             if (parsed.relationships?.length > 0) {
                 horaeManager._mergeRelationships(parsed.relationships);
             }
@@ -7216,28 +7216,28 @@ function bindPanelEvents(panelEl) {
             
             getContext().saveChat();
             refreshAllDisplays();
-            showToast('快速解析完成！', 'success');
+            showToast('Быстрый разбор завершён!', 'success');
         } else {
-            showToast('未能从文本中提取到格式化数据，请尝试AI分析', 'warning');
+            showToast('Не удалось извлечь данные из текста, попробуйте ИИ-анализ', 'warning');
         }
     });
     
-    // AI分析按钮（消耗API）
+    // Кнопка ИИ-анализа (расходует API)
     panelEl.querySelector('.horae-btn-ai-analyze')?.addEventListener('click', async () => {
         const chat = horaeManager.getChat();
         const message = chat[messageId];
         if (!message) {
-            showToast('无法获取消息内容', 'error');
+            showToast('Не удалось получить содержимое сообщения', 'error');
             return;
         }
         
         const btn = panelEl.querySelector('.horae-btn-ai-analyze');
         const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 分析中...';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Анализ...';
         btn.disabled = true;
         
         try {
-            // 调用AI分析
+            // Вызов ИИ-анализа
             const result = await analyzeMessageWithAI(message.mes);
             
             if (result) {
@@ -7247,11 +7247,11 @@ function bindPanelEvents(panelEl) {
                     horaeManager.applyTableUpdates(newMeta._tableUpdates);
                     delete newMeta._tableUpdates;
                 }
-                // 处理已完成待办
+                // Обработать выполненные задачи
                 if (result.deletedAgenda && result.deletedAgenda.length > 0) {
                     horaeManager.removeCompletedAgenda(result.deletedAgenda);
                 }
-                // 全局同步
+                // Глобальная синхронизация
                 if (result.relationships?.length > 0) {
                     horaeManager._mergeRelationships(result.relationships);
                 }
@@ -7268,13 +7268,13 @@ function bindPanelEvents(panelEl) {
                 
                 getContext().saveChat();
                 refreshAllDisplays();
-                showToast('AI分析完成！', 'success');
+                showToast('ИИ-анализ завершён!', 'success');
             } else {
-                showToast('AI分析未返回有效数据', 'warning');
+                showToast('ИИ-анализ не вернул данных', 'warning');
             }
         } catch (error) {
-            console.error('[Horae] AI分析失败:', error);
-            showToast('AI分析失败: ' + error.message, 'error');
+            console.error('[Horae] Ошибка ИИ-анализа:', error);
+            showToast('Ошибка ИИ-анализа: ' + error.message, 'error');
         } finally {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -7283,7 +7283,7 @@ function bindPanelEvents(panelEl) {
 }
 
 /**
- * 绑定删除按钮事件
+ * Привязать события кнопок удаления
  */
 function bindDeleteButtons(container) {
     container.querySelectorAll('.delete-btn').forEach(btn => {
@@ -7292,7 +7292,7 @@ function bindDeleteButtons(container) {
 }
 
 /**
- * 绑定好感度输入框联动
+ * Привязать взаимосвязанные поля расположения
  */
 function bindAffectionInputs(container) {
     if (!container) return;
@@ -7316,7 +7316,7 @@ function bindAffectionInputs(container) {
     });
 }
 
-/** 切换消息的番外/小剧场标记 */
+/** Переключить метку побочной сцены для сообщения */
 function toggleSideplay(messageId, panelEl) {
     const meta = horaeManager.getMessageMeta(messageId);
     if (!meta) return;
@@ -7325,27 +7325,27 @@ function toggleSideplay(messageId, panelEl) {
     horaeManager.setMessageMeta(messageId, meta);
     getContext().saveChat();
     
-    // 重建面板
+    // Перестроить панель
     const messageEl = panelEl.closest('.mes');
     if (messageEl) {
         panelEl.remove();
         addMessagePanel(messageEl, messageId);
     }
     refreshAllDisplays();
-    showToast(meta._skipHorae ? '已标记为番外（不追踪）' : '已取消番外标记', 'success');
+    showToast(meta._skipHorae ? 'Помечено как побочная сцена (не отслеживается)' : 'Метка побочной сцены снята', 'success');
 }
 
-/** 重新扫描消息并更新面板（完全替换） */
+/** Повторно сканировать сообщение и обновить панель (полная замена) */
 function rescanMessageMeta(messageId, panelEl) {
-    // 从DOM获取最新的消息内容（用户可能已编辑）
+    // Получить последнее содержимое сообщения из DOM (пользователь мог редактировать)
     const messageEl = panelEl.closest('.mes');
     if (!messageEl) {
-        showToast('无法找到消息元素', 'error');
+        showToast('Элемент сообщения не найден', 'error');
         return;
     }
     
-    // 获取文本内容（包括隐藏的horae标签）
-    // 先尝试从chat数组获取最新内容
+    // Получить текстовое содержимое (включая скрытые теги horae)
+    // Сначала попытаться получить последнее содержимое из массива chat
     const context = window.SillyTavern?.getContext?.() || getContext?.();
     let messageContent = '';
     
@@ -7353,7 +7353,7 @@ function rescanMessageMeta(messageId, panelEl) {
         messageContent = context.chat[messageId].mes;
     }
     
-    // 如果chat中没有或为空，从DOM获取
+    // Если в chat нет или пусто, получить из DOM
     if (!messageContent) {
         const mesTextEl = messageEl.querySelector('.mes_text');
         if (mesTextEl) {
@@ -7362,7 +7362,7 @@ function rescanMessageMeta(messageId, panelEl) {
     }
     
     if (!messageContent) {
-        showToast('无法获取消息内容', 'error');
+        showToast('Не удалось получить содержимое сообщения', 'error');
         return;
     }
     
@@ -7370,35 +7370,35 @@ function rescanMessageMeta(messageId, panelEl) {
     
     if (parsed) {
         const existingMeta = horaeManager.getMessageMeta(messageId);
-        // 用 mergeParsedToMeta 以空 meta 为基础，确保所有字段一致处理
+        // Использовать mergeParsedToMeta с пустым meta как основой для единообразной обработки всех полей
         const newMeta = horaeManager.mergeParsedToMeta(createEmptyMeta(), parsed);
         
-        // 只保留原有的NPC数据（如果新解析中没有）
+        // Сохранить только исходные данные NPC (если в новом разборе их нет)
         if ((!parsed.npcs || Object.keys(parsed.npcs).length === 0) && existingMeta?.npcs) {
             newMeta.npcs = existingMeta.npcs;
         }
         
-        // 无新agenda则保留旧数据
+        // Если нет новых задач, сохранить старые данные
         if ((!newMeta.agenda || newMeta.agenda.length === 0) && existingMeta?.agenda?.length > 0) {
             newMeta.agenda = existingMeta.agenda;
         }
         
-        // 处理表格更新
+        // Обработать обновление таблиц
         if (newMeta._tableUpdates) {
             horaeManager.applyTableUpdates(newMeta._tableUpdates);
             delete newMeta._tableUpdates;
         }
         
-        // 处理已完成待办
+        // Обработать выполненные задачи
         if (parsed.deletedAgenda && parsed.deletedAgenda.length > 0) {
             horaeManager.removeCompletedAgenda(parsed.deletedAgenda);
         }
         
-        // 全局同步：关系网络合并到 chat[0]
+        // Глобальная синхронизация: слить сеть отношений в chat[0]
         if (parsed.relationships?.length > 0) {
             horaeManager._mergeRelationships(parsed.relationships);
         }
-        // 全局同步：场景记忆更新
+        // Глобальная синхронизация: обновить память о локациях
         if (parsed.scene?.scene_desc && parsed.scene?.location) {
             horaeManager._updateLocationMemory(parsed.scene.location, parsed.scene.scene_desc);
         }
@@ -7409,12 +7409,12 @@ function rescanMessageMeta(messageId, panelEl) {
         panelEl.remove();
         addMessagePanel(messageEl, messageId);
         
-        // 同时刷新主显示
+        // Одновременно обновить главное отображение
         refreshAllDisplays();
         
-        showToast('已重新扫描并更新', 'success');
+        showToast('Повторное сканирование выполнено и обновлено', 'success');
     } else {
-        // 无标签，清空数据（保留NPC）
+        // Нет тегов, очистить данные (сохранить NPC)
         const existingMeta = horaeManager.getMessageMeta(messageId);
         const newMeta = createEmptyMeta();
         if (existingMeta?.npcs) {
@@ -7426,19 +7426,19 @@ function rescanMessageMeta(messageId, panelEl) {
         addMessagePanel(messageEl, messageId);
         refreshAllDisplays();
         
-        showToast('未找到Horae标签，已清空数据', 'warning');
+        showToast('Теги Horae не найдены, данные очищены', 'warning');
     }
 }
 
 /**
- * 保存面板数据
+ * Сохранить данные панели
  */
 function savePanelData(panelEl, messageId) {
-    // 获取现有的 meta，保留面板中没有编辑区的数据（如 NPC）
+    // Получить существующий meta, сохранить данные без редактируемых областей в панели (например, NPC)
     const existingMeta = horaeManager.getMessageMeta(messageId);
     const meta = createEmptyMeta();
     
-    // 保留面板中没有编辑区的数据
+    // Сохранить данные без редактируемых областей в панели
     if (existingMeta?.npcs) {
         meta.npcs = JSON.parse(JSON.stringify(existingMeta.npcs));
     }
@@ -7452,7 +7452,7 @@ function savePanelData(panelEl, messageId) {
         meta.mood = JSON.parse(JSON.stringify(existingMeta.mood));
     }
     
-    // 分离日期时间
+    // Разделить дату и время
     const datetimeVal = (panelEl.querySelector('.horae-input-datetime')?.value || '').trim();
     const clockMatch = datetimeVal.match(/\b(\d{1,2}:\d{2})\s*$/);
     if (clockMatch) {
@@ -7464,13 +7464,13 @@ function savePanelData(panelEl, messageId) {
     }
     meta.timestamp.absolute = new Date().toISOString();
     
-    // 场景
+    // Сцена
     meta.scene.location = panelEl.querySelector('.horae-input-location')?.value || '';
     meta.scene.atmosphere = panelEl.querySelector('.horae-input-atmosphere')?.value || '';
     const charsInput = panelEl.querySelector('.horae-input-characters')?.value || '';
     meta.scene.characters_present = charsInput.split(/[,，]/).map(s => s.trim()).filter(Boolean);
     
-    // 服装
+    // Одежда
     panelEl.querySelectorAll('.horae-costume-editor .horae-editor-row').forEach(row => {
         const inputs = row.querySelectorAll('input');
         if (inputs.length >= 2) {
@@ -7482,7 +7482,7 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-    // 情绪
+    // Эмоции
     panelEl.querySelectorAll('.horae-mood-editor .horae-mood-row').forEach(row => {
         const charEl = row.querySelector('.mood-char');
         const emotionInput = row.querySelector('.mood-emotion');
@@ -7491,7 +7491,7 @@ function savePanelData(panelEl, messageId) {
         if (char && emotion) meta.mood[char] = emotion;
     });
     
-    // 物品配对处理
+    // Обработка пар предметов
     const itemMainRows = panelEl.querySelectorAll('.horae-items-editor .horae-item-row');
     const itemDescRows = panelEl.querySelectorAll('.horae-items-editor .horae-item-desc-row');
     const latestState = horaeManager.getLatestState();
@@ -7508,11 +7508,11 @@ function savePanelData(panelEl, messageId) {
         if (nameInput) {
             const name = nameInput.value.trim();
             if (name) {
-                // 从物品栏获取已保存的importance，底部栏不再编辑分类
+                // Получить сохранённую важность из инвентаря, нижняя панель больше не редактирует классификацию
                 const existingImportance = existingItems[name]?.importance || existingMeta?.items?.[name]?.importance || '';
                 meta.items[name] = {
                     icon: iconInput?.value.trim() || null,
-                    importance: existingImportance,  // 保留物品栏的分类
+                    importance: existingImportance,  // Сохранить классификацию инвентаря
                     holder: holderInput?.value.trim() || null,
                     location: locationInput?.value.trim() || '',
                     description: descInput?.value.trim() || ''
@@ -7521,7 +7521,7 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-    // 事件
+    // Событие
     const eventLevel = panelEl.querySelector('.horae-input-event-level')?.value;
     const eventSummary = panelEl.querySelector('.horae-input-event-summary')?.value;
     if (eventLevel && eventSummary) {
@@ -7545,7 +7545,7 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-    // 兼容旧格式
+    // Совместимость со старым форматом
     panelEl.querySelectorAll('.horae-affection-editor .horae-editor-row:not(.horae-affection-row)').forEach(row => {
         const inputs = row.querySelectorAll('input');
         if (inputs.length >= 2) {
@@ -7564,7 +7564,7 @@ function savePanelData(panelEl, messageId) {
         const date = dateInput?.value?.trim() || '';
         const text = textInput?.value?.trim() || '';
         if (text) {
-            // 保留原 source
+            // Сохранить исходный source
             const existingAgendaItem = existingMeta?.agenda?.find(a => a.text === text);
             const source = existingAgendaItem?.source || 'user';
             agendaItems.push({ date, text, source, done: false });
@@ -7573,13 +7573,13 @@ function savePanelData(panelEl, messageId) {
     if (agendaItems.length > 0) {
         meta.agenda = agendaItems;
     } else if (existingMeta?.agenda?.length > 0) {
-        // 无编辑行时保留原有待办
+        // При отсутствии редактируемых строк сохранить исходные задачи
         meta.agenda = existingMeta.agenda;
     }
     
     horaeManager.setMessageMeta(messageId, meta);
     
-    // 全局同步
+    // Глобальная синхронизация
     if (meta.relationships?.length > 0) {
         horaeManager._mergeRelationships(meta.relationships);
     }
@@ -7587,15 +7587,15 @@ function savePanelData(panelEl, messageId) {
         horaeManager._updateLocationMemory(meta.scene.location, meta.scene.scene_desc);
     }
     
-    // 同步写入正文标签
+    // Синхронно записать теги в основной текст
     injectHoraeTagToMessage(messageId, meta);
     
     getContext().saveChat();
     
-    showToast('保存成功！', 'success');
+    showToast('Сохранено успешно!', 'success');
     refreshAllDisplays();
     
-    // 更新面板摘要
+    // Обновить краткое описание панели
     const summaryTime = panelEl.querySelector('.horae-summary-time');
     const summaryEvent = panelEl.querySelector('.horae-summary-event');
     const summaryChars = panelEl.querySelector('.horae-summary-chars');
@@ -7614,14 +7614,14 @@ function savePanelData(panelEl, messageId) {
     }
     if (summaryEvent) {
         const evts = meta.events || (meta.event ? [meta.event] : []);
-        summaryEvent.textContent = evts.length > 0 ? evts.map(e => e.summary).join(' | ') : '无特殊事件';
+        summaryEvent.textContent = evts.length > 0 ? evts.map(e => e.summary).join(' | ') : 'Нет особых событий';
     }
     if (summaryChars) {
-        summaryChars.textContent = `${meta.scene.characters_present.length}人在场`;
+        summaryChars.textContent = `${meta.scene.characters_present.length} в сцене`;
     }
 }
 
-/** 构建 <horae> 标签字符串 */
+/** Построить строку тега <horae> */
 function buildHoraeTagFromMeta(meta) {
     const lines = [];
     
@@ -7685,7 +7685,7 @@ function buildHoraeTagFromMeta(meta) {
         }
     }
     
-    // npcs（使用新格式：npc:名|外貌=性格@关系~扩展字段）
+    // NPC (новый формат: npc:имя|внешность=характер@отношения~доп.поля)
     if (meta.npcs) {
         for (const [name, info] of Object.entries(meta.npcs)) {
             if (!name) continue;
@@ -7740,7 +7740,7 @@ function buildHoraeTagFromMeta(meta) {
     return `<horae>\n${lines.join('\n')}\n</horae>`;
 }
 
-/** 构建 <horaeevent> 标签字符串 */
+/** Построить строку тега <horaeevent> */
 function buildHoraeEventTagFromMeta(meta) {
     const events = meta.events || (meta.event ? [meta.event] : []);
     if (events.length === 0) return '';
@@ -7753,7 +7753,7 @@ function buildHoraeEventTagFromMeta(meta) {
     return `<horaeevent>\n${lines.join('\n')}\n</horaeevent>`;
 }
 
-/** 同步注入正文标签 */
+/** Синхронно внедрить теги в основной текст */
 function injectHoraeTagToMessage(messageId, meta) {
     try {
         const chat = horaeManager.getChat();
@@ -7762,7 +7762,7 @@ function injectHoraeTagToMessage(messageId, meta) {
         const message = chat[messageId];
         let mes = message.mes;
         
-        // === 处理 <horae> 标签 ===
+        // === Обработка тега <horae> ===
         const newHoraeTag = buildHoraeTagFromMeta(meta);
         const hasHoraeTag = /<horae>[\s\S]*?<\/horae>/i.test(mes);
         
@@ -7774,7 +7774,7 @@ function injectHoraeTagToMessage(messageId, meta) {
             mes = mes.trimEnd() + '\n\n' + newHoraeTag;
         }
         
-        // === 处理 <horaeevent> 标签 ===
+        // === Обработка тега <horaeevent> ===
         const newEventTag = buildHoraeEventTagFromMeta(meta);
         const hasEventTag = /<horaeevent>[\s\S]*?<\/horaeevent>/i.test(mes);
         
@@ -7787,25 +7787,25 @@ function injectHoraeTagToMessage(messageId, meta) {
         }
         
         message.mes = mes;
-        console.log(`[Horae] 已同步写入消息 #${messageId} 的标签`);
+        console.log(`[Horae] Теги синхронно записаны в сообщение #${messageId}`);
     } catch (error) {
-        console.error(`[Horae] 写入标签失败:`, error);
+        console.error(`[Horae] Ошибка записи тегов:`, error);
     }
 }
 
 // ============================================
-// 抽屉面板交互
+// Взаимодействие с панелью-ящиком
 // ============================================
 
 /**
- * 打开/关闭抽屉（旧版兼容模式）
+ * Открыть/закрыть ящик (режим совместимости со старой версией)
  */
 function openDrawerLegacy() {
     const drawerIcon = $('#horae_drawer_icon');
     const drawerContent = $('#horae_drawer_content');
     
     if (drawerIcon.hasClass('closedIcon')) {
-        // 关闭其他抽屉
+        // Закрыть другие ящики
         $('.openDrawer').not('#horae_drawer_content').not('.pinnedOpen').addClass('resizing').each((_, el) => {
             slideToggle(el, {
                 ...getSlideToggleOptions(),
@@ -7838,23 +7838,23 @@ function openDrawerLegacy() {
 }
 
 /**
- * 初始化抽屉
+ * Инициализировать ящик
  */
 async function initDrawer() {
     const toggle = $('#horae_drawer .drawer-toggle');
     
     if (isNewNavbarVersion()) {
         toggle.on('click', doNavbarIconClick);
-        console.log(`[Horae] 使用新版导航栏模式`);
+        console.log(`[Horae] Используется новый режим навигационной панели`);
     } else {
         $('#horae_drawer_content').attr('data-slide-toggle', 'hidden').css('display', 'none');
         toggle.on('click', openDrawerLegacy);
-        console.log(`[Horae] 使用旧版抽屉模式`);
+        console.log(`[Horae] Используется устаревший режим ящика`);
     }
 }
 
 /**
- * 初始化标签页切换
+ * Инициализировать переключение вкладок
  */
 function initTabs() {
     $('.horae-tab').on('click', function() {
@@ -7885,11 +7885,11 @@ function initTabs() {
 }
 
 // ============================================
-// 清理无主物品功能
+// Функция очистки бесхозных предметов
 // ============================================
 
 /**
- * 初始化设置页事件
+ * Инициализировать события страницы настроек
  */
 function initSettingsEvents() {
     $('#horae-btn-restart-tutorial').on('click', () => startTutorial());
@@ -7944,9 +7944,9 @@ function initSettingsEvents() {
         const result = repairAllSummaryStates();
         if (result > 0) {
             updateTimelineDisplay();
-            showToast(`已修复 ${result} 处摘要状态`, 'success');
+            showToast(`Исправлено ${result} состояний сводки`, 'success');
         } else {
-            showToast('所有摘要状态正常，无需修复', 'info');
+            showToast('Все состояния сводок в норме, исправление не требуется', 'info');
         }
     });
     
@@ -7958,7 +7958,7 @@ function initSettingsEvents() {
     $('#horae-btn-add-location').on('click', () => openLocationEditModal(null));
     $('#horae-btn-merge-locations').on('click', openLocationMergeModal);
 
-    // RPG 属性条配置
+    // Конфигурация полос атрибутов RPG
     $(document).on('input', '.horae-rpg-config-key', function() {
         const i = parseInt(this.dataset.idx);
         if (settings.rpgBarConfig?.[i]) {
@@ -7998,21 +7998,21 @@ function initSettingsEvents() {
             updateTokenCounter();
         }
     });
-    // 属性条：恢复默认
+    // Полосы атрибутов: сброс по умолчанию
     $('#horae-rpg-bar-reset').on('click', () => {
-        if (!confirm('确定恢复属性条为默认配置（HP/MP/SP）？')) return;
+        if (!confirm('Сбросить полосы атрибутов до конфигурации по умолчанию (HP/MP/SP)?')) return;
         settings.rpgBarConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgBarConfig));
         saveSettings(); renderBarConfig();
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-        showToast('已恢复默认属性条', 'success');
+        showToast('Полосы атрибутов сброшены до значений по умолчанию', 'success');
     });
-    // 属性条：导出
+    // Полосы атрибутов: экспорт
     $('#horae-rpg-bar-export').on('click', () => {
         const blob = new Blob([JSON.stringify(settings.rpgBarConfig, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'horae-rpg-bars.json'; a.click(); URL.revokeObjectURL(a.href);
     });
-    // 属性条：导入
+    // Полосы атрибутов: импорт
     $('#horae-rpg-bar-import').on('click', () => document.getElementById('horae-rpg-bar-import-file')?.click());
     $('#horae-rpg-bar-import-file').on('change', function() {
         const file = this.files?.[0];
@@ -8021,31 +8021,31 @@ function initSettingsEvents() {
         reader.onload = () => {
             try {
                 const arr = JSON.parse(reader.result);
-                if (!Array.isArray(arr) || !arr.every(b => b.key && b.name)) throw new Error('格式不正确');
+                if (!Array.isArray(arr) || !arr.every(b => b.key && b.name)) throw new Error('Неверный формат');
                 settings.rpgBarConfig = arr;
                 saveSettings(); renderBarConfig();
                 horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-                showToast(`已导入 ${arr.length} 条属性条配置`, 'success');
-            } catch (e) { showToast('导入失败: ' + e.message, 'error'); }
+                showToast(`Импортировано ${arr.length} конфигураций полос атрибутов`, 'success');
+            } catch (e) { showToast('Ошибка импорта: ' + e.message, 'error'); }
         };
         reader.readAsText(file);
         this.value = '';
     });
-    // 属性面板：恢复默认
+    // Панель атрибутов: сброс по умолчанию
     $('#horae-rpg-attr-reset').on('click', () => {
-        if (!confirm('确定恢复属性面板为默认配置（DND六维）？')) return;
+        if (!confirm('Сбросить панель атрибутов до конфигурации по умолчанию (шесть параметров DnD)?')) return;
         settings.rpgAttributeConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgAttributeConfig));
         saveSettings(); renderAttrConfig();
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-        showToast('已恢复默认属性面板', 'success');
+        showToast('Панель атрибутов сброшена до значений по умолчанию', 'success');
     });
-    // 属性面板：导出
+    // Панель атрибутов: экспорт
     $('#horae-rpg-attr-export').on('click', () => {
         const blob = new Blob([JSON.stringify(settings.rpgAttributeConfig, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'horae-rpg-attrs.json'; a.click(); URL.revokeObjectURL(a.href);
     });
-    // 属性面板：导入
+    // Панель атрибутов: импорт
     $('#horae-rpg-attr-import').on('click', () => document.getElementById('horae-rpg-attr-import-file')?.click());
     $('#horae-rpg-attr-import-file').on('change', function() {
         const file = this.files?.[0];
@@ -8054,12 +8054,12 @@ function initSettingsEvents() {
         reader.onload = () => {
             try {
                 const arr = JSON.parse(reader.result);
-                if (!Array.isArray(arr) || !arr.every(a => a.key && a.name)) throw new Error('格式不正确');
+                if (!Array.isArray(arr) || !arr.every(a => a.key && a.name)) throw new Error('Неверный формат');
                 settings.rpgAttributeConfig = arr;
                 saveSettings(); renderAttrConfig();
                 horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-                showToast(`已导入 ${arr.length} 条属性配置`, 'success');
-            } catch (e) { showToast('导入失败: ' + e.message, 'error'); }
+                showToast(`Импортировано ${arr.length} конфигураций атрибутов`, 'success');
+            } catch (e) { showToast('Ошибка импорта: ' + e.message, 'error'); }
         };
         reader.readAsText(file);
         this.value = '';
@@ -8078,7 +8078,7 @@ function initSettingsEvents() {
         updateTokenCounter();
     });
 
-    // 角色卡内编辑属性按钮
+    // Кнопка редактирования атрибутов в карточке персонажа
     $(document).on('click', '.horae-rpg-charattr-edit', function() {
         const charName = this.dataset.char;
         if (!charName) return;
@@ -8090,13 +8090,13 @@ function initSettingsEvents() {
             `<div class="horae-rpg-charattr-row"><label>${escapeHtml(a.name)}(${escapeHtml(a.key)})</label><input type="number" class="horae-rpg-charattr-val" data-key="${escapeHtml(a.key)}" min="0" max="100" placeholder="0-100" /></div>`
         ).join('');
         form.innerHTML = `
-            <div class="horae-rpg-form-title">编辑: ${escapeHtml(charName)}</div>
+            <div class="horae-rpg-form-title">Редактирование: ${escapeHtml(charName)}</div>
             ${attrInputs}
             <div class="horae-rpg-form-actions">
-                <button id="horae-rpg-charattr-save-inline" class="horae-rpg-btn-sm" data-char="${escapeHtml(charName)}">保存</button>
-                <button id="horae-rpg-charattr-cancel-inline" class="horae-rpg-btn-sm horae-rpg-btn-muted">取消</button>
+                <button id="horae-rpg-charattr-save-inline" class="horae-rpg-btn-sm" data-char="${escapeHtml(charName)}">Сохранить</button>
+                <button id="horae-rpg-charattr-cancel-inline" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
-        // 填入现有值
+        // Заполнить существующими значениями
         const rpg = getContext().chat?.[0]?.horae_meta?.rpg;
         const existing = rpg?.attributes?.[charName] || {};
         form.querySelectorAll('.horae-rpg-charattr-val').forEach(inp => {
@@ -8112,7 +8112,7 @@ function initSettingsEvents() {
                 const v = parseInt(inp.value);
                 if (!isNaN(v)) { vals[k] = Math.max(0, Math.min(100, v)); hasVal = true; }
             });
-            if (!hasVal) { showToast('请至少填写一个属性值', 'warning'); return; }
+            if (!hasVal) { showToast('Заполните хотя бы одно значение атрибута', 'warning'); return; }
             const chat = getContext().chat;
             if (!chat?.[0]?.horae_meta) return;
             if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = { bars: {}, status: {}, skills: {}, attributes: {} };
@@ -8121,7 +8121,7 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('已保存角色属性', 'success');
+            showToast('Атрибуты персонажа сохранены', 'success');
         });
         form.querySelector('#horae-rpg-charattr-cancel-inline').addEventListener('click', () => {
             form.style.display = 'none';
@@ -8129,13 +8129,13 @@ function initSettingsEvents() {
         form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
-    // RPG 角色属性手动添加/编辑
+    // Ручное добавление/редактирование атрибутов персонажа RPG
     $('#horae-rpg-add-charattr').on('click', () => {
         const form = document.getElementById('horae-rpg-charattr-form');
         if (!form) return;
         if (form.style.display !== 'none') { form.style.display = 'none'; return; }
         const attrCfg = settings.rpgAttributeConfig || [];
-        if (!attrCfg.length) { showToast('请先在属性面板配置中添加属性', 'warning'); return; }
+        if (!attrCfg.length) { showToast('Сначала добавьте атрибуты в конфигурации панели атрибутов', 'warning'); return; }
         const attrInputs = attrCfg.map(a =>
             `<div class="horae-rpg-charattr-row"><label>${escapeHtml(a.name)}(${escapeHtml(a.key)})</label><input type="number" class="horae-rpg-charattr-val" data-key="${escapeHtml(a.key)}" min="0" max="100" placeholder="0-100" /></div>`
         ).join('');
@@ -8143,12 +8143,12 @@ function initSettingsEvents() {
             <select id="horae-rpg-charattr-owner">${buildCharacterOptions()}</select>
             ${attrInputs}
             <div class="horae-rpg-form-actions">
-                <button id="horae-rpg-charattr-load" class="horae-rpg-btn-sm horae-rpg-btn-muted">加载现有</button>
-                <button id="horae-rpg-charattr-save" class="horae-rpg-btn-sm">保存</button>
-                <button id="horae-rpg-charattr-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">取消</button>
+                <button id="horae-rpg-charattr-load" class="horae-rpg-btn-sm horae-rpg-btn-muted">Загрузить существующие</button>
+                <button id="horae-rpg-charattr-save" class="horae-rpg-btn-sm">Сохранить</button>
+                <button id="horae-rpg-charattr-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
         form.style.display = '';
-        // 加载已有数据
+        // Загрузить существующие данные
         form.querySelector('#horae-rpg-charattr-load').addEventListener('click', () => {
             const ownerVal = form.querySelector('#horae-rpg-charattr-owner').value;
             const owner = ownerVal === '__user__' ? (getContext().name1 || '{{user}}') : ownerVal;
@@ -8169,7 +8169,7 @@ function initSettingsEvents() {
                 const v = parseInt(inp.value);
                 if (!isNaN(v)) { vals[k] = Math.max(0, Math.min(100, v)); hasVal = true; }
             });
-            if (!hasVal) { showToast('请至少填写一个属性值', 'warning'); return; }
+            if (!hasVal) { showToast('Заполните хотя бы одно значение атрибута', 'warning'); return; }
             const chat = getContext().chat;
             if (!chat?.[0]?.horae_meta) return;
             if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = { bars: {}, status: {}, skills: {}, attributes: {} };
@@ -8178,32 +8178,32 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('已保存角色属性', 'success');
+            showToast('Атрибуты персонажа сохранены', 'success');
         });
         form.querySelector('#horae-rpg-charattr-cancel').addEventListener('click', () => {
             form.style.display = 'none';
         });
     });
 
-    // RPG 技能增删
+    // Добавление/удаление навыков RPG
     $('#horae-rpg-add-skill').on('click', () => {
         const form = document.getElementById('horae-rpg-skill-form');
         if (!form) return;
         if (form.style.display !== 'none') { form.style.display = 'none'; return; }
         form.innerHTML = `
             <select id="horae-rpg-skill-owner">${buildCharacterOptions()}</select>
-            <input id="horae-rpg-skill-name" placeholder="技能名" maxlength="30" />
-            <input id="horae-rpg-skill-level" placeholder="等级（可选）" maxlength="10" />
-            <input id="horae-rpg-skill-desc" placeholder="效果描述（可选）" maxlength="80" />
+            <input id="horae-rpg-skill-name" placeholder="Название навыка" maxlength="30" />
+            <input id="horae-rpg-skill-level" placeholder="Уровень (необязательно)" maxlength="10" />
+            <input id="horae-rpg-skill-desc" placeholder="Описание эффекта (необязательно)" maxlength="80" />
             <div class="horae-rpg-form-actions">
-                <button id="horae-rpg-skill-save" class="horae-rpg-btn-sm">确定</button>
-                <button id="horae-rpg-skill-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">取消</button>
+                <button id="horae-rpg-skill-save" class="horae-rpg-btn-sm">Подтвердить</button>
+                <button id="horae-rpg-skill-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
         form.style.display = '';
         form.querySelector('#horae-rpg-skill-save').addEventListener('click', () => {
             const ownerVal = form.querySelector('#horae-rpg-skill-owner').value;
             const skillName = form.querySelector('#horae-rpg-skill-name').value.trim();
-            if (!skillName) { showToast('请填写技能名', 'warning'); return; }
+            if (!skillName) { showToast('Введите название навыка', 'warning'); return; }
             const owner = ownerVal === '__user__' ? (getContext().name1 || '{{user}}') : ownerVal;
             const chat = getContext().chat;
             if (!chat?.[0]?.horae_meta) return;
@@ -8218,7 +8218,7 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('已添加技能', 'success');
+            showToast('Навык добавлен', 'success');
         });
         form.querySelector('#horae-rpg-skill-cancel').addEventListener('click', () => {
             form.style.display = 'none';
@@ -8241,7 +8241,7 @@ function initSettingsEvents() {
         }
     });
 
-    // 属性面板配置
+    // Конфигурация панели атрибутов
     $(document).on('input', '.horae-rpg-config-key[data-type="attr"]', function() {
         const i = parseInt(this.dataset.idx);
         if (settings.rpgAttributeConfig?.[i]) {
@@ -8285,7 +8285,7 @@ function initSettingsEvents() {
         settings.rpgAttrViewMode = settings.rpgAttrViewMode === 'radar' ? 'text' : 'radar';
         saveSettings(); updateRpgDisplay();
     });
-    // 属性面板开关
+    // Переключатель панели атрибутов
     $('#horae-setting-rpg-attrs').on('change', function() {
         settings.sendRpgAttributes = this.checked;
         saveSettings();
@@ -8293,7 +8293,7 @@ function initSettingsEvents() {
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
         updateRpgDisplay();
     });
-    // RPG 自定义提示词
+    // Пользовательский промпт RPG
     $('#horae-custom-rpg-prompt').on('input', function() {
         const val = this.value;
         settings.customRpgPrompt = (val.trim() === horaeManager.getDefaultRpgPrompt().trim()) ? '' : val;
@@ -8302,7 +8302,7 @@ function initSettingsEvents() {
         _refreshSystemPromptDisplay(); updateTokenCounter();
     });
     $('#horae-btn-reset-rpg-prompt').on('click', () => {
-        if (!confirm('确定恢复 RPG 提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт RPG до значения по умолчанию?')) return;
         settings.customRpgPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultRpgPrompt();
@@ -8351,7 +8351,7 @@ function initSettingsEvents() {
     
     $('#horae-btn-items-refresh').on('click', () => {
         updateItemsDisplay();
-        showToast('物品列表已刷新', 'info');
+        showToast('Список предметов обновлён', 'info');
     });
     
     $('#horae-setting-send-timeline').on('change', function() {
@@ -8422,7 +8422,7 @@ function initSettingsEvents() {
         });
     });
 
-    // RPG 模式
+    // RPG-режим
     $('#horae-setting-rpg-mode').on('change', function() {
         settings.rpgMode = this.checked;
         saveSettings();
@@ -8462,10 +8462,10 @@ function initSettingsEvents() {
         settings.dicePosY = null;
         saveSettings();
         renderDicePanel();
-        showToast('骰子面板位置已重置', 'success');
+        showToast('Положение панели кубиков сброшено', 'success');
     });
 
-    // 自动摘要折叠面板
+    // Авто-сводка: свёртывание панели
     $('#horae-autosummary-collapse-toggle').on('click', function() {
         const body = $('#horae-autosummary-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -8473,7 +8473,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-    // 自动摘要设置
+    // Авто-сводка: настройки
     $('#horae-setting-auto-summary').on('change', function() {
         settings.autoSummaryEnabled = this.checked;
         saveSettings();
@@ -8540,27 +8540,27 @@ function initSettingsEvents() {
         applyPanelWidth();
     });
 
-    // 主题模式切换
+    // Переключение режима темы
     $('#horae-setting-theme-mode').on('change', function() {
         settings.themeMode = this.value;
         saveSettings();
         applyThemeMode();
     });
 
-    // 美化导入/导出/删除/自助美化
+    // Импорт/экспорт/удаление темы / инструмент настройки темы
     $('#horae-btn-theme-export').on('click', exportTheme);
     $('#horae-btn-theme-import').on('click', importTheme);
     $('#horae-btn-theme-designer').on('click', openThemeDesigner);
     $('#horae-btn-theme-delete').on('click', function() {
         const mode = settings.themeMode || 'dark';
         if (!mode.startsWith('custom-')) {
-            showToast('仅可删除导入的自定义美化', 'warning');
+            showToast('Можно удалить только импортированные пользовательские темы', 'warning');
             return;
         }
         deleteCustomTheme(parseInt(mode.split('-')[1]));
     });
 
-    // 自定义CSS
+    // Пользовательский CSS
     $('#horae-custom-css').on('change', function() {
         settings.customCSS = this.value;
         saveSettings();
@@ -8578,7 +8578,7 @@ function initSettingsEvents() {
         const file = e.target.files[0];
         if (file) {
             importTable(file);
-            e.target.value = ''; // 清空以便可以再次选择同一文件
+            e.target.value = ''; // Сбросить для возможности повторного выбора того же файла
         }
     });
     renderCustomTablesList();
@@ -8587,7 +8587,7 @@ function initSettingsEvents() {
     $('#horae-btn-import').on('click', importData);
     $('#horae-btn-clear').on('click', clearAllData);
     
-    // 好感度显示/隐藏（不可用hidden类名，酒馆全局有display:none规则）
+    // Показать/скрыть расположение (нельзя использовать класс hidden, в SillyTavern глобально есть правило display:none)
     $('#horae-affection-toggle').on('click', function() {
         const list = $('#horae-affection-list');
         const icon = $(this).find('i');
@@ -8602,10 +8602,10 @@ function initSettingsEvents() {
         }
     });
     
-    // 自定义提示词
+    // Пользовательские промпты
     $('#horae-custom-system-prompt').on('input', function() {
         const val = this.value;
-        // 与默认一致时视为未自定义
+        // Если совпадает с по умолчанию, считается ненастроенным
         settings.customSystemPrompt = (val.trim() === horaeManager.getDefaultSystemPrompt().trim()) ? '' : val;
         $('#horae-system-prompt-count').text(val.length);
         saveSettings();
@@ -8621,7 +8621,7 @@ function initSettingsEvents() {
     });
     
     $('#horae-btn-reset-system-prompt').on('click', () => {
-        if (!confirm('确定恢复系统注入提示词为默认值？')) return;
+        if (!confirm('Сбросить системный промпт до значения по умолчанию?')) return;
         settings.customSystemPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultSystemPrompt();
@@ -8629,20 +8629,20 @@ function initSettingsEvents() {
         $('#horae-system-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
     
     $('#horae-btn-reset-batch-prompt').on('click', () => {
-        if (!confirm('确定恢复AI摘要提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт ИИ-сводки до значения по умолчанию?')) return;
         settings.customBatchPrompt = '';
         saveSettings();
         const def = getDefaultBatchPrompt();
         $('#horae-custom-batch-prompt').val(def);
         $('#horae-batch-prompt-count').text(def.length);
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // AI分析提示词
+    // Промпт для ИИ-анализа
     $('#horae-custom-analysis-prompt').on('input', function() {
         const val = this.value;
         settings.customAnalysisPrompt = (val.trim() === getDefaultAnalysisPrompt().trim()) ? '' : val;
@@ -8651,16 +8651,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-analysis-prompt').on('click', () => {
-        if (!confirm('确定恢复AI分析提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт ИИ-анализа до значения по умолчанию?')) return;
         settings.customAnalysisPrompt = '';
         saveSettings();
         const def = getDefaultAnalysisPrompt();
         $('#horae-custom-analysis-prompt').val(def);
         $('#horae-analysis-prompt-count').text(def.length);
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 剧情压缩提示词
+    // Промпт для сжатия сюжета
     $('#horae-custom-compress-prompt').on('input', function() {
         const val = this.value;
         settings.customCompressPrompt = (val.trim() === getDefaultCompressPrompt().trim()) ? '' : val;
@@ -8669,16 +8669,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-compress-prompt').on('click', () => {
-        if (!confirm('确定恢复剧情压缩提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт сжатия сюжета до значения по умолчанию?')) return;
         settings.customCompressPrompt = '';
         saveSettings();
         const def = getDefaultCompressPrompt();
         $('#horae-custom-compress-prompt').val(def);
         $('#horae-compress-prompt-count').text(def.length);
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 自动摘要提示词
+    // Авто-сводка: промпт
     $('#horae-custom-auto-summary-prompt').on('input', function() {
         const val = this.value;
         settings.customAutoSummaryPrompt = (val.trim() === getDefaultAutoSummaryPrompt().trim()) ? '' : val;
@@ -8687,16 +8687,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-auto-summary-prompt').on('click', () => {
-        if (!confirm('确定恢复自动摘要提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт авто-сводки до значения по умолчанию?')) return;
         settings.customAutoSummaryPrompt = '';
         saveSettings();
         const def = getDefaultAutoSummaryPrompt();
         $('#horae-custom-auto-summary-prompt').val(def);
         $('#horae-auto-summary-prompt-count').text(def.length);
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 表格填写规则提示词
+    // Промпт для правил заполнения таблиц
     $('#horae-custom-tables-prompt').on('input', function() {
         const val = this.value;
         settings.customTablesPrompt = (val.trim() === horaeManager.getDefaultTablesPrompt().trim()) ? '' : val;
@@ -8707,7 +8707,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-tables-prompt').on('click', () => {
-        if (!confirm('确定恢复表格填写规则提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт правил заполнения таблиц до значения по умолчанию?')) return;
         settings.customTablesPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultTablesPrompt();
@@ -8715,10 +8715,10 @@ function initSettingsEvents() {
         $('#horae-tables-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 场景记忆提示词
+    // Память о локациях: промпт
     $('#horae-custom-location-prompt').on('input', function() {
         const val = this.value;
         settings.customLocationPrompt = (val.trim() === horaeManager.getDefaultLocationPrompt().trim()) ? '' : val;
@@ -8729,7 +8729,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-location-prompt').on('click', () => {
-        if (!confirm('确定恢复场景记忆提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт памяти о локациях до значения по умолчанию?')) return;
         settings.customLocationPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultLocationPrompt();
@@ -8737,10 +8737,10 @@ function initSettingsEvents() {
         $('#horae-location-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 关系网络提示词
+    // Промпт для сети отношений
     $('#horae-custom-relationship-prompt').on('input', function() {
         const val = this.value;
         settings.customRelationshipPrompt = (val.trim() === horaeManager.getDefaultRelationshipPrompt().trim()) ? '' : val;
@@ -8751,7 +8751,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-relationship-prompt').on('click', () => {
-        if (!confirm('确定恢复关系网络提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт сети отношений до значения по умолчанию?')) return;
         settings.customRelationshipPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultRelationshipPrompt();
@@ -8759,10 +8759,10 @@ function initSettingsEvents() {
         $('#horae-relationship-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 情绪追踪提示词
+    // Отслеживание эмоций: промпт
     $('#horae-custom-mood-prompt').on('input', function() {
         const val = this.value;
         settings.customMoodPrompt = (val.trim() === horaeManager.getDefaultMoodPrompt().trim()) ? '' : val;
@@ -8773,7 +8773,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-mood-prompt').on('click', () => {
-        if (!confirm('确定恢复情绪追踪提示词为默认值？')) return;
+        if (!confirm('Сбросить промпт отслеживания эмоций до значения по умолчанию?')) return;
         settings.customMoodPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultMoodPrompt();
@@ -8781,10 +8781,10 @@ function initSettingsEvents() {
         $('#horae-mood-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('已恢复默认提示词', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-    // 提示词区域折叠切换
+    // Переключение сворачивания области промптов
     $('#horae-prompt-collapse-toggle').on('click', function() {
         const body = $('#horae-prompt-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -8792,7 +8792,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-    // 自定义CSS区域折叠切换
+    // Пользовательский CSS: переключение свёртывания
     $('#horae-css-collapse-toggle').on('click', function() {
         const body = $('#horae-css-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -8800,7 +8800,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-    // 向量记忆区域折叠切换
+    // Векторная память: переключение свёртывания
     $('#horae-vector-collapse-toggle').on('click', function() {
         const body = $('#horae-vector-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -8826,7 +8826,7 @@ function initSettingsEvents() {
         _syncVectorSourceUI();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('向量来源已切换，索引已清除，正在加载...', 'info');
+                showToast('Источник векторов изменён, индекс очищен, идёт загрузка...', 'info');
                 _initVectorModel();
             });
         }
@@ -8837,7 +8837,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('模型已更换，索引已清除，正在加载新模型...', 'info');
+                showToast('Модель изменена, индекс очищен, идёт загрузка новой модели...', 'info');
                 _initVectorModel();
             });
         }
@@ -8848,7 +8848,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('量化精度已更换，索引已清除，正在重新加载...', 'info');
+                showToast('Точность квантования изменена, индекс очищен, идёт перезагрузка...', 'info');
                 _initVectorModel();
             });
         }
@@ -8869,7 +8869,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled && settings.vectorSource === 'api') {
             vectorManager.clearIndex().then(() => {
-                showToast('API 模型已更换，索引已清除，正在重新连接...', 'info');
+                showToast('Модель API изменена, индекс очищен, идёт повторное подключение...', 'info');
                 _initVectorModel();
             });
         }
@@ -8931,7 +8931,7 @@ function initSettingsEvents() {
 }
 
 /**
- * 同步设置到UI
+ * Синхронизировать настройки с UI
  */
 function _refreshSystemPromptDisplay() {
     if (settings.customSystemPrompt) return;
@@ -8961,26 +8961,26 @@ function syncSettingsToUI() {
     
     applyTopIconVisibility();
     
-    // 场景记忆
+    // Память о локациях
     $('#horae-setting-send-location-memory').prop('checked', !!settings.sendLocationMemory);
     $('#horae-location-prompt-group').toggle(!!settings.sendLocationMemory);
     $('.horae-tab[data-tab="locations"]').toggle(!!settings.sendLocationMemory);
     
-    // 关系网络
+    // Сеть отношений
     $('#horae-setting-send-relationships').prop('checked', !!settings.sendRelationships);
     $('#horae-relationship-section').toggle(!!settings.sendRelationships);
     $('#horae-relationship-prompt-group').toggle(!!settings.sendRelationships);
     
-    // 情绪追踪
+    // Отслеживание эмоций
     $('#horae-setting-send-mood').prop('checked', !!settings.sendMood);
     $('#horae-mood-prompt-group').toggle(!!settings.sendMood);
     
-    // 反转述模式
+    // Режим без пересказа
     $('#horae-setting-anti-paraphrase').prop('checked', !!settings.antiParaphraseMode);
-    // 番外模式
+    // Режим побочной сцены
     $('#horae-setting-sideplay-mode').prop('checked', !!settings.sideplayMode);
 
-    // RPG 模式
+    // RPG-режим
     $('#horae-setting-rpg-mode').prop('checked', !!settings.rpgMode);
     $('#horae-rpg-sub-options').toggle(!!settings.rpgMode);
     $('#horae-setting-rpg-bars').prop('checked', settings.sendRpgBars !== false);
@@ -8990,7 +8990,7 @@ function syncSettingsToUI() {
     $('#horae-rpg-prompt-group').toggle(!!settings.rpgMode);
     _syncRpgTabVisibility();
 
-    // 自动摘要
+    // Авто-сводка
     $('#horae-setting-auto-summary').prop('checked', !!settings.autoSummaryEnabled);
     $('#horae-auto-summary-options').toggle(!!settings.autoSummaryEnabled);
     $('#horae-setting-auto-summary-keep').val(settings.autoSummaryKeepRecent || 10);
@@ -9036,22 +9036,22 @@ function syncSettingsToUI() {
     $('#horae-mood-prompt-count').text(moodPromptVal.length);
     $('#horae-rpg-prompt-count').text(rpgPromptVal.length);
     
-    // 面板宽度和偏移
+    // Ширина и смещение панели
     $('#horae-setting-panel-width').val(settings.panelWidth || 100);
     const ofs = settings.panelOffset || 0;
     $('#horae-setting-panel-offset').val(ofs);
     $('#horae-panel-offset-value').text(`${ofs}px`);
     applyPanelWidth();
 
-    // 主题模式
+    // Режим темы
     refreshThemeSelector();
     applyThemeMode();
 
-    // 自定义CSS
+    // Пользовательский CSS
     $('#horae-custom-css').val(settings.customCSS || '');
     applyCustomCSS();
 
-    // 向量记忆
+    // Векторная память
     $('#horae-setting-vector-enabled').prop('checked', !!settings.vectorEnabled);
     $('#horae-vector-options').toggle(!!settings.vectorEnabled);
     $('#horae-setting-vector-source').val(settings.vectorSource || 'local');
@@ -9076,7 +9076,7 @@ function syncSettingsToUI() {
 }
 
 // ============================================
-// 向量记忆
+// Векторная память
 // ============================================
 
 function _deriveChatId(ctx) {
@@ -9091,24 +9091,24 @@ function _updateVectorStatus() {
     const countEl = document.getElementById('horae-vector-index-count');
     if (!statusEl) return;
     if (vectorManager.isLoading) {
-        statusEl.textContent = '模型加载中...';
+        statusEl.textContent = 'Загрузка модели...';
     } else if (vectorManager.isReady) {
-        const dimText = vectorManager.dimensions ? ` (${vectorManager.dimensions}维)` : '';
+        const dimText = vectorManager.dimensions ? ` (${vectorManager.dimensions}D)` : '';
         const nameText = vectorManager.isApiMode
             ? `API: ${vectorManager.modelName}`
             : vectorManager.modelName.split('/').pop();
         statusEl.textContent = `✓ ${nameText}${dimText}`;
     } else {
-        statusEl.textContent = settings.vectorEnabled ? '模型未加载' : '已关闭';
+        statusEl.textContent = settings.vectorEnabled ? 'Модель не загружена' : 'Отключено';
     }
     if (countEl) {
         countEl.textContent = vectorManager.vectors.size > 0
-            ? `| 索引: ${vectorManager.vectors.size} 条`
+            ? `| Индекс: ${vectorManager.vectors.size} записей`
             : '';
     }
 }
 
-/** 检测是否为移动端（iOS/Android/小屏设备） */
+/** Определить, является ли устройство мобильным (iOS/Android/маленький экран) */
 function _isMobileDevice() {
     const ua = navigator.userAgent || '';
     if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
@@ -9116,8 +9116,8 @@ function _isMobileDevice() {
 }
 
 /**
- * 移动端本地向量安全检查：弹窗确认后才加载，防 OOM 闪退。
- * 返回 true = 允许继续加载，false = 用户拒绝或被拦截
+ * Проверка безопасности локальных векторов на мобильном устройстве: загрузка только после подтверждения в окне, чтобы предотвратить OOM-краш.
+ * Возвращает true = разрешить загрузку, false = пользователь отказался или заблокировано
  */
 function _mobileLocalVectorGuard() {
     if (!_isMobileDevice()) return Promise.resolve(true);
@@ -9128,15 +9128,15 @@ function _mobileLocalVectorGuard() {
         modal.className = 'horae-modal';
         modal.innerHTML = `
         <div class="horae-modal-content" style="max-width:360px;">
-            <div class="horae-modal-header"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> 本地向量模型警告</div>
+            <div class="horae-modal-header"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Предупреждение о локальной векторной модели</div>
             <div class="horae-modal-body" style="font-size:13px;line-height:1.6;">
-                <p>检测到您正在<b>移动设备</b>上使用<b>本地向量模型</b>。</p>
-                <p>本地模型需要在浏览器中加载约 30-60MB 的 WASM 模型，<b>极易导致浏览器内存溢出闪退</b>。</p>
-                <p style="color:var(--horae-accent,#6366f1);font-weight:600;">强烈建议切换为「API 模式」（如硅基流动免费向量模型），零内存压力。</p>
+                <p>Обнаружено использование <b>локальной векторной модели</b> на <b>мобильном устройстве</b>.</p>
+                <p>Локальная модель требует загрузки ~30–60 МБ WASM-модели в браузер, что <b>может легко вызвать переполнение памяти и аварийный выход</b>.</p>
+                <p style="color:var(--horae-accent,#6366f1);font-weight:600;">Настоятельно рекомендуется переключиться на «Режим API» (например, бесплатные векторные модели SiliconFlow) — нулевая нагрузка на память.</p>
             </div>
             <div class="horae-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:10px 16px;">
-                <button id="horae-vec-guard-cancel" class="horae-btn" style="flex:1;">不加载</button>
-                <button id="horae-vec-guard-ok" class="horae-btn" style="flex:1;opacity:0.7;">仍然加载</button>
+                <button id="horae-vec-guard-cancel" class="horae-btn" style="flex:1;">Не загружать</button>
+                <button id="horae-vec-guard-ok" class="horae-btn" style="flex:1;opacity:0.7;">Всё равно загрузить</button>
             </div>
         </div>`;
         document.body.appendChild(modal);
@@ -9158,10 +9158,10 @@ function _mobileLocalVectorGuard() {
 async function _initVectorModel() {
     if (vectorManager.isLoading) return;
 
-    // 移动端 + 本地模型：弹窗确认，默认不加载
+    // Мобильное устройство + локальная модель: подтверждение в окне, по умолчанию не загружать
     const allowed = await _mobileLocalVectorGuard();
     if (!allowed) {
-        showToast('已跳过本地向量模型加载，建议切换为 API 模式', 'info');
+        showToast('Загрузка локальной векторной модели пропущена. Рекомендуется переключиться на режим API', 'info');
         return;
     }
 
@@ -9176,7 +9176,7 @@ async function _initVectorModel() {
             const apiKey = settings.vectorApiKey;
             const apiModel = settings.vectorApiModel;
             if (!apiUrl || !apiKey || !apiModel) {
-                throw new Error('请填写完整的 API 地址、密钥和模型名称');
+                throw new Error('Заполните адрес API, ключ и название модели полностью');
             }
             await vectorManager.initApi(apiUrl, apiKey, apiModel);
         } else {
@@ -9187,9 +9187,9 @@ async function _initVectorModel() {
                     if (info.status === 'progress' && fillEl && textEl) {
                         const pct = info.progress?.toFixed(0) || 0;
                         fillEl.style.width = `${pct}%`;
-                        textEl.textContent = `下载模型... ${pct}%`;
+                        textEl.textContent = `Загрузка модели... ${pct}%`;
                     } else if (info.status === 'done' && textEl) {
-                        textEl.textContent = '模型加载中...';
+                        textEl.textContent = 'Загрузка модели...';
                     }
                     _updateVectorStatus();
                 }
@@ -9203,10 +9203,10 @@ async function _initVectorModel() {
         const displayName = settings.vectorSource === 'api'
             ? `API: ${settings.vectorApiModel}`
             : vectorManager.modelName.split('/').pop();
-        showToast(`向量模型已加载: ${displayName}`, 'success');
+        showToast(`Векторная модель загружена: ${displayName}`, 'success');
     } catch (err) {
-        console.error('[Horae] 向量模型加载失败:', err);
-        showToast(`向量模型加载失败: ${err.message}`, 'error');
+        console.error('[Horae] Ошибка загрузки векторной модели:', err);
+        showToast(`Ошибка загрузки векторной модели: ${err.message}`, 'error');
     } finally {
         if (progressEl) progressEl.style.display = 'none';
         _updateVectorStatus();
@@ -9215,13 +9215,13 @@ async function _initVectorModel() {
 
 async function _buildVectorIndex() {
     if (!vectorManager.isReady) {
-        showToast('请先等待模型加载完成', 'warning');
+        showToast('Дождитесь завершения загрузки модели', 'warning');
         return;
     }
 
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) {
-        showToast('当前没有聊天记录', 'warning');
+        showToast('Нет истории чата', 'warning');
         return;
     }
 
@@ -9229,19 +9229,19 @@ async function _buildVectorIndex() {
     const fillEl = document.getElementById('horae-vector-progress-fill');
     const textEl = document.getElementById('horae-vector-progress-text');
     if (progressEl) progressEl.style.display = 'block';
-    if (textEl) textEl.textContent = '构建索引中...';
+    if (textEl) textEl.textContent = 'Построение индекса...';
 
     try {
         const result = await vectorManager.batchIndex(chat, ({ current, total }) => {
             const pct = Math.round((current / total) * 100);
             if (fillEl) fillEl.style.width = `${pct}%`;
-            if (textEl) textEl.textContent = `构建索引: ${current}/${total}`;
+            if (textEl) textEl.textContent = `Построение индекса: ${current}/${total}`;
         });
 
-        showToast(`索引构建完成: ${result.indexed} 条新增，${result.skipped} 条跳过`, 'success');
+        showToast(`Индекс построен: ${result.indexed} добавлено, ${result.skipped} пропущено`, 'success');
     } catch (err) {
-        console.error('[Horae] 构建索引失败:', err);
-        showToast(`构建索引失败: ${err.message}`, 'error');
+        console.error('[Horae] Ошибка построения индекса:', err);
+        showToast(`Ошибка построения индекса: ${err.message}`, 'error');
     } finally {
         if (progressEl) progressEl.style.display = 'none';
         _updateVectorStatus();
@@ -9249,29 +9249,29 @@ async function _buildVectorIndex() {
 }
 
 async function _clearVectorIndex() {
-    if (!confirm('确定清除当前对话的所有向量索引？')) return;
+    if (!confirm('Очистить все векторные индексы текущего диалога?')) return;
     await vectorManager.clearIndex();
-    showToast('向量索引已清除', 'success');
+    showToast('Векторный индекс очищен', 'success');
     _updateVectorStatus();
 }
 
 // ============================================
-// 核心功能
+// Основные функции
 // ============================================
 
 /**
- * 带进度显示的历史扫描
+ * Сканирование истории с индикатором прогресса
  */
 async function scanHistoryWithProgress() {
     const overlay = document.createElement('div');
     overlay.className = 'horae-progress-overlay' + (isLightMode() ? ' horae-light' : '');
     overlay.innerHTML = `
         <div class="horae-progress-container">
-            <div class="horae-progress-title">正在扫描历史记录...</div>
+            <div class="horae-progress-title">Сканирование истории...</div>
             <div class="horae-progress-bar">
                 <div class="horae-progress-fill" style="width: 0%"></div>
             </div>
-            <div class="horae-progress-text">准备中...</div>
+            <div class="horae-progress-text">Подготовка...</div>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -9283,105 +9283,105 @@ async function scanHistoryWithProgress() {
         const result = await horaeManager.scanAndInjectHistory(
             (percent, current, total) => {
                 fillEl.style.width = `${percent}%`;
-                textEl.textContent = `处理中... ${current}/${total}`;
+                textEl.textContent = `Обработка... ${current}/${total}`;
             },
-            null // 不使用AI分析，只解析已有标签
+            null // Не использовать ИИ-анализ, только разбирать имеющиеся теги
         );
         
         horaeManager.rebuildTableData();
         
         await getContext().saveChat();
         
-        showToast(`扫描完成！处理 ${result.processed} 条，跳过 ${result.skipped} 条`, 'success');
+        showToast(`Сканирование завершено! Обработано: ${result.processed}, пропущено: ${result.skipped}`, 'success');
         refreshAllDisplays();
         renderCustomTablesList();
     } catch (error) {
-        console.error('[Horae] 扫描失败:', error);
-        showToast('扫描失败: ' + error.message, 'error');
+        console.error('[Horae] Ошибка сканирования:', error);
+        showToast('Ошибка сканирования: ' + error.message, 'error');
     } finally {
         overlay.remove();
     }
 }
 
-/** 默认的批量摘要提示词模板 */
+/** Шаблон промпта для пакетного суммирования по умолчанию */
 function getDefaultBatchPrompt() {
-    return `你是剧情分析助手。请逐条分析以下对话记录，为每条消息提取【时间】【剧情事件】和【物品变化】。
+    return `Ты — помощник по анализу сюжета. Проанализируй каждое сообщение в диалоге и извлеки [Время], [Событие сюжета] и [Изменение предметов].
 
-核心原则：
-- 只提取文本中明确出现的信息，禁止编造
-- 每条消息独立分析，用 ===消息#编号=== 分隔
+Основные принципы:
+- Извлекай только явно указанную информацию, не выдумывай
+- Анализируй каждое сообщение отдельно, разделяй через ===Сообщение#номер===
 
 {{messages}}
 
-【输出格式】每条消息按以下格式输出：
+[Формат вывода] Для каждого сообщения:
 
-===消息#编号===
+===Сообщение#номер===
 <horae>
-time:日期 时间（从文本中提取，如 2026/2/4 15:00 或 霜降月第三日 黄昏）
-item:emoji物品名(数量)|描述=持有者@位置（新获得的物品，普通物品可省描述）
-item!:emoji物品名(数量)|描述=持有者@位置（重要物品，描述必填）
-item-:物品名（消耗/丢失/用完的物品）
+time:дата время (из текста, напр. 2026/2/4 15:00 или Третий день месяца Заморозков, сумерки)
+item:emoji название_предмета(кол-во)|описание=владелец@местоположение (новые предметы, описание необязательно для обычных)
+item!:emoji название_предмета(кол-во)|описание=владелец@местоположение (важный предмет, описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)
 </horae>
 <horaeevent>
-event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键）
+event:уровень|краткое описание события (30-50 символов, уровень: обычное/важное/ключевое — но значения тегов: 一般/重要/关键)
 </horaeevent>
 
-【规则】
-· time：从文本中提取当前场景的日期时间，必填（没有明确时间则根据上下文推断）
-· event：本条消息中发生的关键剧情，每条消息至少一个 event
-· 物品仅在获得、消耗、状态改变时记录，无变化则不写 item 行
-· item格式：emoji前缀如🔑🍞，单件不写(1)，位置需精确（❌地上 ✅酒馆大厅桌上）
-· 重要程度判断：日常对话=一般，推动剧情=重要，关键转折=关键
-· {{user}} 是主角名`;
+[Правила]
+· time: извлеки дату и время текущей сцены, обязательно (если нет явного времени — используй контекст)
+· event: ключевые события в данном сообщении, минимум одно event на сообщение
+· Предметы записывай только при получении, расходе или смене состояния; если нет изменений — пропускай строку item
+· Формат item: emoji-префикс напр. 🔑🍞, для одной единицы не пиши (1), местоположение точное (❌ на полу ✅ на столе в зале таверны)
+· Уровень важности: повседневный диалог=一般 (обычное), движение сюжета=重要 (важное), ключевой поворот=关键 (ключевое)
+· {{user}} — имя главного героя`;
 }
 
-/** 默认的AI分析提示词模板 */
+/** Шаблон промпта ИИ-анализа по умолчанию */
 function getDefaultAnalysisPrompt() {
-    return `请分析以下文本，提取关键信息并以指定格式输出。核心原则：只提取文本中明确提到的信息，没有的字段不写，禁止编造。
+    return `Проанализируй следующий текст, извлеки ключевую информацию и выведи в указанном формате. Основные принципы: извлекай только явно упомянутую информацию, не заполняй отсутствующие поля, не выдумывай.
 
-【文本内容】
+[Текст]
 {{content}}
 
-【输出格式】
+[Формат вывода]
 <horae>
-time:日期 时间（必填，如 2026/2/4 15:00 或 霜降月第一日 19:50）
-location:当前地点（必填）
-atmosphere:氛围
-characters:在场角色,逗号分隔（必填）
-costume:角色名=完整服装描述（必填，每人一行，禁止分号合并）
-item:emoji物品名(数量)|描述=持有者@精确位置（仅新获得或有变化的物品）
-item!:emoji物品名(数量)|描述=持有者@精确位置（重要物品，描述必填）
-item!!:emoji物品名(数量)|描述=持有者@精确位置（关键道具，描述必须详细）
-item-:物品名（消耗/丢失的物品）
-affection:角色名=好感度数值（仅NPC对{{user}}的好感，禁止记录{{user}}自己，禁止数值后加注解）
-npc:角色名|外貌=性格@与{{user}}的关系~性别:男或女~年龄:数字~种族:种族名~职业:职业名
-agenda:订立日期|待办内容（仅在出现新约定/计划/伏笔时写入，相对时间须括号标注绝对日期）
-agenda-:内容关键词（待办已完成/失效/取消时写入，系统自动移除匹配的待办）
+time:дата время (обязательно, напр. 2026/2/4 15:00 или Первый день месяца Заморозков 19:50)
+location:текущее место (обязательно)
+atmosphere:атмосфера
+characters:присутствующие персонажи, через запятую (обязательно)
+costume:имя_персонажа=полное описание одежды (обязательно, отдельная строка для каждого, не объединять через точку с запятой)
+item:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (только новые или изменившиеся предметы)
+item!:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (важный предмет, описание обязательно)
+item!!:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (ключевой предмет, подробное описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)
+affection:имя_персонажа=значение_расположения (только расположение NPC к {{user}}, не записывать самого {{user}}, без примечаний после числа)
+npc:имя_персонажа|внешность=характер@отношения_с_{{user}}~性别:мужской_или_женский~年龄:число~种族:название_расы~职业:название_профессии
+agenda:дата|содержание_задачи (только новые договорённости/планы/крючки, для относительного времени указывай абсолютную дату в скобках)
+agenda-:ключевые_слова (когда задача выполнена/устарела/отменена; система автоматически удалит совпадающие задачи)
 </horae>
 <horaeevent>
-event:重要程度|事件简述（30-50字，一般/重要/关键）
+event:уровень|краткое описание события (30-50 символов, 一般/重要/关键)
 </horaeevent>
 
-【触发条件】只在满足条件时才输出对应字段：
-· 物品：仅新获得、数量/归属/位置改变、消耗丢失时写。无变化不写。单件不写(1)。emoji前缀如🔑🍞。
-· NPC：首次出场必须完整（含~性别/年龄/种族/职业）。之后仅变化的字段写，无变化不写。
-  分隔符：| 分名字，= 分外貌和性格，@ 分关系，~ 分扩展字段
-· 好感度：首次按关系判定（陌生0-20/熟人30-50/朋友50-70），之后仅变化时写。
-· 待办：仅出现新约定/计划/伏笔时写。已完成/失效的待办用 agenda-: 移除。
-  新增：agenda:2026/02/10|艾伦邀请{{user}}情人节晚上约会(2026/02/14 18:00)
-  完成：agenda-:艾伦邀请{{user}}情人节晚上约会
-· event：放在<horaeevent>内，不放在<horae>内。`;
+[Условия] Выводи поле только при выполнении условия:
+· Предметы: только при новом получении, смене количества/владельца/местоположения, расходе/потере. Без изменений — не писать. Для одной единицы (1) не указывать. Emoji-префикс напр. 🔑🍞.
+· NPC: при первом появлении — полная запись (включая ~пол/возраст/раса/профессия). Затем писать только изменившиеся поля.
+  Разделители: | для имени, = для внешности и характера, @ для отношений, ~ для доп. полей
+· Расположение: первый раз определяется по отношениям (незнакомец 0-20/знакомый 30-50/друг 50-70), затем писать только при изменении.
+· Задачи: только при новых договорённостях/планах/крючках. Выполненные/устаревшие удаляй через agenda-.
+  Добавить: agenda:2026/02/10|Элен пригласила {{user}} на свидание в День святого Валентина(2026/02/14 18:00)
+  Удалить: agenda-:Элен пригласила {{user}} на свидание в День святого Валентина
+· event: помещай в <horaeevent>, не в <horae>.`;
 }
 
 let _autoSummaryRanThisTurn = false;
 
 /**
- * 自动摘要生成入口
- * useProfile=true 时允许切换连接配置（仅在AI回复后的顺序模式使用）
- * useProfile=false 时直接调用 generateRaw（并行安全）
+ * Точка запуска авто-сводки
+ * useProfile=true: разрешить смену профиля соединения (только в последовательном режиме после ответа ИИ)
+ * useProfile=false: напрямую вызвать generateRaw (безопасно для параллелизма)
  */
 async function generateForSummary(prompt) {
-    // 从 DOM 补读一次副API设置，防止浏览器自动填充未触发 input 事件导致设置为空
+    // Перечитать настройки дополнительного API из DOM, чтобы автозаполнение браузера не привело к пустым значениям
     _syncSubApiSettingsFromDom();
     const useCustom = settings.autoSummaryUseCustomApi;
     const hasUrl = !!(settings.autoSummaryApiUrl && settings.autoSummaryApiUrl.trim());
@@ -9392,11 +9392,11 @@ async function generateForSummary(prompt) {
         return await generateWithDirectApi(prompt);
     }
     if (useCustom && (!hasUrl || !hasKey || !hasModel)) {
-        const missing = [!hasUrl && 'API地址', !hasKey && 'API密钥', !hasModel && '模型名称'].filter(Boolean).join('、');
-        console.warn(`[Horae] 副API已勾选但缺少: ${missing}，回退主API`);
-        showToast(`副API缺少${missing}，已回退主API`, 'warning');
+        const missing = [!hasUrl && 'Адрес API', !hasKey && 'Ключ API', !hasModel && 'Название модели'].filter(Boolean).join(', ');
+        console.warn(`[Horae] Дополнительный API включён, но отсутствует: ${missing}, используется основной API`);
+        showToast(`Дополнительный API: не указано ${missing}, используется основной`, 'warning');
     } else if (!useCustom) {
-        console.log('[Horae] 副API未启用，使用主API (generateRaw)');
+        console.log('[Horae] Дополнительный API не активен, используется основной API (generateRaw)');
     }
     return await getContext().generateRaw(prompt, null, false, false);
 }
@@ -9428,18 +9428,18 @@ function _syncSubApiSettingsFromDom() {
     } catch (_) {}
 }
 
-/** 测试副API连接（仅查询模型列表，不消耗生成次数） */
+/** Тест подключения к дополнительному API (только запрос списка моделей, без расхода генераций) */
 async function testSubApiConnection() {
     _syncSubApiSettingsFromDom();
     const rawUrl = (settings.autoSummaryApiUrl || '').trim();
     const apiKey = (settings.autoSummaryApiKey || '').trim();
     const model = (settings.autoSummaryModel || '').trim();
     if (!rawUrl || !apiKey) {
-        showToast('请先填写 API 地址和密钥', 'warning');
+        showToast('Сначала укажите адрес API и ключ', 'warning');
         return;
     }
     const btn = document.getElementById('horae-btn-test-sub-api');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 测试中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверка...'; }
     try {
         const isGemini = /gemini/i.test(model);
         let testUrl, headers;
@@ -9465,24 +9465,24 @@ async function testSubApiConnection() {
             ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName)
             : (data.data || data || []).map(m => m.id || m.name);
         const matchStr = model && models.some(m => m && m.toLowerCase().includes(model.toLowerCase()))
-            ? `✓ 找到目标模型「${model}」` : (model ? `⚠ 未在列表中找到「${model}」，请确认模型名` : '');
-        showToast(`副API连接成功！可用模型 ${models.length} 个${matchStr ? '。' + matchStr : ''}`, 'success');
+            ? `✓ Целевая модель «${model}» найдена` : (model ? `⚠ Модель «${model}» не найдена в списке, проверьте имя` : '');
+        showToast(`Дополнительный API подключён! Моделей: ${models.length}${matchStr ? '. ' + matchStr : ''}`, 'success');
     } catch (err) {
-        showToast(`副API连接失败: ${err.message || err}`, 'error');
+        showToast(`Ошибка подключения к дополнительному API: ${err.message || err}`, 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plug-circle-check"></i> 测试副API连接'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plug-circle-check"></i> Проверить соединение с дополнительным API'; }
     }
 }
 
-/** 直接请求API端点，完全独立于酒馆主连接，支持真并行 */
+/** Прямой запрос к API, полностью независимый от основного подключения SillyTavern, поддерживает параллелизм */
 async function generateWithDirectApi(prompt) {
     const _model = settings.autoSummaryModel.trim();
     const _apiKey = settings.autoSummaryApiKey.trim();
-    // Gemini 模型 → 走 Gemini 原生 API（复刻 ST 后端 sendMakerSuiteRequest 链路）
+    // Gemini модели → использовать нативный Gemini API (реплика цепочки sendMakerSuiteRequest в бэкенде ST)
     if (/gemini/i.test(_model)) {
         return await _geminiNativeRequest(prompt, settings.autoSummaryApiUrl.trim(), _model, _apiKey);
     }
-    // ── 非 Gemini 模型：OpenAI 兼容格式 ──
+    // ── Не Gemini модели: формат совместимости с OpenAI ──
     let url = settings.autoSummaryApiUrl.trim();
     if (!url.endsWith('/chat/completions')) {
         url = url.replace(/\/+$/, '') + '/chat/completions';
@@ -9490,27 +9490,27 @@ async function generateWithDirectApi(prompt) {
     const messages = [];
     try {
         const { oai_settings } = await import('/scripts/openai.js');
-        // ① 预设主系统提示词（设定 AI 行为基调）
+        // ① Основной системный промпт из пресета (задаёт базовое поведение ИИ)
         if (oai_settings?.main_prompt) {
             messages.push({ role: 'system', content: oai_settings.main_prompt });
         }
-        // ② NSFW 允许提示词（如果用户在预设中开启了 NSFW）
+        // ② Промпт разрешения NSFW (если включено в пресете)
         if (oai_settings?.nsfw_toggle && oai_settings?.nsfw_prompt) {
             messages.push({ role: 'system', content: oai_settings.nsfw_prompt });
         }
-        // ③ 摘要任务指令
+        // ③ Инструкция задачи сводки
         messages.push({
             role: 'system',
             content: 'You are also a professional literary analyst. Read the following creative fiction passages and produce a concise plot summary. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.'
         });
-        // ④ 摘要内容
+        // ④ Содержимое для сводки
         messages.push({ role: 'user', content: prompt });
-        // ⑤ 破限提示词（放最后，优先级最高）
+        // ⑤ Промпт обхода ограничений (последний, наивысший приоритет)
         if (oai_settings?.jailbreak_prompt) {
             messages.push({ role: 'system', content: oai_settings.jailbreak_prompt });
         }
     } catch (_) {
-        // 容错：无法读取酒馆预设时退回基本模式
+        // Обработка ошибок: при невозможности прочитать пресет ST — переход в базовый режим
         messages.push(
             { role: 'system', content: 'You are a professional literary analyst. Your task is to read creative fiction passages and produce concise plot summaries. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.' },
             { role: 'user', content: prompt }
@@ -9523,9 +9523,9 @@ async function generateWithDirectApi(prompt) {
         max_tokens: 4096,
         stream: false
     };
-    // 强制注入 safetySettings = BLOCK_NONE（关闭安全审查）
-    // 酒馆后端对 Gemini 自动加此设定；副API直连中转渠道商时必须手动带上
-    // 非 Gemini 的 API 会自动忽略不认识的字段，不会产生副作用
+    // Принудительно добавить safetySettings = BLOCK_NONE (отключить проверку безопасности)
+    // Бэкенд SillyTavern добавляет это автоматически для Gemini; при прямом подключении к промежуточному провайдеру нужно добавлять вручную
+    // Для не-Gemini API неизвестные поля игнорируются без побочных эффектов
     const blockNone = [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -9535,7 +9535,7 @@ async function generateWithDirectApi(prompt) {
     ];
     body.safety_settings = blockNone;
     body.safetySettings = blockNone;
-    console.log(`[Horae] 独立API请求: ${url}, 模型: ${body.model}`);
+    console.log(`[Horae] Независимый API запрос: ${url}, модель: ${body.model}`);
     try {
         const resp = await fetch(url, {
             method: 'POST',
@@ -9547,28 +9547,28 @@ async function generateWithDirectApi(prompt) {
         });
         if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
-            throw new Error(`独立API返回 ${resp.status}: ${errText.slice(0, 200)}`);
+            throw new Error(`Независимый API вернул ${resp.status}: ${errText.slice(0, 200)}`);
         }
         const data = await resp.json();
         const finishReason = data?.choices?.[0]?.finish_reason || '';
         if (finishReason === 'content_filter' || finishReason === 'SAFETY') {
-            throw new Error('副API安全过滤拦截，建议：降低批次token上限 或 换用限制更宽松的模型');
+            throw new Error('Дополнительный API заблокирован фильтром безопасности. Снизьте лимит токенов или используйте модель с менее строгими ограничениями');
         }
         return data?.choices?.[0]?.message?.content || '';
     } catch (err) {
         if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-            throw new Error('独立API请求被浏览器拦截（CORS），请确认端点地址或在酒馆 config.yaml 中启用 enableCorsProxy');
+            throw new Error('Запрос к API заблокирован браузером (CORS). Проверьте адрес или включите enableCorsProxy в config.yaml SillyTavern');
         }
         throw err;
     }
 }
 
 /**
- * Gemini 原生格式请求 —— 复刻 ST 后端 sendMakerSuiteRequest 的完整处理链路
- * 解决中转 OpenAI 兼容端点丢弃 safetySettings 导致 PROMPT BLOCKED 的问题
+ * Запрос в нативном формате Gemini — реплика цепочки sendMakerSuiteRequest в бэкенде ST
+ * Решает проблему потери safetySettings при проксировании через OpenAI-совместимые эндпоинты, вызывающую PROMPT BLOCKED
  */
 async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
-    // ── 1. 收集 system 指令（全部进 systemInstruction）+ user 内容 ──
+    // ── 1. Собрать системные инструкции (все в systemInstruction) + пользовательский контент ──
     const systemParts = [];
     try {
         const { oai_settings } = await import('/scripts/openai.js');
@@ -9590,7 +9590,7 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         });
     }
 
-    // ── 2. safetySettings（与 ST 后端 GEMINI_SAFETY 常量对齐） ──
+    // ── 2. safetySettings (соответствует константе GEMINI_SAFETY в бэкенде ST) ──
     const modelLow = model.toLowerCase();
     const isOldModel = /gemini-1\.(0|5)-(pro|flash)-001/.test(modelLow);
     const threshold = isOldModel ? 'BLOCK_NONE' : 'OFF';
@@ -9604,7 +9604,7 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         safetySettings.push({ category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold });
     }
 
-    // ── 3. 请求体（Gemini 原生 contents 格式） ──
+    // ── 3. Тело запроса (нативный формат Gemini contents) ──
     const body = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         safetySettings,
@@ -9618,7 +9618,7 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         body.systemInstruction = { parts: systemParts };
     }
 
-    // ── 4. 构建端点 URL ──
+    // ── 4. Построить URL эндпоинта ──
     let baseUrl = rawUrl
         .replace(/\/+$/, '')
         .replace(/\/chat\/completions$/i, '')
@@ -9633,9 +9633,9 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    console.log(`[Horae] Gemini原生API: ${endpointUrl}, threshold: ${threshold}`);
+    console.log(`[Horae] Gemini native API: ${endpointUrl}, threshold: ${threshold}`);
 
-    // ── 5. 发送请求 + 解析原生响应 ──
+    // ── 5. Отправить запрос + разобрать нативный ответ ──
     try {
         const resp = await fetch(endpointUrl, {
             method: 'POST',
@@ -9645,22 +9645,22 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
 
         if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
-            throw new Error(`Gemini原生API ${resp.status}: ${errText.slice(0, 300)}`);
+            throw new Error(`Gemini native API ${resp.status}: ${errText.slice(0, 300)}`);
         }
 
         const data = await resp.json();
 
         if (data?.promptFeedback?.blockReason) {
-            throw new Error(`Gemini输入安全拦截: ${data.promptFeedback.blockReason}`);
+            throw new Error(`Gemini: входной запрос заблокирован (${data.promptFeedback.blockReason})`);
         }
 
         const candidates = data?.candidates;
         if (!candidates?.length) {
-            throw new Error('Gemini API未返回候选内容');
+            throw new Error('Gemini API не вернул ни одного варианта');
         }
 
         if (candidates[0]?.finishReason === 'SAFETY') {
-            throw new Error('Gemini输出安全拦截，建议换用限制更宽松的模型');
+            throw new Error('Gemini: выходной ответ заблокирован фильтром. Используйте модель с менее строгими ограничениями');
         }
 
         const text = candidates[0]?.content?.parts
@@ -9669,19 +9669,19 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
             ?.join('\n\n') || '';
 
         if (!text) {
-            throw new Error(`Gemini返回空内容 (finishReason: ${candidates[0]?.finishReason || '?'})`);
+            throw new Error(`Gemini вернул пустой ответ (finishReason: ${candidates[0]?.finishReason || '?'})`);
         }
 
         return text;
     } catch (err) {
         if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-            throw new Error('Gemini原生API被浏览器拦截(CORS)，请确认端点地址或在酒馆 config.yaml 中启用 enableCorsProxy');
+            throw new Error('Gemini native API заблокирован браузером (CORS). Проверьте адрес или включите enableCorsProxy в config.yaml SillyTavern');
         }
         throw err;
     }
 }
 
-/** 自动摘要：检查是否需要触发 */
+/** Авто-сводка: проверить, нужно ли запускать */
 async function checkAutoSummary() {
     if (!settings.autoSummaryEnabled || !settings.sendTimeline) return;
     if (_summaryInProgress) return;
@@ -9698,7 +9698,7 @@ async function checkAutoSummary() {
         const totalMsgs = chat.length;
         const cutoff = Math.max(1, totalMsgs - keepRecent);
         
-        // 收集已被活跃摘要覆盖的消息索引（无论 is_hidden 是否生效都排除）
+        // Собрать индексы сообщений, покрытых активными сводками (исключить независимо от is_hidden)
         const summarizedIndices = new Set();
         const existingSums = chat[0]?.horae_meta?.autoSummaries || [];
         for (const s of existingSums) {
@@ -9727,11 +9727,11 @@ async function checkAutoSummary() {
             shouldTrigger = bufferMsgIndices.length > bufferLimit;
         }
         
-        console.log(`[Horae] 自动摘要检查：${bufferMsgIndices.length}条缓冲消息(${bufferMode === 'tokens' ? bufferTokens + 'tok' : bufferMsgIndices.length + '条'})，阈值${bufferLimit}，${shouldTrigger ? '触发' : '未达阈值'}`);
+        console.log(`[Horae] Авто-сводка: проверка ${bufferMsgIndices.length} буферных сообщений (${bufferMode === 'tokens' ? bufferTokens + 'tok' : bufferMsgIndices.length + ' записей'}), порог ${bufferLimit}, ${shouldTrigger ? 'запуск' : 'порог не достигнут'}`);
         
         if (!shouldTrigger || bufferMsgIndices.length === 0) return;
         
-        // 单次摘要批量上限：防止旧档案首次启用时 token 爆炸
+        // Лимит пакета за один раз: предотвратить взрыв токенов при первом включении на старых архивах
         const MAX_BATCH_MSGS = settings.autoSummaryBatchMaxMsgs || 50;
         const MAX_BATCH_TOKENS = settings.autoSummaryBatchMaxTokens || 80000;
         let batchIndices = [];
@@ -9766,22 +9766,22 @@ async function checkAutoSummary() {
             }
         }
         
-        // 检测缓冲区消息是否完全没有时间线事件
+        // Проверить, нет ли в буфере сообщений без данных хронологии
         if (bufferEvents.length === 0) {
             const hasAnyHoraeMeta = batchIndices.some(i => chat[i]?.horae_meta?.timestamp?.story_date);
             if (!hasAnyHoraeMeta) {
-                showToast('自动摘要：检测到缓冲区消息没有 Horae 时间线数据，建议先使用「AI智能摘要」批量补全时间线后再开启自动摘要。', 'warning');
+                showToast('Авто-сводка: в буферных сообщениях нет данных хронологии Horae. Рекомендуется сначала использовать «ИИ-анализ» для восстановления хронологии.', 'warning');
                 return;
             }
         }
         
         const batchMsg = remaining > 0
-            ? `自动摘要：正在压缩 ${batchIndices.length}/${bufferMsgIndices.length} 条消息（剩余 ${remaining} 条将在后续轮次处理）...`
-            : `自动摘要：正在压缩 ${batchIndices.length} 条消息...`;
+            ? `Авто-сводка: сжатие ${batchIndices.length}/${bufferMsgIndices.length} сообщений (осталось ${remaining} для следующего цикла)...`
+            : `Авто-сводка: сжатие ${batchIndices.length} сообщений...`;
         showToast(batchMsg, 'info');
         
         const context = getContext();
-        const userName = context?.name1 || '主角';
+        const userName = context?.name1 || 'Главный герой';
         
         const msgIndices = [...batchIndices].sort((a, b) => a - b);
         const fullTexts = msgIndices.map(idx => {
@@ -9802,18 +9802,18 @@ async function checkAutoSummary() {
         
         const response = await generateForSummary(prompt);
         if (!response?.trim()) {
-            showToast('自动摘要：AI返回为空', 'warning');
+            showToast('Авто-сводка: ИИ вернул пустой ответ', 'warning');
             return;
         }
         
-        // 清洗 AI 回复中的 horae 标签，只保留纯文本摘要
+        // Очистить теги horae из ответа ИИ, оставить только чистый текст сводки
         let summaryText = response.trim()
             .replace(/<horae>[\s\S]*?<\/horae>/gi, '')
             .replace(/<horaeevent>[\s\S]*?<\/horaeevent>/gi, '')
             .replace(/<!--horae[\s\S]*?-->/gi, '')
             .trim();
         if (!summaryText) {
-            showToast('自动摘要：清洗标签后内容为空', 'warning');
+            showToast('Авто-сводка: после очистки тегов контент пуст', 'warning');
             return;
         }
 
@@ -9827,7 +9827,7 @@ async function checkAutoSummary() {
             timestamp: chat[e.msgIdx]?.horae_meta?.timestamp
         }));
         
-        // 完整隐藏范围（包含中间所有 USER 消息）
+        // Полный диапазон скрытия (включая все USER-сообщения посередине)
         const hideMin = Math.max(1, msgIndices[0]);
         const hideMax = msgIndices[msgIndices.length - 1];
 
@@ -9842,7 +9842,7 @@ async function checkAutoSummary() {
             auto: true
         });
         
-        // 标记原始事件为已压缩（active 时隐藏原始事件显示摘要）
+        // Пометить исходные события как сжатые (при active скрывать исходные, показывать сводку)
         for (const e of bufferEvents) {
             if (e.msgIdx === 0) continue;
             const meta = chat[e.msgIdx]?.horae_meta;
@@ -9851,7 +9851,7 @@ async function checkAutoSummary() {
             }
         }
         
-        // 插入摘要事件卡片：优先放在有事件的消息上，否则放在范围首条
+        // Вставить карточку сводки: предпочтительно на сообщение с событиями, иначе на первое в диапазоне
         const targetIdx = bufferEvents.length > 0 ? bufferEvents[0].msgIdx : msgIndices[0];
         if (!chat[targetIdx].horae_meta) chat[targetIdx].horae_meta = createEmptyMeta();
         const targetMeta = chat[targetIdx].horae_meta;
@@ -9864,78 +9864,78 @@ async function checkAutoSummary() {
             _summaryId: summaryId
         });
         
-        // /hide 整个范围内的消息楼层
+        // /hide все сообщения в диапазоне
         const fullRangeIndices = [];
         for (let i = hideMin; i <= hideMax; i++) fullRangeIndices.push(i);
         await setMessagesHidden(chat, fullRangeIndices, true);
         
         await context.saveChat();
         updateTimelineDisplay();
-        showToast(`自动摘要完成：#${msgIndices[0]}-#${msgIndices[msgIndices.length - 1]}`, 'success');
+        showToast(`Авто-сводка завершена: #${msgIndices[0]}-#${msgIndices[msgIndices.length - 1]}`, 'success');
 
-        // 延迟二次校验：防止后续异步 saveChat 竞态冲掉 is_hidden
+        // Отложенная вторичная проверка: предотвратить перезапись is_hidden асинхронным saveChat
         setTimeout(() => {
             enforceHiddenState();
         }, 800);
     } catch (err) {
-        console.error('[Horae] 自动摘要失败:', err);
-        showToast(`自动摘要失败: ${err.message || err}`, 'error');
+        console.error('[Horae] Ошибка авто-сводки:', err);
+        showToast(`Ошибка авто-сводки: ${err.message || err}`, 'error');
     } finally {
         _summaryInProgress = false;
     }
 }
 
-/** 默认的剧情压缩提示词（含事件压缩和全文摘要两段，以分隔线区分） */
+/** Шаблон промпта сжатия сюжета по умолчанию (содержит два блока: сжатие событий и полный текст, разделены разделителем) */
 function getDefaultCompressPrompt() {
-    return `=====【事件压缩】=====
-你是剧情压缩助手。请将以下{{count}}条剧情事件压缩为一段简洁的摘要（100-200字），保留关键信息和因果关系。
+    return `=====【Сжатие событий】=====
+Ты — помощник по сжатию сюжета. Сожми следующие {{count}} событий в краткую сводку (100-200 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{events}}
 
-要求：
-- 按时间顺序叙述，保留重要转折点
-- 人名、地名必须保留原文
-- 输出纯文本摘要，不要添加任何标记或格式
-- 不要遗漏「关键」和「重要」级别的事件
-- {{user}} 是主角名
-- 语言风格：简洁客观的叙事体
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования
+- Не упускай события уровня «ключевое» и «важное»
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование
 
-=====【全文摘要】=====
-你是剧情压缩助手。请阅读以下对话记录，将其压缩为一段精炼的剧情摘要（150-300字），保留关键信息和因果关系。
+=====【Полный текст сводки】=====
+Ты — помощник по сжатию сюжета. Прочитай следующий диалог и сожми его в краткую сводку (150-300 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{fulltext}}
 
-要求：
-- 按时间顺序叙述，保留重要转折点和关键细节
-- 人名、地名必须保留原文
-- 输出纯文本摘要，不要添加任何标记或格式
-- 保留人物的关键对话和情绪变化
-- {{user}} 是主角名
-- 语言风格：简洁客观的叙事体`;
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты и ключевые детали
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования
+- Сохраняй ключевые диалоги персонажей и их эмоциональные изменения
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование`;
 }
 
-/** 默认的自动摘要提示词（独立于手动压缩，由副API使用） */
+/** Промпт авто-сводки по умолчанию (независим от ручного сжатия, используется дополнительным API) */
 function getDefaultAutoSummaryPrompt() {
-    return `你是剧情压缩助手。请阅读以下对话记录，将其压缩为一段精炼的剧情摘要（150-300字），保留关键信息和因果关系。
+    return `Ты — помощник по сжатию сюжета. Прочитай следующий диалог и сожми его в краткую сводку (150-300 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{fulltext}}
 
-已有事件概要（辅助参考，不要仅依赖此列表）：
+Имеющиеся краткие описания событий (для справки, не полагайся только на этот список):
 {{events}}
 
-要求：
-- 按时间顺序叙述，保留重要转折点和关键细节
-- 人名、地名必须保留原文
-- 输出纯文本摘要，不要添加任何标记或格式（禁止<horae>等XML标签）
-- 保留人物的关键对话和情绪变化
-- {{user}} 是主角名
-- 语言风格：简洁客观的叙事体`;
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты и ключевые детали
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования (запрещены XML-теги типа <horae>)
+- Сохраняй ключевые диалоги персонажей и их эмоциональные изменения
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование`;
 }
 
-/** 从压缩提示词模板中按模式提取对应的 prompt 段 */
+/** Извлечь соответствующий блок промпта из шаблона по режиму */
 function parseCompressPrompt(template, mode) {
-    const eventRe = /=+【事件压缩】=+/;
-    const fulltextRe = /=+【全文摘要】=+/;
+    const eventRe = /=+【Сжатие событий】=+/;
+    const fulltextRe = /=+【Полный текст сводки】=+/;
     const eMatch = template.match(eventRe);
     const fMatch = template.match(fulltextRe);
     if (eMatch && fMatch) {
@@ -9951,26 +9951,26 @@ function parseCompressPrompt(template, mode) {
             return mode === 'fulltext' ? fulltextSection : eventSection;
         }
     }
-    // 无分隔线：整段当通用 prompt
+    // Нет разделителя: весь текст используется как универсальный промпт
     return template;
 }
 
-/** 根据缓冲模式动态更新缓冲上限的说明文案 */
+/** Динамически обновлять подсказку лимита буфера в зависимости от режима */
 function updateAutoSummaryHint() {
     const hintEl = document.getElementById('horae-auto-summary-limit-hint');
     if (!hintEl) return;
     const mode = settings.autoSummaryBufferMode || 'messages';
     if (mode === 'tokens') {
-        hintEl.innerHTML = '填入Token上限。超过后触发自动压缩。<br>' +
-            '<small>参考：Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
-            '建议设为模型上下文窗口的 30%~50%，留出足够空间给其他内容。</small>';
+        hintEl.innerHTML = 'Введите лимит токенов. При превышении запускается автосжатие.<br>' +
+            '<small>Ориентир: Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
+            'Рекомендуется 30–50% от контекстного окна модели.</small>';
     } else {
-        hintEl.innerHTML = '填入楼层数（消息条数）。超过后触发自动压缩。<br>' +
-            '<small>即「保留最近消息数」之外的多余消息达到此数量时，自动将其压缩为摘要。</small>';
+        hintEl.innerHTML = 'Введите количество сообщений. При превышении запускается автосжатие.<br>' +
+            '<small>Когда сообщений сверх «хранить последних» становится больше этого числа, они автоматически сжимаются.</small>';
     }
 }
 
-/** 估算文本的token数（CJK按1.5、其余按0.4） */
+/** Оценить количество токенов текста (CJK: 1.5, остальные: 0.4) */
 function estimateTokens(text) {
     if (!text) return 0;
     const cjk = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
@@ -9978,7 +9978,7 @@ function estimateTokens(text) {
     return Math.ceil(cjk * 1.5 + rest * 0.4);
 }
 
-/** 判断消息是否为空层（同层系统等代码渲染的无实际叙事内容楼层） */
+/** Проверить, является ли сообщение пустым (системная отрисовка кода без нарративного содержания) */
 function isEmptyOrCodeLayer(mes) {
     if (!mes) return true;
     const stripped = mes
@@ -9989,11 +9989,11 @@ function isEmptyOrCodeLayer(mes) {
     return stripped.length < 20;
 }
 
-/** AI智能摘要 — 批量分析历史消息，暂存结果后弹出审阅视窗 */
+/** ИИ-анализ — пакетный анализ истории сообщений, сохранение результатов, открытие окна проверки */
 async function batchAIScan() {
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) {
-        showToast('当前没有聊天记录', 'warning');
+        showToast('Нет истории чата', 'warning');
         return;
     }
 
@@ -10009,8 +10009,8 @@ async function batchAIScan() {
     }
 
     if (targets.length === 0) {
-        const hint = skippedEmpty > 0 ? `（已跳过 ${skippedEmpty} 条空层/代码渲染楼层）` : '';
-        showToast(`所有消息已有时间线数据，无需补充${hint}`, 'info');
+        const hint = skippedEmpty > 0 ? `(пропущено ${skippedEmpty} пустых/системных сообщений)` : '';
+        showToast(`Все сообщения уже имеют данные хронологии, дополнение не требуется${hint}`, 'info');
         return;
     }
 
@@ -10032,26 +10032,26 @@ async function batchAIScan() {
     }
     if (currentBatch.length > 0) batches.push(currentBatch);
 
-    const skippedHint = skippedEmpty > 0 ? `\n· 已跳过 ${skippedEmpty} 条空层/代码渲染楼层` : '';
-    const confirmMsg = `预计分 ${batches.length} 批处理，消耗 ${batches.length} 次生成\n\n· 仅补充尚无时间线的消息，不覆盖已有数据\n· 中途取消会保留已完成的批次\n· 扫描后可「撤销摘要」还原${skippedHint}\n\n是否继续？`;
+    const skippedHint = skippedEmpty > 0 ? `\n· Пропущено ${skippedEmpty} пустых/системных сообщений` : '';
+    const confirmMsg = `Планируется ${batches.length} пакетов, расход ${batches.length} генераций\n\n· Только дополняет сообщения без хронологии, не перезаписывает имеющиеся данные\n· Отмена сохранит уже завершённые пакеты\n· После сканирования можно «Отменить анализ»${skippedHint}\n\nПродолжить?`;
     if (!confirm(confirmMsg)) return;
 
     const scanResults = await executeBatchScan(batches, { includeNpc, includeAffection, includeScene, includeRelationship });
     if (scanResults.length === 0) {
-        showToast('未提取到任何摘要数据', 'warning');
+        showToast('Не удалось извлечь данные', 'warning');
         return;
     }
     showScanReviewModal(scanResults, { includeNpc, includeAffection, includeScene, includeRelationship });
 }
 
-/** 执行批量扫描，返回暂存结果（不写入chat） */
+/** Выполнить пакетное сканирование, вернуть промежуточные результаты (не записывать в диалог) */
 async function executeBatchScan(batches, options = {}) {
     const { includeNpc, includeAffection, includeScene, includeRelationship } = options;
     let cancelled = false;
     let cancelResolve = null;
     const cancelPromise = new Promise(resolve => { cancelResolve = resolve; });
 
-    // 用于真正中止HTTP请求的AbortController（fetch层面）
+    // AbortController для прерывания HTTP-запроса (на уровне fetch)
     const fetchAbort = new AbortController();
     const _origFetch = window.fetch;
     window.fetch = function(input, init = {}) {
@@ -10070,45 +10070,45 @@ async function executeBatchScan(batches, options = {}) {
     overlay.className = 'horae-progress-overlay' + (isLightMode() ? ' horae-light' : '');
     overlay.innerHTML = `
         <div class="horae-progress-container">
-            <div class="horae-progress-title">AI 智能摘要中...</div>
+            <div class="horae-progress-title">ИИ-анализ...</div>
             <div class="horae-progress-bar">
                 <div class="horae-progress-fill" style="width: 0%"></div>
             </div>
-            <div class="horae-progress-text">准备中...</div>
-            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> 取消摘要</button>
+            <div class="horae-progress-text">Подготовка...</div>
+            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> Отмена</button>
         </div>
     `;
     document.body.appendChild(overlay);
     const fillEl = overlay.querySelector('.horae-progress-fill');
     const textEl = overlay.querySelector('.horae-progress-text');
     const context = getContext();
-    const userName = context?.name1 || '主角';
+    const userName = context?.name1 || 'Главный герой';
 
-    // 取消：中止fetch请求 + stopGeneration + Promise.race跳出
+    // Отмена: прервать fetch + stopGeneration + выход через Promise.race
     overlay.querySelector('.horae-progress-cancel').addEventListener('click', () => {
         if (cancelled) return;
         const hasPartial = scanResults.length > 0;
         const hint = hasPartial
-            ? `已完成 ${scanResults.length} 条摘要将保留，可在审阅弹窗中查看。\n\n确定停止后续批次？`
-            : '当前批次尚未完成，确定取消？';
+            ? `Завершено ${scanResults.length} сводок будет сохранено, можно просмотреть в окне проверки.\n\nОстановить оставшиеся пакеты?`
+            : 'Текущий пакет ещё не завершён. Отменить?';
         if (!confirm(hint)) return;
         cancelled = true;
         fetchAbort.abort();
         try { context.stopGeneration(); } catch (_) {}
         cancelResolve();
         overlay.remove();
-        showToast(hasPartial ? `已停止，保留 ${scanResults.length} 条已完成摘要` : '已取消摘要生成', 'info');
+        showToast(hasPartial ? `Остановлено, сохранено ${scanResults.length} завершённых сводок` : 'Генерация сводок отменена', 'info');
     });
     const scanResults = [];
 
-    // 动态构建允许的标签
+    // Динамически строить список разрешённых тегов
     let allowedTags = 'time、item、event';
-    let forbiddenNote = '禁止输出 agenda/costume/location/atmosphere/characters';
+    let forbiddenNote = 'Не выводить теги agenda/costume/location/atmosphere/characters';
     if (!includeNpc) forbiddenNote += '/npc';
     if (!includeAffection) forbiddenNote += '/affection';
     if (!includeScene) forbiddenNote += '/scene_desc';
     if (!includeRelationship) forbiddenNote += '/rel';
-    forbiddenNote += ' 等其他标签';
+    forbiddenNote += ' и другие теги';
     if (includeNpc) allowedTags += '、npc';
     if (includeAffection) allowedTags += '、affection';
     if (includeScene) allowedTags += '、scene_desc';
@@ -10117,12 +10117,12 @@ async function executeBatchScan(batches, options = {}) {
     for (let b = 0; b < batches.length; b++) {
         if (cancelled) break;
         const batch = batches[b];
-        textEl.textContent = `第 ${b + 1}/${batches.length} 批（${batch.length} 条消息）...`;
+        textEl.textContent = `Пакет ${b + 1}/${batches.length} (${batch.length} сообщений)...`;
         fillEl.style.width = `${Math.round((b / batches.length) * 100)}%`;
 
-        const messagesBlock = batch.map(t => `【消息#${t.index}】\n${t.text}`).join('\n\n');
+        const messagesBlock = batch.map(t => `[Сообщение#${t.index}]\n${t.text}`).join('\n\n');
 
-        // 自定义摘要prompt或默认
+        // Пользовательский промпт или по умолчанию
         let batchPrompt;
         if (settings.customBatchPrompt) {
             batchPrompt = settings.customBatchPrompt
@@ -10132,52 +10132,52 @@ async function executeBatchScan(batches, options = {}) {
             let extraFormat = '';
             let extraRules = '';
             if (includeNpc) {
-                extraFormat += `\nnpc:角色名|外貌=性格@与${userName}的关系~性别:值~年龄:值~种族:值~职业:值（仅首次出场或信息变化时）`;
-                extraRules += `\n· NPC：首次出场完整记录（含~扩展字段），之后仅变化时写`;
+                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~性别:значение~年龄:значение~种族:значение~职业:значение (только при первом появлении или смене данных)`;
+                extraRules += `\n· NPC: при первом появлении — полная запись (включая ~доп.поля), затем только изменения`;
             }
             if (includeAffection) {
-                extraFormat += `\naffection:角色名=好感度数值（仅NPC对${userName}的好感，从文本中提取已有数值）`;
-                extraRules += `\n· 好感度：仅从文本中提取明确出现的好感度数值，禁止自行推断`;
+                extraFormat += `\naffection:имя_персонажа=значение_расположения (только расположение NPC к ${userName}, извлекать имеющиеся числа из текста)`;
+                extraRules += `\n· Расположение: извлекай только явно указанные значения из текста, не делай предположений`;
             }
             if (includeScene) {
-                extraFormat += `\nlocation:当前地点名（场景发生的地点，多级用·分隔如「酒馆·大厅」）\nscene_desc:位于…。该地点的固定物理特征描述（50-150字，仅首次到达或发生永久变化时写）`;
-                extraRules += `\n· 场景：location行写地点名（每条消息都写），scene_desc行仅在首次到达新地点时才写，子级地点仅写相对父级的方位`;
+                extraFormat += `\nlocation:название_текущего_места (место сцены, многоуровневое через · напр. «Таверна·Зал»)\nscene_desc:находится... Описание постоянных физических характеристик места (50-150 символов, только при первом посещении или постоянных изменениях)`;
+                extraRules += `\n· Локация: строку location пиши для каждого сообщения; scene_desc — только при первом посещении нового места; для дочерних мест пиши только положение относительно родителя`;
             }
             if (includeRelationship) {
-                extraFormat += `\nrel:角色A>角色B=关系类型|备注（角色间关系发生变化时输出）`;
-                extraRules += `\n· 关系：仅在关系新建或变化时写，格式 rel:角色A>角色B=关系类型，备注可选`;
+                extraFormat += `\nrel:ПерсонажA>ПерсонажB=тип_отношений|примечание (выводить при изменении отношений)`;
+                extraRules += `\n· Отношения: писать только при новых/изменившихся отношениях, формат rel:ПерсонажA>ПерсонажB=тип, примечание необязательно`;
             }
 
-            batchPrompt = `你是剧情分析助手。请逐条分析以下对话记录，为每条消息提取【${allowedTags}】。
+            batchPrompt = `Ты — помощник по анализу сюжета. Проанализируй каждое сообщение в диалоге и извлеки [${allowedTags}].
 
-核心原则：
-- 只提取文本中明确出现的信息，禁止编造
-- 每条消息独立分析，用 ===消息#编号=== 分隔
-- 严格只输出 ${allowedTags} 标签，${forbiddenNote}
+Основные принципы:
+- Извлекай только явно указанную информацию, не выдумывай
+- Анализируй каждое сообщение отдельно, разделяй через ===Сообщение#номер===
+- Выводи только теги ${allowedTags}, ${forbiddenNote}
 
 ${messagesBlock}
 
-【输出格式】每条消息按以下格式输出：
+[Формат вывода] Для каждого сообщения:
 
-===消息#编号===
+===Сообщение#номер===
 <horae>
-time:日期 时间（从文本中提取，如 2026/2/4 15:00 或 霜降月第三日 黄昏）
-item:emoji物品名(数量)|描述=持有者@位置（新获得的物品，普通物品可省描述）
-item!:emoji物品名(数量)|描述=持有者@位置（重要物品，描述必填）
-item-:物品名（消耗/丢失/用完的物品）${extraFormat}
+time:дата время (из текста, напр. 2026/2/4 15:00 или Третий день месяца Заморозков, сумерки)
+item:emoji название_предмета(кол-во)|описание=владелец@местоположение (новые предметы, описание необязательно для обычных)
+item!:emoji название_предмета(кол-во)|описание=владелец@местоположение (важный предмет, описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)${extraFormat}
 </horae>
 <horaeevent>
-event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键）
+event:уровень|краткое описание события (30-50 символов, уровень: обычное/важное/ключевое — но значения тегов: 一般/重要/关键)
 </horaeevent>
 
-【规则】
-· time：从文本中提取当前场景的日期时间，必填（没有明确时间则根据上下文推断）
-· event：本条消息中发生的关键剧情，每条消息至少一个 event
-· 物品仅在获得、消耗、状态改变时记录，无变化则不写 item 行
-· item格式：emoji前缀如🔑🍞，单件不写(1)，位置需精确（❌地上 ✅酒馆大厅桌上）
-· 重要程度判断：日常对话=一般，推动剧情=重要，关键转折=关键
-· ${userName} 是主角名${extraRules}
-· 再次强调：只允许 ${allowedTags}，${forbiddenNote}`;
+[Правила]
+· time: извлеки дату и время текущей сцены, обязательно (если нет явного времени — используй контекст)
+· event: ключевые события в данном сообщении, минимум одно event на сообщение
+· Предметы записывай только при получении, расходе или смене состояния; если нет изменений — пропускай строку item
+· Формат item: emoji-префикс напр. 🔑🍞, для одной единицы не пиши (1), местоположение точное (❌ на полу ✅ на столе в зале таверны)
+· Уровень важности: повседневный диалог=一般 (обычное), движение сюжета=重要 (важное), ключевой поворот=关键 (ключевое)
+· ${userName} — имя главного героя${extraRules}
+· Ещё раз: выводи только ${allowedTags}, ${forbiddenNote}`;
         }
 
         try {
@@ -10187,14 +10187,14 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
             ]);
             if (cancelled) break;
             if (!response) {
-                console.warn(`[Horae] 第 ${b + 1} 批：AI 未返回内容`);
-                showToast(`第 ${b + 1} 批：AI 未返回内容（可能被内容审查拦截）`, 'warning');
+                console.warn(`[Horae] Пакет ${b + 1}: ИИ не вернул содержимого`);
+                showToast(`Пакет ${b + 1}: ИИ не вернул содержимого (возможно, заблокировано цензурой)`, 'warning');
                 continue;
             }
-            const segments = response.split(/===消息#(\d+)===/);
+            const segments = response.split(/===Сообщение#(\d+)===/);
             if (segments.length <= 1) {
-                console.warn(`[Horae] 第 ${b + 1} 批：AI 回复格式不匹配（未找到 ===消息#N=== 分隔符）`, response.substring(0, 300));
-                showToast(`第 ${b + 1} 批：AI 回复格式不匹配，请重试`, 'warning');
+                console.warn(`[Horae] Пакет ${b + 1}: формат ответа ИИ не совпадает (не найден разделитель ===Сообщение#N===)`, response.substring(0, 300));
+                showToast(`Пакет ${b + 1}: формат ответа ИИ не совпадает, повторите`, 'warning');
                 continue;
             }
             for (let s = 1; s < segments.length; s += 2) {
@@ -10227,12 +10227,12 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
             }
         } catch (err) {
             if (cancelled || err?.name === 'AbortError') break;
-            console.error(`[Horae] 第 ${b + 1} 批摘要失败:`, err);
-            showToast(`第 ${b + 1} 批：AI 请求失败，请检查 API 连接`, 'error');
+            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
+            showToast(`Пакет ${b + 1}: ошибка запроса ИИ, проверьте подключение к API`, 'error');
         }
 
         if (b < batches.length - 1 && !cancelled) {
-            textEl.textContent = `第 ${b + 1} 批完成，等待中...`;
+            textEl.textContent = `Пакет ${b + 1} завершён, ожидание...`;
             await Promise.race([
                 new Promise(r => setTimeout(r, 2000)),
                 cancelPromise
@@ -10244,7 +10244,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
     return scanResults;
 }
 
-/** 从暂存结果中按分类提取审阅条目 */
+/** Извлечь позиции проверки из промежуточных результатов по категориям */
 function extractReviewCategories(scanResults) {
     const categories = { events: [], items: [], npcs: [], affection: [], scenes: [], relationships: [] };
 
@@ -10295,7 +10295,7 @@ function extractReviewCategories(scanResults) {
             });
         }
 
-        // 场景记忆
+        // Память о локациях
         if (meta.scene?.location && meta.scene?.scene_desc) {
             categories.scenes.push({
                 resultIndex: ri, field: 'scene', key: meta.scene.location,
@@ -10305,7 +10305,7 @@ function extractReviewCategories(scanResults) {
             });
         }
 
-        // 关系网络
+        // Сеть отношений
         if (meta.relationships?.length > 0) {
             for (let rri = 0; rri < meta.relationships.length; rri++) {
                 const rel = meta.relationships[rri];
@@ -10319,14 +10319,14 @@ function extractReviewCategories(scanResults) {
         }
     }
 
-    // 好感度去重：同名NPC只保留最后一次（最终值）
+    // Дедупликация расположения: для одноимённых NPC сохранять только последнее значение (итоговое)
     const affMap = new Map();
     for (const item of categories.affection) {
         affMap.set(item.text, item);
     }
     categories.affection = [...affMap.values()];
 
-    // 场景去重：同名地点只保留最后一次描述
+    // Дедупликация локаций: для одноимённых мест сохранять только последнее описание
     const sceneMap = new Map();
     for (const item of categories.scenes) {
         sceneMap.set(item.text, item);
@@ -10337,29 +10337,29 @@ function extractReviewCategories(scanResults) {
     return categories;
 }
 
-/** 审阅条目唯一标识 */
+/** Уникальный идентификатор позиции проверки */
 function makeReviewKey(item) {
     if (item.field === 'events') return `${item.resultIndex}-events-${item.subIndex}`;
     if (item.field === 'relationships') return `${item.resultIndex}-relationships-${item.subIndex}`;
     return `${item.resultIndex}-${item.field}-${item.key}`;
 }
 
-/** 摘要审阅弹窗 — 按分类展示，支持逐条删除和补充摘要 */
+/** Диалог проверки сводок — отображение по категориям, поддержка удаления и дополнения */
 function showScanReviewModal(scanResults, scanOptions) {
     const categories = extractReviewCategories(scanResults);
     const deletedSet = new Set();
 
     const tabs = [
-        { id: 'events', label: '剧情轨迹', icon: 'fa-clock-rotate-left', items: categories.events },
-        { id: 'items', label: '物品', icon: 'fa-box-open', items: categories.items },
-        { id: 'npcs', label: '角色', icon: 'fa-user', items: categories.npcs },
-        { id: 'affection', label: '好感度', icon: 'fa-heart', items: categories.affection },
-        { id: 'scenes', label: '场景', icon: 'fa-map-location-dot', items: categories.scenes },
-        { id: 'relationships', label: '关系', icon: 'fa-people-arrows', items: categories.relationships }
+        { id: 'events', label: 'Хронология', icon: 'fa-clock-rotate-left', items: categories.events },
+        { id: 'items', label: 'Предметы', icon: 'fa-box-open', items: categories.items },
+        { id: 'npcs', label: 'Персонажи', icon: 'fa-user', items: categories.npcs },
+        { id: 'affection', label: 'Расположение', icon: 'fa-heart', items: categories.affection },
+        { id: 'scenes', label: 'Сцена', icon: 'fa-map-location-dot', items: categories.scenes },
+        { id: 'relationships', label: 'Отношения', icon: 'fa-people-arrows', items: categories.relationships }
     ].filter(t => t.items.length > 0);
 
     if (tabs.length === 0) {
-        showToast('未提取到任何摘要数据', 'warning');
+        showToast('Не удалось извлечь данные', 'warning');
         return;
     }
 
@@ -10387,13 +10387,13 @@ function showScanReviewModal(scanResults, scanOptions) {
                     ${item.time ? `<div class="horae-review-item-sub">${escapeHtml(item.time)}</div>` : ''}
                     <div class="horae-review-item-msg">#${item.msgIndex}</div>
                 </div>
-                <button class="horae-review-delete-btn" data-key="${itemKey}" title="删除/恢复">
+                <button class="horae-review-delete-btn" data-key="${itemKey}" title="Удалить/восстановить">
                     <i class="fa-solid fa-trash-can"></i>
                 </button>
             </div>`;
         }).join('');
         return `<div class="horae-review-panel ${t.id === activeTab ? 'active' : ''}" data-panel="${t.id}">
-            ${itemsHtml || '<div class="horae-review-empty">暂无数据</div>'}
+            ${itemsHtml || '<div class="horae-review-empty">Нет данных</div>'}
         </div>`;
     }).join('');
 
@@ -10402,24 +10402,24 @@ function showScanReviewModal(scanResults, scanOptions) {
     modal.innerHTML = `
         <div class="horae-modal-content">
             <div class="horae-modal-header">
-                <span>摘要审阅</span>
-                <span style="font-size:12px;color:var(--horae-text-muted);">共 ${totalCount} 条</span>
+                <span>Проверка сводок</span>
+                <span style="font-size:12px;color:var(--horae-text-muted);">Всего: ${totalCount}</span>
             </div>
             <div class="horae-review-tabs">${tabsHtml}</div>
             <div class="horae-review-body">${panelsHtml}</div>
             <div class="horae-modal-footer horae-review-footer">
-                <div class="horae-review-stats">已删除 <strong id="horae-review-del-count">0</strong> 条</div>
+                <div class="horae-review-stats">Удалено: <strong id="horae-review-del-count">0</strong></div>
                 <div class="horae-review-actions">
-                    <button class="horae-btn" id="horae-review-cancel"><i class="fa-solid fa-xmark"></i> 取消</button>
-                    <button class="horae-btn primary" id="horae-review-rescan" disabled style="opacity:0.5;"><i class="fa-solid fa-wand-magic-sparkles"></i> 补充摘要</button>
-                    <button class="horae-btn primary" id="horae-review-confirm"><i class="fa-solid fa-check"></i> 确认保存</button>
+                    <button class="horae-btn" id="horae-review-cancel"><i class="fa-solid fa-xmark"></i> Отмена</button>
+                    <button class="horae-btn primary" id="horae-review-rescan" disabled style="opacity:0.5;"><i class="fa-solid fa-wand-magic-sparkles"></i> Дополнить сводки</button>
+                    <button class="horae-btn primary" id="horae-review-confirm"><i class="fa-solid fa-check"></i> Подтвердить и сохранить</button>
                 </div>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
 
-    // tab 切换
+    // Переключение вкладок
     modal.querySelectorAll('.horae-review-tab').forEach(tabBtn => {
         tabBtn.addEventListener('click', () => {
             modal.querySelectorAll('.horae-review-tab').forEach(t => t.classList.remove('active'));
@@ -10429,7 +10429,7 @@ function showScanReviewModal(scanResults, scanOptions) {
         });
     });
 
-    // 删除/恢复切换
+    // Переключение удалить/восстановить
     modal.querySelectorAll('.horae-review-delete-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const key = btn.dataset.key;
@@ -10460,7 +10460,7 @@ function showScanReviewModal(scanResults, scanOptions) {
         }
     }
 
-    // 确认保存
+    // Подтвердить и сохранить
     modal.querySelector('#horae-review-confirm').addEventListener('click', async () => {
         applyDeletedToResults(scanResults, deletedSet, categories);
         let saved = 0;
@@ -10472,11 +10472,11 @@ function showScanReviewModal(scanResults, scanOptions) {
                 m.timestamp?.story_date || (m.scene?.scene_desc) || (m.relationships?.length > 0);
             if (!hasData) continue;
             m._aiScanned = true;
-            // 场景记忆写入 locationMemory
+            // Записать память о локациях в locationMemory
             if (m.scene?.location && m.scene?.scene_desc) {
                 horaeManager._updateLocationMemory(m.scene.location, m.scene.scene_desc);
             }
-            // 关系网络合并
+            // Слияние данных сети отношений
             if (m.relationships?.length > 0) {
                 horaeManager._mergeRelationships(m.relationships);
             }
@@ -10487,17 +10487,17 @@ function showScanReviewModal(scanResults, scanOptions) {
         horaeManager.rebuildTableData();
         await getContext().saveChat();
         modal.remove();
-        showToast(`已保存 ${saved} 条摘要`, 'success');
+        showToast(`Сохранено ${saved} сводок`, 'success');
         refreshAllDisplays();
         renderCustomTablesList();
     });
 
-    // 取消
-    const closeModal = () => { if (confirm('关闭审阅弹窗？未保存的摘要将丢失。\n（下次可重新运行「AI智能摘要」继续补充）')) modal.remove(); };
+    // Отмена
+    const closeModal = () => { if (confirm('Закрыть окно проверки? Несохранённые сводки будут потеряны.\n(Можно запустить «ИИ-анализ» снова для продолжения)')) modal.remove(); };
     modal.querySelector('#horae-review-cancel').addEventListener('click', closeModal);
     modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
-    // 补充摘要 — 对已删除条目所在楼层重跑
+    // Дополнить сводки — повторно обработать сообщения с удалёнными записями
     modal.querySelector('#horae-review-rescan').addEventListener('click', async () => {
         const deletedMsgIndices = new Set();
         for (const key of deletedSet) {
@@ -10505,7 +10505,7 @@ function showScanReviewModal(scanResults, scanOptions) {
             if (!isNaN(ri) && scanResults[ri]) deletedMsgIndices.add(scanResults[ri].msgIndex);
         }
         if (deletedMsgIndices.size === 0) return;
-        if (!confirm(`将对 ${deletedMsgIndices.size} 条消息重新生成摘要，消耗至少 1 次生成。\n\n是否继续？`)) return;
+        if (!confirm(`Будет повторно сгенерировано ${deletedMsgIndices.size} сообщений, минимум 1 генерация.\n\nПродолжить?`)) return;
 
         applyDeletedToResults(scanResults, deletedSet, categories);
 
@@ -10534,7 +10534,7 @@ function showScanReviewModal(scanResults, scanOptions) {
     });
 }
 
-/** 将删除标记应用到 scanResults 的实际数据 */
+/** Применить метки удаления к фактическим данным scanResults */
 function applyDeletedToResults(scanResults, deletedSet, categories) {
     const deleteMap = new Map();
     const allItems = [...categories.events, ...categories.items, ...categories.npcs, ...categories.affection, ...categories.scenes, ...categories.relationships];
@@ -10576,7 +10576,7 @@ function applyDeletedToResults(scanResults, deletedSet, categories) {
     }
 }
 
-/** AI摘要配置弹窗 */
+/** Диалог настройки ИИ-анализа */
 function showAIScanConfigDialog(targetCount) {
     return new Promise(resolve => {
         const modal = document.createElement('div');
@@ -10584,47 +10584,47 @@ function showAIScanConfigDialog(targetCount) {
         modal.innerHTML = `
             <div class="horae-modal-content" style="max-width: 420px;">
                 <div class="horae-modal-header">
-                    <span>AI 智能摘要</span>
+                    <span>ИИ-анализ</span>
                 </div>
                 <div class="horae-modal-body" style="padding: 16px;">
                     <p style="margin: 0 0 12px; color: var(--horae-text-muted); font-size: 13px;">
-                        检测到 <strong style="color: var(--horae-primary-light);">${targetCount}</strong> 条尚无时间线的消息（已有时间线的楼层自动跳过）
+                        Обнаружено <strong style="color: var(--horae-primary-light);">${targetCount}</strong> сообщений без хронологии (уже имеющие данные пропускаются автоматически)
                     </p>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--horae-text);">
-                        每批 Token 上限
+                        Лимит токенов на пакет
                         <input type="number" id="horae-ai-scan-token-limit" value="80000" min="10000" max="1000000" step="10000"
                             style="flex:1; padding: 6px 10px; background: var(--horae-bg); border: 1px solid var(--horae-border); border-radius: 4px; color: var(--horae-text); font-size: 13px;">
                     </label>
                     <p style="margin: 8px 0 12px; color: var(--horae-text-muted); font-size: 11px;">
-                        值越大每批消息越多、生成次数越少，但可能超出模型限制。<br>
+                        Больше значение = больше сообщений за раз, меньше генераций, но возможен выход за пределы модели.<br>
                         Claude ≈ 80K~200K · Gemini ≈ 100K~1000K · GPT-4o ≈ 80K~128K
                     </p>
                     <div style="border-top: 1px solid var(--horae-border); padding-top: 12px;">
-                        <p style="margin: 0 0 8px; font-size: 12px; color: var(--horae-text);">额外提取项（可选）</p>
+                        <p style="margin: 0 0 8px; font-size: 12px; color: var(--horae-text);">Дополнительные данные (необязательно)</p>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-bottom: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-npc" ${settings.aiScanIncludeNpc ? 'checked' : ''}>
-                            NPC 角色信息
+                            Информация о персонажах (NPC)
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-affection" ${settings.aiScanIncludeAffection ? 'checked' : ''}>
-                            好感度
+                            Расположение
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-top: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-scene" ${settings.aiScanIncludeScene ? 'checked' : ''}>
-                            场景记忆（地点物理特征描述）
+                            Память о локациях (описание физических характеристик)
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-top: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-relationship" ${settings.aiScanIncludeRelationship ? 'checked' : ''}>
-                            关系网络
+                            Сеть отношений
                         </label>
                         <p style="margin: 6px 0 0; color: var(--horae-text-muted); font-size: 10px;">
-                            从历史文本中提取信息，提取后可在审阅弹窗中逐条调整。
+                            Извлечение информации из текста истории. После этого можно проверить каждую запись в окне проверки.
                         </p>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
-                    <button class="horae-btn" id="horae-ai-scan-cancel">取消</button>
-                    <button class="horae-btn primary" id="horae-ai-scan-confirm">继续</button>
+                    <button class="horae-btn" id="horae-ai-scan-cancel">Отмена</button>
+                    <button class="horae-btn primary" id="horae-ai-scan-confirm">Продолжить</button>
                 </div>
             </div>
         `;
@@ -10654,7 +10654,7 @@ function showAIScanConfigDialog(targetCount) {
     });
 }
 
-/** 撤销AI摘要 — 清除所有 _aiScanned 标记的数据 */
+/** Отмена ИИ-анализа — очистить все данные с меткой _aiScanned */
 async function undoAIScan() {
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) return;
@@ -10665,11 +10665,11 @@ async function undoAIScan() {
     }
 
     if (count === 0) {
-        showToast('没有找到AI摘要数据', 'info');
+        showToast('Данные ИИ-анализа не найдены', 'info');
         return;
     }
 
-    if (!confirm(`将清除 ${count} 条消息的AI摘要数据（事件和物品）。\n手动编辑的数据不受影响。\n\n是否继续？`)) return;
+    if (!confirm(`Будут очищены данные ИИ-анализа из ${count} сообщений (события и предметы).\nВручную отредактированные данные затронуты не будут.\n\nПродолжить?`)) return;
 
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i].horae_meta;
@@ -10682,13 +10682,13 @@ async function undoAIScan() {
 
     horaeManager.rebuildTableData();
     await getContext().saveChat();
-    showToast(`已撤销 ${count} 条消息的AI摘要数据`, 'success');
+    showToast(`Отменён ИИ-анализ для ${count} сообщений`, 'success');
     refreshAllDisplays();
     renderCustomTablesList();
 }
 
 /**
- * 导出数据
+ * Экспорт данных
  */
 function exportData() {
     const chat = horaeManager.getChat();
@@ -10709,17 +10709,17 @@ function exportData() {
     a.click();
     URL.revokeObjectURL(url);
     
-    showToast('数据已导出', 'success');
+    showToast('Данные экспортированы', 'success');
 }
 
 /**
- * 导入数据（支持两种模式）
+ * Импорт данных (поддерживает два режима)
  */
 function importData() {
     const mode = confirm(
-        '请选择导入模式：\n\n' +
-        '【确定】→ 按楼层匹配导入（同一对话还原）\n' +
-        '【取消】→ 导入为初始状态（新对话继承元数据）'
+        'Выберите режим импорта:\n\n' +
+        '[OK] → Импорт по номеру сообщения (восстановление в том же диалоге)\n' +
+        '[Отмена] → Импорт как начальное состояние (новый диалог наследует метаданные)'
     ) ? 'match' : 'initial';
     
     const input = document.createElement('input');
@@ -10734,7 +10734,7 @@ function importData() {
             const importObj = JSON.parse(text);
             
             if (!importObj.data || !Array.isArray(importObj.data)) {
-                throw new Error('无效的数据格式');
+                throw new Error('Неверный формат данных');
             }
             
             const chat = horaeManager.getChat();
@@ -10748,24 +10748,24 @@ function importData() {
                     }
                 }
                 await getContext().saveChat();
-                showToast(`成功导入 ${imported} 条记录`, 'success');
+                showToast(`Успешно импортировано ${imported} записей`, 'success');
             } else {
                 _importAsInitialState(importObj, chat);
                 await getContext().saveChat();
-                showToast('已将元数据导入为初始状态', 'success');
+                showToast('Метаданные импортированы как начальное состояние', 'success');
             }
             refreshAllDisplays();
         } catch (error) {
-            console.error('[Horae] 导入失败:', error);
-            showToast('导入失败: ' + error.message, 'error');
+            console.error('[Horae] Ошибка импорта:', error);
+            showToast('Ошибка импорта: ' + error.message, 'error');
         }
     };
     input.click();
 }
 
 /**
- * 从导出文件提取最终累积状态，写入当前对话的 chat[0] 作为初始元数据，
- * 适用于新聊天继承旧聊天的世界观数据。
+ * Извлечь финальное накопленное состояние из файла экспорта, записать в chat[0] текущего диалога как начальные метаданные.
+ * Подходит для наследования данных мира из предыдущего диалога.
  */
 function _importAsInitialState(importObj, chat) {
     const allMetas = importObj.data
@@ -10773,11 +10773,11 @@ function _importAsInitialState(importObj, chat) {
         .map(d => d.horae_meta)
         .filter(Boolean);
     
-    if (!allMetas.length) throw new Error('导出文件中无有效元数据');
+    if (!allMetas.length) throw new Error('В файле экспорта нет действительных метаданных');
     if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
     const target = chat[0].horae_meta;
     
-    // 累积 NPC
+    // Накопление NPC
     for (const meta of allMetas) {
         if (meta.npcs) {
             for (const [name, info] of Object.entries(meta.npcs)) {
@@ -10821,7 +10821,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-    // 只导入关键+重要事件
+    // Импортировать только ключевые+важные события
     const importedEvents = [];
     for (const meta of allMetas) {
         if (!meta.events?.length) continue;
@@ -10836,7 +10836,7 @@ function _importAsInitialState(importObj, chat) {
         target.events.push(...importedEvents);
     }
     
-    // 关系网络
+    // Сеть отношений
     const finalRels = [];
     for (const meta of allMetas) {
         if (meta.relationships?.length) {
@@ -10849,7 +10849,7 @@ function _importAsInitialState(importObj, chat) {
     }
     if (finalRels.length > 0) target.relationships = finalRels;
     
-    // RPG 数据
+    // RPG данные
     for (const meta of allMetas) {
         if (meta.rpg) {
             if (!target.rpg) target.rpg = { bars: {}, status: {}, skills: {}, attributes: {} };
@@ -10859,7 +10859,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-    // 自定义表格
+    // Пользовательские таблицы
     for (const meta of allMetas) {
         if (meta.tableContributions) {
             if (!target.tableContributions) target.tableContributions = {};
@@ -10867,7 +10867,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-    // 场景记忆
+    // Память о локациях
     for (const meta of allMetas) {
         if (meta.locationMemory) {
             if (!target.locationMemory) target.locationMemory = {};
@@ -10875,7 +10875,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-    // 待办事项
+    // Задачи
     const seenAgenda = new Set();
     for (const meta of allMetas) {
         if (meta.agenda?.length) {
@@ -10889,7 +10889,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-    // 处理已删除物品
+    // Обработать удалённые предметы
     for (const meta of allMetas) {
         if (meta.deletedItems?.length) {
             for (const name of meta.deletedItems) {
@@ -10901,14 +10901,14 @@ function _importAsInitialState(importObj, chat) {
     const npcCount = Object.keys(target.npcs || {}).length;
     const itemCount = Object.keys(target.items || {}).length;
     const eventCount = importedEvents.length;
-    console.log(`[Horae] 导入初始状态: ${npcCount} NPC, ${itemCount} 物品, ${eventCount} 关键/重要事件`);
+    console.log(`[Horae] Импортировано начальное состояние: ${npcCount} NPC, ${itemCount} предметов, ${eventCount} ключевых/важных событий`);
 }
 
 /**
- * 清除所有数据
+ * Очистить все данные
  */
 async function clearAllData() {
-    if (!confirm('确定要清除所有 Horae 元数据吗？此操作不可恢复！')) {
+    if (!confirm('Очистить все метаданные Horae? Это действие необратимо!')) {
         return;
     }
     
@@ -10918,14 +10918,14 @@ async function clearAllData() {
     }
     
     await getContext().saveChat();
-    showToast('所有数据已清除', 'warning');
+    showToast('Все данные очищены', 'warning');
     refreshAllDisplays();
 }
 
-/** 使用AI分析消息内容 */
+/** Анализ содержимого сообщения с помощью ИИ */
 async function analyzeMessageWithAI(messageContent) {
     const context = getContext();
-    const userName = context?.name1 || '主角';
+    const userName = context?.name1 || 'Главный герой';
 
     let analysisPrompt;
     if (settings.customAnalysisPrompt) {
@@ -10946,7 +10946,7 @@ async function analyzeMessageWithAI(messageContent) {
             return parsed;
         }
     } catch (error) {
-        console.error('[Horae] AI分析调用失败:', error);
+        console.error('[Horae] Ошибка вызова ИИ-анализа:', error);
         throw error;
     }
     
@@ -10954,11 +10954,11 @@ async function analyzeMessageWithAI(messageContent) {
 }
 
 // ============================================
-// 事件监听
+// Привязка событий
 // ============================================
 
 /**
- * AI回复接收时触发
+ * Срабатывает при получении ответа ИИ
  */
 async function onMessageReceived(messageId) {
     if (!settings.enabled || !settings.autoParse) return;
@@ -10969,10 +10969,10 @@ async function onMessageReceived(messageId) {
     
     if (!message || message.is_user) return;
     
-    // 番外标记的消息跳过处理
+    // Пропустить обработку сообщений с меткой побочной сцены
     if (message.horae_meta?._skipHorae) return;
     
-    // regenerate/swipe 检测：若已有 meta 则为重新生成，清空旧数据再解析
+    // Определение regenerate/swipe: если meta уже есть — перегенерация, очистить старые данные
     const isRegenerate = !!(message.horae_meta?.timestamp?.absolute);
     let savedFlags = null;
     if (isRegenerate) {
@@ -11008,11 +11008,11 @@ async function onMessageReceived(messageId) {
         if (meta) {
             vectorManager.addMessage(messageId, meta).then(() => {
                 _updateVectorStatus();
-            }).catch(err => console.warn('[Horae] 向量索引失败:', err));
+            }).catch(err => console.warn('[Horae] Ошибка обновления векторного индекса:', err));
         }
     }
 
-    // AI回复后顺序触发自动摘要（并行路径若已执行则跳过）
+    // Последовательный запуск авто-сводки после ответа ИИ (пропустить, если параллельный путь уже выполнился)
     if (!isRegenerate && settings.autoSummaryEnabled && settings.sendTimeline) {
         setTimeout(() => {
             if (!_autoSummaryRanThisTurn) {
@@ -11023,7 +11023,7 @@ async function onMessageReceived(messageId) {
 }
 
 /**
- * 消息删除时触发 — 重建表格数据
+ * Срабатывает при удалении сообщения — пересборка данных таблиц
  */
 function onMessageDeleted() {
     if (!settings.enabled) return;
@@ -11039,7 +11039,7 @@ function onMessageDeleted() {
 }
 
 /**
- * 消息编辑时触发 — 重新解析该消息并重建表格
+ * Срабатывает при редактировании сообщения — повторный разбор и пересборка таблиц
  */
 function onMessageEdited(messageId) {
     if (!settings.enabled) return;
@@ -11048,7 +11048,7 @@ function onMessageEdited(messageId) {
     const message = chat[messageId];
     if (!message || message.is_user) return;
     
-    // 保存摘要压缩标记后重置 meta，解析完再恢复
+    // Сохранить метку сжатия сводок, сбросить meta, после разбора восстановить
     const savedFlags = _saveCompressedFlags(message.horae_meta);
     message.horae_meta = createEmptyMeta();
     
@@ -11069,19 +11069,19 @@ function onMessageEdited(messageId) {
         const meta = horaeManager.getMessageMeta(messageId);
         if (meta) {
             vectorManager.addMessage(messageId, meta).catch(err =>
-                console.warn('[Horae] 向量重建失败:', err));
+                console.warn('[Horae] Ошибка перестройки векторного индекса:', err));
         }
     }
 }
 
-/** 注入上下文（数据+规则合并注入） */
+/** Инжектировать контекст (данные + правила объединены) */
 async function onPromptReady(eventData) {
     if (_isSummaryGeneration) return;
     if (!settings.enabled || !settings.injectContext) return;
     if (eventData.dryRun) return;
     
     try {
-        // swipe/regenerate检测
+        // Определение swipe/regenerate
         let skipLast = 0;
         const chat = horaeManager.getChat();
         if (chat && chat.length > 0) {
@@ -11096,20 +11096,20 @@ async function onPromptReady(eventData) {
                 (lastMsg.horae_meta.events || []).length > 0
             )) {
                 skipLast = 1;
-                console.log('[Horae] 检测到swipe/regenerate，跳过末尾消息的旧记忆');
+                console.log('[Horae] Обнаружен swipe/regenerate, пропустить старую память последнего сообщения');
             }
         }
 
         const dataPrompt = horaeManager.generateCompactPrompt(skipLast);
 
         let recallPrompt = '';
-        console.log(`[Horae] 向量检查: vectorEnabled=${settings.vectorEnabled}, isReady=${vectorManager.isReady}, vectors=${vectorManager.vectors.size}`);
+        console.log(`[Horae] Проверка векторов: vectorEnabled=${settings.vectorEnabled}, isReady=${vectorManager.isReady}, vectors=${vectorManager.vectors.size}`);
         if (settings.vectorEnabled && vectorManager.isReady) {
             try {
                 recallPrompt = await vectorManager.generateRecallPrompt(horaeManager, skipLast, settings);
-                console.log(`[Horae] 向量召回结果: ${recallPrompt ? recallPrompt.length + ' 字符' : '空'}`);
+                console.log(`[Horae] Результат векторного извлечения: ${recallPrompt ? recallPrompt.length + ' символов' : 'пусто'}`);
             } catch (err) {
-                console.error('[Horae] 向量召回失败:', err);
+                console.error('[Horae] Ошибка векторного извлечения:', err);
             }
         }
 
@@ -11122,7 +11122,7 @@ async function onPromptReady(eventData) {
                     const cleaned = chat[i].mes.replace(/<horae>[\s\S]*?<\/horae>/gi, '').replace(/<horaeevent>[\s\S]*?<\/horaeevent>/gi, '').trim();
                     if (cleaned) {
                         const truncated = cleaned.length > 2000 ? cleaned.slice(0, 2000) + '…' : cleaned;
-                        antiParaRef = `\n【反转述参考 - USER上一条消息内容】\n${truncated}\n（请将以上USER行为一并纳入本条<horae>结算）`;
+                        antiParaRef = `\n[Режим без пересказа - предыдущее сообщение пользователя]\n${truncated}\n(Учти действия выше при расчёте текущего тега <horae>)`;
                     }
                     break;
                 }
@@ -11140,14 +11140,14 @@ async function onPromptReady(eventData) {
             eventData.chat.splice(-position, 0, { role: 'system', content: combinedPrompt });
         }
         
-        console.log(`[Horae] 已注入上下文，位置: -${position}${skipLast ? '（已跳过末尾消息）' : ''}${recallPrompt ? '（含向量召回）' : ''}`);
+        console.log(`[Horae] Контекст инжектирован, позиция: -${position}${skipLast ? ' (последнее сообщение пропущено)' : ''}${recallPrompt ? ' (включено векторное извлечение)' : ''}`);
     } catch (error) {
-        console.error('[Horae] 注入上下文失败:', error);
+        console.error('[Horae] Ошибка инжекции контекста:', error);
     }
 }
 
 /**
- * 聊天切换时触发
+ * Срабатывает при смене диалога
  */
 async function onChatChanged() {
     if (!settings.enabled) return;
@@ -11164,7 +11164,7 @@ async function onChatChanged() {
         const chatId = ctx?.chatId || _deriveChatId(ctx);
         vectorManager.loadChat(chatId, horaeManager.getChat()).then(() => {
             _updateVectorStatus();
-        }).catch(err => console.warn('[Horae] 加载向量索引失败:', err));
+        }).catch(err => console.warn('[Horae] Ошибка загрузки векторного индекса:', err));
     }
     
     setTimeout(() => {
@@ -11181,7 +11181,7 @@ async function onChatChanged() {
     }, 500);
 }
 
-/** 消息渲染时触发 */
+/** Срабатывает при рендеринге сообщения */
 function onMessageRendered(messageId) {
     if (!settings.enabled || !settings.showMessagePanel) return;
     
@@ -11197,7 +11197,7 @@ function onMessageRendered(messageId) {
     }, 100);
 }
 
-/** swipe切换分页时触发 — 重置meta、重新解析并刷新所有显示 */
+/** Срабатывает при переключении swipe — сброс meta, повторный разбор и обновление отображения */
 function onSwipePanel(messageId) {
     if (!settings.enabled) return;
     
@@ -11231,32 +11231,32 @@ function onSwipePanel(messageId) {
 }
 
 // ============================================
-// 新用户导航教学
+// Обучение для новых пользователей
 // ============================================
 
 const TUTORIAL_STEPS = [
     {
-        title: '欢迎使用 Horae 时光记忆！',
-        content: `这是一个让 AI 自动追踪剧情状态的插件。<br>
-            Horae 会在 AI 回复时附带 <code>&lt;horae&gt;</code> 标签，自动记录时间、场景、角色、物品等状态变化。<br><br>
-            接下来我会带你快速了解核心功能，请跟着提示操作。`,
+        title: 'Добро пожаловать в Horae — Хроники Времени!',
+        content: `Это плагин, позволяющий ИИ автоматически отслеживать состояние сюжета.<br>
+            Horae добавляет в ответы ИИ теги <code>&lt;horae&gt;</code>, автоматически записывая время, место, персонажей, предметы и другие изменения состояния.<br><br>
+            Сейчас я кратко познакомлю тебя с основными функциями. Следуй подсказкам!`,
         target: null,
         action: null
     },
     {
-        title: '旧记录处理 — AI 智能摘要',
-        content: `如果你有旧聊天记录，需要先用「AI智能摘要」批量补全 <code>&lt;horae&gt;</code> 标签。<br>
-            AI 会回读历史对话并生成结构化的时间线数据。<br><br>
-            <strong>新对话无需操作</strong>，插件会自动工作。`,
+        title: 'Обработка старых записей — ИИ-анализ',
+        content: `Если у тебя есть старые записи чата, нужно сначала использовать «ИИ-анализ» для пакетного восстановления тегов <code>&lt;horae&gt;</code>.<br>
+            ИИ перечитает историю диалога и создаст структурированные данные хронологии.<br><br>
+            <strong>Для новых диалогов действий не требуется</strong> — плагин работает автоматически.`,
         target: '#horae-btn-ai-scan',
         action: null
     },
     {
-        title: '自动摘要 & 隐藏',
-        content: `开启后，超过阈值的旧消息会被自动摘要并隐藏，节省 Token。<br><br>
-            <strong>注意</strong>：此功能需要已有时间线数据（<code>&lt;horae&gt;</code> 标签）才能正常工作。<br>
-            旧记录请先用上一步的「AI智能摘要」补全后再开启。<br>
-            ·若是自动摘要持续出错，请去事件时间线自己多选并全文摘要。`,
+        title: 'Авто-сводка и скрытие',
+        content: `После включения старые сообщения, превысившие порог, будут автоматически сжаты в сводку и скрыты — экономит токены.<br><br>
+            <strong>Внимание</strong>: функция требует наличия данных хронологии (теги <code>&lt;horae&gt;</code>) для корректной работы.<br>
+            Старые записи нужно сначала обработать «ИИ-анализом» на предыдущем шаге.<br>
+            · Если авто-сводка постоянно ошибается — выдели несколько событий в хронологии вручную и сделай полный текстовый анализ.`,
         target: '#horae-autosummary-collapse-toggle',
         action: () => {
             const body = document.getElementById('horae-autosummary-collapse-body');
@@ -11266,17 +11266,17 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: '向量记忆（搭配自动摘要）',
-        content: `这是给<strong>自动摘要用户</strong>准备的回忆功能。摘要压缩后旧消息的细节会丢失，向量记忆能在对话涉及历史事件时，自动从被隐藏的时间线中找回相关片段。<br><br>
-            <strong>要不要开？</strong><br>
-            · 如果你<strong>开了自动摘要</strong>且聊天楼层较高 → 建议开启<br>
-            · 如果你<strong>没开自动摘要</strong>，楼层不多、Token 充裕 → <strong>没必要开</strong><br><br>
-            <strong>来源选择</strong>：<br>
-            · <strong>本地模型</strong>：浏览器本地运算，<strong>不消耗 API 额度</strong>。首次使用会下载约 30-60MB 小模型。<br>
-            ⚠️ <strong>注意 OOM</strong>：本地模型可能因浏览器内存不足导致<strong>页面卡死/白屏/无限加载</strong>。遇到此情况请切换到 API 模式或减少索引条数。<br>
-            · <strong>API</strong>：使用远程 Embedding 模型（<strong>不是</strong>你聊天用的 LLM 大模型）。Embedding 模型是轻量级的文本向量专用模型，<strong>消耗极低</strong>。<br>
-            推荐使用<strong>硅基流动</strong>提供的免费 Embedding 模型（如 BAAI/bge-m3），注册即可免费使用，无需额外付费。<br><br>
-            <strong>全文回顾</strong>：匹配度特别高的召回结果可以发送原始正文（思维链会自动过滤），让 AI 获得完整的叙事。「全文回顾条数」和「全文回顾阈值」可自由调整，设为 0 即关闭。`,
+        title: 'Векторная память (дополнение к авто-сводке)',
+        content: `Это функция воспоминаний для <strong>пользователей авто-сводки</strong>. После сжатия сводок детали старых сообщений теряются. Векторная память автоматически извлекает из скрытой хронологии нужные фрагменты, когда диалог касается прошлых событий.<br><br>
+            <strong>Нужно ли включать?</strong><br>
+            · Если <strong>авто-сводка включена</strong> и история диалога большая → рекомендуется включить<br>
+            · Если <strong>авто-сводка отключена</strong>, история небольшая, токенов достаточно → <strong>нет необходимости</strong><br><br>
+            <strong>Выбор источника</strong>:<br>
+            · <strong>Локальная модель</strong>: вычисления в браузере, <strong>не расходует API-квоту</strong>. При первом использовании загружается небольшая модель (~30-60 МБ).<br>
+            ⚠️ <strong>Осторожно: OOM</strong>: локальная модель может вызвать <strong>зависание/белый экран/бесконечную загрузку</strong> при нехватке памяти. В таком случае переключись на режим API или уменьши количество записей в индексе.<br>
+            · <strong>API</strong>: использует удалённую Embedding-модель (<strong>не</strong> ту LLM, что используется для чата). Embedding-модели — лёгкие специализированные векторные модели, <strong>расход минимален</strong>.<br>
+            Рекомендуется бесплатная Embedding-модель от <strong>SiliconFlow</strong> (напр. BAAI/bge-m3) — доступна сразу после регистрации без дополнительной оплаты.<br><br>
+            <strong>Полный текст</strong>: результаты с очень высоким совпадением отправляются в виде оригинального текста (цепочка рассуждений фильтруется автоматически), давая ИИ полный нарратив. «Количество полнотекстовых результатов» и «порог» настраиваются свободно; установи 0, чтобы отключить.`,
         target: '#horae-vector-collapse-toggle',
         action: () => {
             const body = document.getElementById('horae-vector-collapse-body');
@@ -11286,33 +11286,33 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: '上下文深度',
-        content: `控制发送给 AI 的时间线事件范围。<br><br>
-            · 预设值 <strong>15</strong> 表示只发送最近 15 楼内的「一般」事件<br>
-            · <strong>超出深度的「重要」和「关键」事件仍然会发送</strong>，不受深度限制<br>
-            · 设为 0 则只发送「重要」和「关键」事件<br><br>
-            一般无需调整。值越大发送的信息越多，Token 消耗也越高。`,
+        title: 'Глубина контекста',
+        content: `Управляет диапазоном событий хронологии, отправляемых ИИ.<br><br>
+            · Значение по умолчанию <strong>15</strong>: отправлять только «обычные» события из последних 15 сообщений<br>
+            · <strong>«Важные» и «ключевые» события за пределами глубины всё равно отправляются</strong> — они не ограничены глубиной<br>
+            · Значение 0: отправлять только «важные» и «ключевые» события<br><br>
+            Обычно менять не нужно. Чем больше значение, тем больше информации и выше расход токенов.`,
         target: '#horae-setting-context-depth',
         action: null
     },
     {
-        title: '注入位置（深度）',
-        content: `控制 Horae 的状态信息注入到对话的哪个位置。<br><br>
-            · 预设值 <strong>1</strong> 表示在倒数第 1 条消息后注入<br>
-            · 如果你的预设（Preset）自带摘要或世界书等<strong>同质性功能</strong>，可能与 Horae 的时间线格式冲突，导致预设的正则替换被带偏<br>
-            · 遇到冲突时可调整此值，或<strong>关闭预设中的同质性功能</strong>（推荐）<br><br>
-            <strong>建议</strong>：同类功能不必多开，选一个用即可。`,
+        title: 'Позиция внедрения (глубина)',
+        content: `Управляет тем, в какое место диалога вставляется информация о состоянии Horae.<br><br>
+            · Значение по умолчанию <strong>1</strong>: вставлять после последнего сообщения (-1)<br>
+            · Если в твоём пресете уже есть сводки, книга мира или <strong>аналогичные функции</strong>, они могут конфликтовать с форматом хронологии Horae и сбивать замены регулярных выражений<br>
+            · При конфликте можно изменить это значение или <strong>отключить дублирующие функции в пресете</strong> (рекомендуется)<br><br>
+            <strong>Совет</strong>: однотипные функции не нужно открывать одновременно — выбери одну.`,
         target: '#horae-setting-injection-position',
         action: null
     },
     {
-        title: '自定义提示词',
-        content: `你可以自定义各种提示词来调整 AI 的行为：<br>
-            · <strong>系统注入提示词</strong> — 控制 AI 输出 <code>&lt;horae&gt;</code> 标签的规则<br>
-            · <strong>AI 智能摘要提示词</strong> — 批量提取时间线的规则<br>
-            · <strong>AI 分析提示词</strong> — 单条消息深度分析的规则<br>
-            · <strong>剧情压缩提示词</strong> — 摘要压缩的规则<br><br>
-            建议熟悉插件后再修改。留空即使用默认值。`,
+        title: 'Пользовательские промпты',
+        content: `Ты можешь настроить различные промпты для управления поведением ИИ:<br>
+            · <strong>Системный промпт</strong> — правила вывода тегов <code>&lt;horae&gt;</code><br>
+            · <strong>Промпт для ИИ-анализа</strong> — правила пакетного извлечения хронологии<br>
+            · <strong>Промпт для ИИ-анализа (одиночный)</strong> — правила глубокого анализа отдельного сообщения<br>
+            · <strong>Промпт для сжатия сюжета</strong> — правила компрессии сводок<br><br>
+            Рекомендуется изменять после того, как освоишься с плагином. Оставь пустым для использования по умолчанию.`,
         target: '#horae-prompt-collapse-toggle',
         action: () => {
             const body = document.getElementById('horae-prompt-collapse-body');
@@ -11322,31 +11322,31 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: '自定义表格',
-        content: `创建 Excel 风格表格，让 AI 按需填写信息（如技能表、势力表）。<br><br>
-            <strong>重点提示</strong>：<br>
-            · 表头必须明确填写，AI 根据表头理解要填什么<br>
-            · 每个表格的「填写要求」必须具体，AI 才能正确填写<br>
-            · 部分模型（如 Gemini 免费层级）表格辨识能力较弱，可能无法准确填写`,
+        title: 'Пользовательские таблицы',
+        content: `Создавай таблицы в стиле Excel, в которые ИИ будет вносить нужную информацию (напр. таблица навыков, фракций).<br><br>
+            <strong>Ключевые советы</strong>:<br>
+            · Заголовки должны быть чёткими — ИИ понимает, что заполнять, по заголовкам<br>
+            · «Промпт» для каждой таблицы должен быть конкретным — тогда ИИ будет заполнять правильно<br>
+            · Некоторые модели (напр. бесплатный уровень Gemini) плохо распознают таблицы и могут заполнять некорректно`,
         target: '#horae-custom-tables-list',
         action: null
     },
     {
-        title: '进阶追踪功能',
-        content: `以下功能默认关闭，适合追求精细 RP 的用户：<br><br>
-            · <strong>场景记忆</strong> — 记录地点的固定物理特征描述，保持场景描写一致<br>
-            · <strong>关系网络</strong> — 追踪角色之间的关系变化（朋友、恋人、敌对等）<br>
-            · <strong>情绪追踪</strong> — 追踪角色情绪/心理状态变化<br>
-            · <strong>RPG 模式</strong> — 为角色启用属性条（HP/MP/SP）、多维属性雷达图、技能表和状态追踪。适合跑团、西幻、修真等场景。可按需开启子模块（属性条/属性面板/技能/骰子），关闭时完全不消耗 Token<br><br>
-            如有需要，可在「发送给AI的内容」中开启。`,
+        title: 'Расширенное отслеживание',
+        content: `Следующие функции отключены по умолчанию и предназначены для пользователей, стремящихся к детальному RP:<br><br>
+            · <strong>Память о локациях</strong> — записывает постоянные физические характеристики мест для единообразных описаний<br>
+            · <strong>Сеть отношений</strong> — отслеживает изменения отношений персонажей (друзья, влюблённые, враги и т.д.)<br>
+            · <strong>Отслеживание эмоций</strong> — отслеживает изменения эмоционального/психологического состояния<br>
+            · <strong>RPG-режим</strong> — включает полосы атрибутов (HP/MP/SP), многомерный радар, таблицу навыков и отслеживание состояний. Подходит для ролевых игр, фэнтези и подобных сцен. Подмодули включаются по необходимости; при отключении токены не расходуются<br><br>
+            При необходимости включай в разделе «Отправляемые ИИ данные».`,
         target: '#horae-setting-send-location-memory',
         action: null
     },
     {
-        title: '教学完成！',
-        content: `如果你是开始新对话，无需额外操作 — 插件会自动让 AI 在回复时附带标签，自动建立时间线。<br><br>
-            如需重新查看教学，可在设置底部找到「重新开始教学」按钮。<br><br>
-            祝你 RP 愉快！🎉`,
+        title: 'Обучение завершено!',
+        content: `Если ты начинаешь новый диалог, никаких дополнительных действий не нужно — плагин автоматически заставит ИИ добавлять теги в ответы и строить хронологию.<br><br>
+            Если захочешь пройти обучение снова, найди кнопку «Начать обучение заново» в нижней части настроек.<br><br>
+            Удачных ролевых игр! 🎉`,
         target: null,
         action: null
     }
@@ -11359,7 +11359,7 @@ async function startTutorial() {
         const step = TUTORIAL_STEPS[i];
         const isLast = i === TUTORIAL_STEPS.length - 1;
 
-        // 首个需要面板的步骤时打开抽屉并切到设置 tab
+        // При первом шаге, требующем панели, открыть drawer и переключить на вкладку настроек
         if (step.target && !drawerOpened) {
             const drawerIcon = $('#horae_drawer_icon');
             if (drawerIcon.hasClass('closedIcon')) {
@@ -11394,7 +11394,7 @@ function showTutorialStep(step, current, total, isLast) {
         document.querySelectorAll('.horae-tutorial-card').forEach(e => e.remove());
         document.querySelectorAll('.horae-tutorial-highlight').forEach(e => e.classList.remove('horae-tutorial-highlight'));
 
-        // 高亮目标并定位插入点
+        // Подсветить цель и определить точку вставки
         let highlightEl = null;
         let insertAfterEl = null;
         if (step.target) {
@@ -11415,12 +11415,12 @@ function showTutorialStep(step, current, total, isLast) {
             </div>
             <div class="horae-tutorial-card-body">${step.content}</div>
             <div class="horae-tutorial-card-foot">
-                <button class="horae-tutorial-skip">跳过</button>
-                <button class="horae-tutorial-next">${isLast ? '完成 ✓' : '下一步 →'}</button>
+                <button class="horae-tutorial-skip">Пропустить</button>
+                <button class="horae-tutorial-next">${isLast ? 'Готово ✓' : 'Далее →'}</button>
             </div>
         `;
 
-        // 紧跟在目标区域后面插入，没有目标则放到设置页顶部
+        // Вставить сразу после целевой области; если нет цели — в начало страницы настроек
         if (insertAfterEl && insertAfterEl.parentNode) {
             insertAfterEl.parentNode.insertBefore(card, insertAfterEl.nextSibling);
         } else {
@@ -11432,7 +11432,7 @@ function showTutorialStep(step, current, total, isLast) {
             }
         }
 
-        // 自动滚到高亮目标（教学卡片紧跟其后，一起可见）
+        // Автопрокрутка к подсвеченной цели (карточка обучения следует за ней, оба видны)
         const scrollTarget = highlightEl || card;
         setTimeout(() => scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
@@ -11446,11 +11446,11 @@ function showTutorialStep(step, current, total, isLast) {
 }
 
 // ============================================
-// 初始化
+// Инициализировать 
 // ============================================
 
 jQuery(async () => {
-    console.log(`[Horae] 开始加载 v${VERSION}...`);
+    console.log(`[Horae] Загрузка v${VERSION}...`);
 
     await initNavbarFunction();
     loadSettings();
@@ -11458,24 +11458,24 @@ jQuery(async () => {
 
     $('#extensions-settings-button').after(await getTemplate('drawer'));
 
-    // 在扩展面板中注入顶部图标开关
+    // Инжектировать переключатель верхней иконки в панель расширений
     const extToggleHtml = `
         <div id="horae-ext-settings" class="inline-drawer" style="margin-top:4px;">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>Horae 时光记忆</b>
+                <b>Horae Хроники Времени</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
                 <label class="checkbox_label" style="margin:6px 0;">
                     <input type="checkbox" id="horae-ext-show-top-icon" checked>
-                    <span>显示顶部导航栏图标</span>
+                    <span>Показывать иконку в верхней панели навигации</span>
                 </label>
             </div>
         </div>
     `;
     $('#extensions_settings2').append(extToggleHtml);
     
-    // 绑定扩展面板内的图标开关（折叠切换由 SillyTavern 全局处理器自动管理）
+    // Привязать переключатель иконки в панели расширений (переключение свёртывания управляется глобальным обработчиком SillyTavern)
     $('#horae-ext-show-top-icon').on('change', function() {
         settings.showTopIcon = this.checked;
         saveSettings();
@@ -11497,13 +11497,13 @@ jQuery(async () => {
     eventSource.on(event_types.MESSAGE_DELETED, onMessageDeleted);
     eventSource.on(event_types.MESSAGE_EDITED, onMessageEdited);
     
-    // 并行自动摘要：用户发消息时并行触发（独立API走直接HTTP，不影响主连接）
+    // Параллельная авто-сводка: запускается параллельно при отправке сообщения пользователем (независимый API через прямой HTTP, не влияет на основное подключение)
     if (event_types.USER_MESSAGE_RENDERED) {
         eventSource.on(event_types.USER_MESSAGE_RENDERED, () => {
             if (!settings.autoSummaryEnabled || !settings.sendTimeline) return;
             _autoSummaryRanThisTurn = true;
             checkAutoSummary().catch((e) => {
-                console.warn('[Horae] 并行自动摘要失败，将在AI回复后重试:', e);
+                console.warn('[Horae] Ошибка параллельной авто-сводки, повтор после ответа ИИ:', e);
                 _autoSummaryRanThisTurn = false;
             });
         });
@@ -11517,11 +11517,11 @@ jQuery(async () => {
     
     renderDicePanel();
     
-    // 新用户导航教学（仅完全没用过 Horae 的全新用户触发）
+    // Обучение для новых пользователей (только для тех, кто ещё ни разу не использовал Horae)
     if (_isFirstTimeUser) {
         setTimeout(() => startTutorial(), 800);
     }
     
     isInitialized = true;
-    console.log(`[Horae] v${VERSION} 加载完成！作者: SenriYuki`);
+    console.log(`[Horae] v${VERSION} загружен! Автор: SenriYuki`);
 });
