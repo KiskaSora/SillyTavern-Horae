@@ -10,7 +10,7 @@
                 <i class="fa-regular fa-clock"></i>
                 Horae — Память Времени
             </div>
-            <span class="horae-version">v1.8.4</span>
+            <span class="horae-version">v1.10.1</span>
         </div>
         
         <!-- Навигация по вкладкам -->
@@ -137,10 +137,10 @@
                     <div class="horae-timeline-controls">
                         <select id="horae-timeline-filter" class="horae-select" title="Фильтр по уровню">
                             <option value="all">Все</option>
-                            <option value="关键">Ключевые</option>
-                            <option value="重要">Важные</option>
-                            <option value="一般">Обычные</option>
-                            <option value="摘要">Конспект</option>
+                            <option value="Ключевое">Ключевые</option>
+                            <option value="Важное">Важные</option>
+                            <option value="Обычное">Обычные</option>
+                            <option value="Сводка">Конспект</option>
                         </select>
                         <button id="horae-btn-timeline-multiselect" class="horae-icon-btn" title="Режим мультивыбора">
                             <i class="fa-solid fa-check-double"></i>
@@ -367,10 +367,79 @@
                     <div id="horae-rpg-skill-form" style="display:none;"></div>
                     <div id="horae-rpg-skills-section"></div>
                 </div>
+                <!-- Снаряжение -->
+                <div class="horae-rpg-equipment-area" id="horae-rpg-equipment-area" style="display:none;">
+                    <div class="horae-rpg-section-head">
+                        <span>Снаряжение</span>
+                        <button id="horae-rpg-eq-preset" class="horae-rpg-btn-sm" title="Управление шаблонами снаряжения"><i class="fa-solid fa-shapes"></i></button>
+                        <button id="horae-rpg-eq-export" class="horae-rpg-btn-sm" title="Экспорт конфигурации снаряжения"><i class="fa-solid fa-download"></i></button>
+                        <button id="horae-rpg-eq-import" class="horae-rpg-btn-sm" title="Импорт конфигурации снаряжения"><i class="fa-solid fa-upload"></i></button>
+                        <button id="horae-rpg-eq-lock" class="horae-rpg-btn-sm" title="Заблокировать/разблокировать (при блокировке ИИ не может предлагать новые ячейки)"><i class="fa-solid fa-lock"></i></button>
+                    </div>
+                    <input type="file" id="horae-rpg-eq-import-file" accept=".json" style="display:none;" />
+                    <div id="horae-rpg-eq-values-section"></div>
+                </div>
+                <!-- Система репутации -->
+                <div class="horae-rpg-reputation-area" id="horae-rpg-reputation-area" style="display:none;">
+                    <div class="horae-rpg-section-head">
+                        <span>Репутация</span>
+                        <button id="horae-rpg-rep-export" class="horae-rpg-btn-sm" title="Экспорт конфигурации репутации"><i class="fa-solid fa-download"></i></button>
+                        <button id="horae-rpg-rep-import" class="horae-rpg-btn-sm" title="Импорт конфигурации репутации"><i class="fa-solid fa-upload"></i></button>
+                        <button id="horae-rpg-rep-add" class="horae-rpg-btn-sm" title="Добавить категорию репутации"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <input type="file" id="horae-rpg-rep-import-file" accept=".json" style="display:none;" />
+                    <div id="horae-rpg-rep-config-list"></div>
+                    <div id="horae-rpg-rep-values-section"></div>
+                </div>
+                <!-- Система уровней -->
+                <div class="horae-rpg-level-area" id="horae-rpg-level-area" style="display:none;">
+                    <div class="horae-rpg-section-head">
+                        <span>Уровень / Опыт</span>
+                    </div>
+                    <div id="horae-rpg-level-values-section"></div>
+                </div>
+                <!-- Система валюты -->
+                <div class="horae-rpg-currency-area" id="horae-rpg-currency-area" style="display:none;">
+                    <div class="horae-rpg-section-head">
+                        <span>Валюта</span>
+                        <button id="horae-rpg-cur-export" class="horae-rpg-btn-sm" title="Экспорт конфигурации валюты"><i class="fa-solid fa-download"></i></button>
+                        <button id="horae-rpg-cur-import" class="horae-rpg-btn-sm" title="Импорт конфигурации валюты"><i class="fa-solid fa-upload"></i></button>
+                        <button id="horae-rpg-cur-add" class="horae-rpg-btn-sm" title="Добавить тип монеты"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <input type="file" id="horae-rpg-cur-import-file" accept=".json" style="display:none;" />
+                    <div id="horae-rpg-cur-denom-list"></div>
+                    <div id="horae-rpg-cur-values-section"></div>
+                </div>
+                <!-- Система укреплений -->
+                <div class="horae-rpg-stronghold-area" id="horae-rpg-stronghold-area" style="display:none;">
+                    <div class="horae-rpg-section-head">
+                        <span>Укрепления / База</span>
+                        <button id="horae-rpg-sh-add" class="horae-rpg-btn-sm" title="Добавить укрепление"><i class="fa-solid fa-plus"></i></button>
+                        <button id="horae-rpg-sh-export" class="horae-rpg-btn-sm" title="Экспорт укреплений"><i class="fa-solid fa-download"></i></button>
+                        <button id="horae-rpg-sh-import" class="horae-rpg-btn-sm" title="Импорт укреплений"><i class="fa-solid fa-upload"></i></button>
+                    </div>
+                    <input type="file" id="horae-rpg-sh-import-file" accept=".json" style="display:none;" />
+                    <div id="horae-rpg-sh-tree"></div>
+                </div>
             </div>
             
             <!-- Вкладка Настройки -->
             <div id="horae-tab-settings" class="horae-tab-content">
+                <div class="horae-settings-section" style="margin-bottom:12px;">
+                    <div class="horae-section-header">
+                        <i class="fa-solid fa-sliders"></i>
+                        Профиль конфигурации Horae
+                    </div>
+                    <span class="horae-setting-hint" style="margin-bottom:8px;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Экспортирует все переключатели, настройки режима «Только главный герой», кастомные промпты и RPG-конфиги в файл (без настроек автоконспектирования и векторной памяти). Авторы карточек могут приложить конфиг к карте, игроки импортируют одним кликом.
+                    </span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button id="horae-settings-export" class="horae-rpg-btn-sm" title="Экспорт глобальной конфигурации"><i class="fa-solid fa-file-export"></i> Экспорт</button>
+                        <button id="horae-settings-import" class="horae-rpg-btn-sm" title="Импорт файла конфигурации"><i class="fa-solid fa-file-import"></i> Импорт</button>
+                        <button id="horae-settings-reset" class="horae-rpg-btn-sm" title="Сбросить все настройки к значениям по умолчанию" style="color:#ef4444;"><i class="fa-solid fa-rotate-left"></i> Сбросить</button>
+                    </div>
+                </div>
                 <div class="horae-settings-section">
                     <div class="horae-section-header">
                         <i class="fa-solid fa-toggle-on"></i>
@@ -614,6 +683,11 @@
                         </label>
                         <span class="horae-setting-sub-hint">После включения ИИ выводит атрибуты (HP/MP/SP) и навыки в тегах &lt;horaerpg&gt;. При отключении — нулевой расход токенов.</span>
                         <div id="horae-rpg-sub-options" style="display:none; margin-top:6px; padding-left:18px;">
+                            <label style="display:block;margin-bottom:8px;padding:4px 8px;background:rgba(139,92,246,0.1);border-radius:6px;border:1px solid rgba(139,92,246,0.25);">
+                                <input type="checkbox" id="horae-setting-rpg-user-only">
+                                <strong>Режим «Только главный герой»</strong>
+                                <span style="font-size:0.85em;opacity:0.8;">— Быстрое переключение: все RPG-модули отслеживают только ИГРОКА (можно настроить каждый модуль отдельно)</span>
+                            </label>
                             <label style="display:block;margin-bottom:4px;">
                                 <input type="checkbox" id="horae-setting-rpg-bars" checked>
                                 Отправлять полосы атрибутов (HP/MP/SP/статусы)
@@ -957,6 +1031,21 @@
                             Настройте промпты для ИИ. После изменений ИИ будет выводить теги по вашим правилам.
                         </span>
                         
+                        <div class="horae-prompt-presets-bar">
+                            <i class="fa-solid fa-bookmark" style="opacity:.5;font-size:12px"></i>
+                            <select id="horae-prompt-preset-select" title="Пресеты промптов"></select>
+                            <button id="horae-prompt-preset-load" class="horae-rpg-btn-sm" title="Загрузить выбранный пресет"><i class="fa-solid fa-download"></i></button>
+                        </div>
+                        <div class="horae-prompt-presets-bar horae-prompt-presets-actions" style="margin-top:-6px;justify-content:flex-end;flex-wrap:wrap;row-gap:4px;">
+                            <button id="horae-prompt-preset-save" class="horae-rpg-btn-sm" title="Сохранить текущие промпты в выбранный пресет"><i class="fa-solid fa-floppy-disk"></i> Сохранить</button>
+                            <button id="horae-prompt-preset-new" class="horae-rpg-btn-sm" title="Сохранить как новый пресет"><i class="fa-solid fa-plus"></i> Новый</button>
+                            <button id="horae-prompt-preset-delete" class="horae-rpg-btn-sm" title="Удалить выбранный пресет"><i class="fa-solid fa-trash"></i> Удалить</button>
+                            <span class="horae-prompt-presets-sep" style="border-left:1px solid var(--horae-border);height:16px;margin:0 2px;opacity:.3"></span>
+                            <button id="horae-prompt-preset-export" class="horae-rpg-btn-sm" title="Экспортировать промпты в файл"><i class="fa-solid fa-file-export"></i> Экспорт</button>
+                            <button id="horae-prompt-preset-import" class="horae-rpg-btn-sm" title="Импортировать промпты из файла"><i class="fa-solid fa-file-import"></i> Импорт</button>
+                            <span class="horae-prompt-presets-sep" style="border-left:1px solid var(--horae-border);height:16px;margin:0 2px;opacity:.3"></span>
+                            <button id="horae-prompt-reset-all" class="horae-rpg-btn-sm" title="Сбросить все промпты к значениям по умолчанию" style="color:#ef4444;"><i class="fa-solid fa-rotate-left"></i> Сбросить все</button>
+                        </div>
                         <div class="horae-prompt-editor-group">
                             <div class="horae-prompt-editor-header">
                                 <span>Системный промпт</span>
