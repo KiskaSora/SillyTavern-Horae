@@ -1,8 +1,8 @@
 /**
- * Horae - Менеджер векторной памяти
- * Система локального векторного поиска на основе Transformers.js
+ * Horae - 向量记忆管理器
+ * 基于 Transformers.js 的本地向量检索系统
  *
- * Данные изолированы по chatId, векторы хранятся в IndexedDB, лёгкий индекс — в chat[0].horae_meta.vectorIndex
+ * 数据按 chatId 隔离，向量存 IndexedDB，轻量索引存 chat[0].horae_meta.vectorIndex
  */
 
 import { calculateDetailedRelativeTime } from '../utils/timeUtils.js';
@@ -56,7 +56,7 @@ export class VectorManager {
     }
 
     // ========================================
-    // Жизненный цикл
+    // 生命周期
     // ========================================
 
     async initModel(model, dtype, onProgress) {
@@ -190,17 +190,7 @@ export class VectorManager {
         try {
             await this._openDB();
             const stored = await this._loadAllVectors();
-            const staleKeys = [];
             for (const item of stored) {
-                if (item.messageIndex >= chat.length) {
-                    staleKeys.push(item.messageIndex);
-                    continue;
-                }
-                const doc = this.buildVectorDocument(chat[item.messageIndex]?.horae_meta);
-                if (doc && this._hashString(doc) !== item.hash) {
-                    staleKeys.push(item.messageIndex);
-                    continue;
-                }
                 this.vectors.set(item.messageIndex, {
                     vector: item.vector,
                     hash: item.hash,
@@ -208,10 +198,6 @@ export class VectorManager {
                 });
                 this._updateTermCounts(item.document, 1);
                 this.totalDocuments++;
-            }
-            if (staleKeys.length > 0) {
-                for (const idx of staleKeys) await this._deleteVector(idx);
-                console.log(`[Horae Vector] 清理了 ${staleKeys.length} 条过期/分支外向量`);
             }
             console.log(`[Horae Vector] 已加载 ${this.vectors.size} 条向量 (chatId: ${chatId})`);
         } catch (err) {
@@ -268,25 +254,6 @@ export class VectorManager {
                 : meta.timestamp.story_date);
         }
 
-        // RPG milestones: level changes, equipment events, stronghold changes
-        const rpg = meta._rpgChanges;
-        if (rpg) {
-            if (rpg.levels && Object.keys(rpg.levels).length > 0) {
-                for (const [owner, lv] of Object.entries(rpg.levels)) {
-                    parts.push(`${owner} 升级至Lv.${lv}`);
-                }
-            }
-            for (const eq of (rpg.equipment || [])) {
-                parts.push(`${eq.owner} 装备了 ${eq.name}(${eq.slot})`);
-            }
-            for (const u of (rpg.unequip || [])) {
-                parts.push(`${u.owner} 卸下 ${u.name}(${u.slot})`);
-            }
-            for (const bc of (rpg.baseChanges || [])) {
-                if (bc.field === 'level') parts.push(`据点 ${bc.path} 升至Lv.${bc.value}`);
-            }
-        }
-
         return parts.join(' | ');
     }
 
@@ -296,7 +263,6 @@ export class VectorManager {
 
     async addMessage(messageIndex, meta) {
         if (!this.isReady || !this.chatId) return;
-        if (meta?._skipHorae) return;
 
         const doc = this.buildVectorDocument(meta);
         if (!doc) return;
@@ -343,7 +309,6 @@ export class VectorManager {
         for (let i = 0; i < chat.length; i++) {
             const meta = chat[i].horae_meta;
             if (!meta || chat[i].is_user) continue;
-            if (meta._skipHorae) continue;
             const doc = this.buildVectorDocument(meta);
             if (!doc) continue;
             const hash = this._hashString(doc);
@@ -637,10 +602,9 @@ export class VectorManager {
             if (rerankQuery) {
                 try {
                     const useFullText = !!settings.vectorRerankFullText;
-                    const _stripTags = settings.vectorStripTags || '';
                     const rerankDocs = rerankCandidates.map(r => {
                         if (useFullText) {
-                            const fullText = this._extractCleanText(chat[r.messageIndex]?.mes, _stripTags);
+                            const fullText = this._extractCleanText(chat[r.messageIndex]?.mes);
                             return fullText || r.document;
                         }
                         return r.document;
@@ -682,7 +646,7 @@ export class VectorManager {
         const currentDate = state.timestamp?.story_date;
         const fullTextCount = Math.min(settings.vectorFullTextCount ?? 3, topK);
         const fullTextThreshold = settings.vectorFullTextThreshold ?? 0.9;
-        const recallText = this._buildRecallText(results, currentDate, chat, fullTextCount, fullTextThreshold, settings.vectorStripTags || '');
+        const recallText = this._buildRecallText(results, currentDate, chat, fullTextCount, fullTextThreshold);
         console.log(`[Horae Vector] 召回文本 (${recallText.length}字):\n${recallText}`);
         return recallText;
     }
@@ -1236,7 +1200,7 @@ export class VectorManager {
         return results;
     }
 
-    _buildRecallText(results, currentDate, chat, fullTextCount = 3, fullTextThreshold = 0.9, stripTags = '') {
+    _buildRecallText(results, currentDate, chat, fullTextCount = 3, fullTextThreshold = 0.9) {
         const lines = ['[记忆回溯——以下为与当前情境相关的历史片段，仅供参考，非当前上下文]'];
 
         for (let rank = 0; rank < results.length; rank++) {
@@ -1247,7 +1211,7 @@ export class VectorManager {
             const isFullText = fullTextCount > 0 && rank < fullTextCount && r.similarity >= fullTextThreshold;
 
             if (isFullText) {
-                const rawText = this._extractCleanText(chat[r.messageIndex]?.mes, stripTags);
+                const rawText = this._extractCleanText(chat[r.messageIndex]?.mes);
                 if (rawText) {
                     const timeTag = this._buildTimeTag(meta?.timestamp, currentDate);
                     lines.push(`#${r.messageIndex} ${timeTag ? timeTag + ' ' : ''}[全文回顾]\n${rawText}`);
@@ -1300,20 +1264,13 @@ export class VectorManager {
         return lines.length > 1 ? lines.join('\n') : '';
     }
 
-    _extractCleanText(mes, stripTags) {
+    _extractCleanText(mes) {
         if (!mes) return '';
-        let text = mes
+        return mes
             .replace(/<think>[\s\S]*?<\/think>/gi, '')
             .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<!--[\s\S]*?-->/g, '');
-        if (stripTags) {
-            const tags = stripTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
-            for (const tag of tags) {
-                const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                text = text.replace(new RegExp(`<${escaped}(?:\\s[^>]*)?>[\\s\\S]*?</${escaped}>`, 'gi'), '');
-            }
-        }
-        return text.replace(/<[^>]*>/g, '').trim();
+            .replace(/<[^>]*>/g, '')
+            .trim();
     }
 
     /**
@@ -1470,16 +1427,7 @@ export class VectorManager {
     // ========================================
 
     async _openDB() {
-        if (this.db) {
-            try {
-                this.db.transaction(STORE_NAME, 'readonly');
-                return;
-            } catch (_) {
-                console.warn('[Horae Vector] DB connection stale, reconnecting...');
-                try { this.db.close(); } catch (__) {}
-                this.db = null;
-            }
-        }
+        if (this.db) return;
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onupgradeneeded = () => {
@@ -1489,19 +1437,7 @@ export class VectorManager {
                     store.createIndex('chatId', 'chatId', { unique: false });
                 }
             };
-            req.onblocked = () => {
-                console.warn('[Horae Vector] DB upgrade blocked by another tab, closing old connection');
-            };
-            req.onsuccess = () => {
-                this.db = req.result;
-                this.db.onversionchange = () => {
-                    this.db.close();
-                    this.db = null;
-                    console.log('[Horae Vector] DB closed due to version change in another tab');
-                };
-                this.db.onclose = () => { this.db = null; };
-                resolve();
-            };
+            req.onsuccess = () => { this.db = req.result; resolve(); };
             req.onerror = () => reject(req.error);
         });
     }

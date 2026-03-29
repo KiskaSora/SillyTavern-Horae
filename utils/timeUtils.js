@@ -150,13 +150,8 @@ export function parseStoryDate(dateStr) {
 export function calculateRelativeTime(fromDate, toDate) {
     if (!fromDate || !toDate) return null;
     
-    // Отрезаем время из конца строки (например "15:00" / "вечером") — сохраняем только дату
-    const stripTime = (s) => s.trim()
-        .replace(/\s+\d{1,2}[:：]\d{2}.*$/, '')
-        .replace(/\s+(凌晨|早上|上午|中午|下午|傍晚|晚上|深夜|子时|丑时|寅时|卯时|辰时|巳时|午时|未时|申时|酉时|戌时|亥时).*$/i, '')
-        .trim();
-    const fromDateOnly = stripTime(fromDate);
-    const toDateOnly = stripTime(toDate);
+    const fromDateOnly = fromDate.split(/\s+/)[0].trim();
+    const toDateOnly = toDate.split(/\s+/)[0].trim();
     
     if (fromDateOnly === toDateOnly) {
         return 0;
@@ -194,13 +189,10 @@ export function calculateRelativeTime(fromDate, toDate) {
             return toDay - fromDay;
         }
         
-        // Разные месяцы: старая логика угадывала порядок по числу дня,
-        // что давало неверный результат в фэнтезийных/выдуманных календарях
-        // (например: «Морозный месяц, 3-й день» vs «Огненный месяц, 25-й день»).
-        // Теперь возвращаем null — неопределённо.
+        // 跨月估算
         if (fromDay !== null && toDay !== null) {
             if (fromMonth && toMonth && fromMonth !== toMonth) {
-                return null;
+                return toDay > fromDay ? -998 : -997; // -998=之后, -997=之前
             }
             return toDay - fromDay;
         }

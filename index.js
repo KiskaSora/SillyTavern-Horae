@@ -1,16 +1,16 @@
 /**
- * Horae - Хроники Времени 
- * Система улучшения памяти ИИ на основе временных якорей
+ * Horae - Плагин Хроники Времени 
+ * Система усиления памяти ИИ на основе временных якорей
  * 
  * Автор: SenriYuki
- * Версия: 1.10.1
+ * Версия: 1.8.4
  */
 
 import { renderExtensionTemplateAsync, getContext, extension_settings } from '/scripts/extensions.js';
 import { getSlideToggleOptions, saveSettingsDebounced, eventSource, event_types } from '/script.js';
 import { slideToggle } from '/lib.js';
 
-import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeManager.js';
+import { horaeManager, createEmptyMeta } from './core/horaeManager.js';
 import { vectorManager } from './core/vectorManager.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 
@@ -20,15 +20,15 @@ import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTim
 const EXTENSION_NAME = 'horae';
 const EXTENSION_FOLDER = `third-party/SillyTavern-Horae`;
 const TEMPLATE_PATH = `${EXTENSION_FOLDER}/assets/templates`;
-const VERSION = '1.10.1';
+const VERSION = '1.8.4';
 
-// Правила регулярных выражений (автоматически добавляются в систему регулярок ST)
+// Сопутствующие правила регулярных выражений (автоматически внедряются в нативную систему ST)
 const HORAE_REGEX_RULES = [
     {
         id: 'horae_hide',
         scriptName: 'Horae - Скрыть теги состояния',
         description: 'Скрывает теги состояния <horae>, не отображаются в тексте и не отправляются ИИ',
-        findRegex: '/(?:<horae>(?:(?!<\\/think(?:ing)?>|<horae>)[\\s\\S])*?<\\/horae>|<!--horae[\\s\\S]*?-->)/gim',
+        findRegex: '/(?:<horae>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horae>|<!--horae[\\s\\S]*?-->)/gim',
         replaceString: '',
         trimStrings: [],
         placement: [2],
@@ -42,9 +42,9 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_event_display_only',
-        scriptName: 'Horae - Скрыть теги состояния',
-        description: 'Скрывает теги состояния <horae>, не отображаются в тексте и не отправляются ИИ',
-        findRegex: '/<horaeevent>(?:(?!<\\/think(?:ing)?>|<horaeevent>)[\\s\\S])*?<\\/horaeevent>/gim',
+        scriptName: 'Horae - Скрыть теги событий',
+        description: 'Скрывает отображение тегов событий <horaeevent>, не отправляются ИИ',
+        findRegex: '/<horaeevent>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horaeevent>/gim',
         replaceString: '',
         trimStrings: [],
         placement: [2],
@@ -58,8 +58,8 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_table_hide',
-        scriptName: 'Horae - Скрыть теги состояния',
-        description: 'Скрывает теги состояния <horae>, не отображаются в тексте и не отправляются ИИ',
+        scriptName: 'Horae - Скрыть теги таблиц',
+        description: 'Скрывает теги <horaetable>, не отображаются в тексте и не отправляются ИИ',
         findRegex: '/<horaetable[:\\uff1a][\\s\\S]*?<\\/horaetable>/gim',
         replaceString: '',
         trimStrings: [],
@@ -74,9 +74,9 @@ const HORAE_REGEX_RULES = [
     },
     {
         id: 'horae_rpg_hide',
-        scriptName: 'Horae - Скрыть теги состояния',
-        description: 'Скрывает теги состояния <horae>, не отображаются в тексте и не отправляются ИИ',
-        findRegex: '/<horaerpg>(?:(?!<\\/think(?:ing)?>|<horaerpg>)[\\s\\S])*?<\\/horaerpg>/gim',
+        scriptName: 'Horae - Скрыть теги RPG',
+        description: 'Скрывает теги <horaerpg>, не отображаются в тексте и не отправляются ИИ',
+        findRegex: '/<horaerpg>(?:(?!<\\/think(?:ing)?>)[\\s\\S])*?<\\/horaerpg>/gim',
         replaceString: '',
         trimStrings: [],
         placement: [2],
@@ -102,11 +102,11 @@ const DEFAULT_SETTINGS = {
     injectionPosition: 1,
     lastStoryDate: '',
     lastStoryTime: '',
-    favoriteNpcs: [],  // Список избранных NPC, помеченных пользователем
-    pinnedNpcs: [],    // Список важных персонажей, помеченных пользователем (особая рамка)
-    // Управление контентом, отправляемым ИИ
-    sendTimeline: true,    // Отправлять историю событий (при отключении не работает расчёт относительного времени)
-    sendCharacters: true,  // Отправлять информацию о персонажах (наряды, симпатия)
+    favoriteNpcs: [],  // Список NPC со звёздочкой, отмеченных пользователем
+    pinnedNpcs: [],    // Список важных персонажей, помеченных вручную (особая рамка)
+    // Управление отправляемым ИИ содержимым
+    sendTimeline: true,    // Отправлять хронологию сюжета (при отключении невозможен расчёт относительного времени)
+    sendCharacters: true,  // Отправлять информацию о персонажах (одежда, расположение)
     sendItems: true,       // Отправлять инвентарь
     customTables: [],      // Пользовательские таблицы [{id, name, rows, cols, data, prompt}]
     customSystemPrompt: '',      // Пользовательский системный промпт (пусто = по умолчанию)
@@ -132,7 +132,7 @@ const DEFAULT_SETTINGS = {
     sendMood: false,               // Отправлять данные отслеживания эмоций/психологического состояния
     customRelationshipPrompt: '',  // Пользовательский промпт для сети отношений (пусто = по умолчанию)
     customMoodPrompt: '',          // Пользовательский промпт для отслеживания эмоций (пусто = по умолчанию)
-// Константы
+    // Авто-сводка
     autoSummaryEnabled: false,      // Переключатель авто-сводки
     autoSummaryKeepRecent: 10,      // Хранить последние N сообщений без сжатия
     autoSummaryBufferMode: 'messages', // 'messages' | 'tokens'
@@ -145,79 +145,32 @@ const DEFAULT_SETTINGS = {
     autoSummaryModel: '',           // Название модели для отдельного API
     antiParaphraseMode: false,      // Режим без пересказа: при ответе ИИ учитывает последнее сообщение пользователя
     sideplayMode: false,            // Режим побочной сцены: после включения можно отмечать сообщения для пропуска Horae
-// Константы
+    // RPG-режим
     rpgMode: false,                 // Главный переключатель RPG-режима
     sendRpgBars: true,              // Отправлять полосы атрибутов (HP/MP/SP/состояния)
-    rpgBarsUserOnly: false,         // Полосы атрибутов только для главного героя
     sendRpgSkills: true,            // Отправлять список навыков
-    rpgSkillsUserOnly: false,       // Навыки только для главного героя
     sendRpgAttributes: true,        // Отправлять многомерную панель атрибутов
-    rpgAttrsUserOnly: false,        // Панель атрибутов только для главного героя
-    sendRpgReputation: true,        // Отправлять данные репутации
-    rpgReputationUserOnly: false,   // Репутация только для главного героя
-    sendRpgEquipment: false,        // Отправлять снаряжение (опционально)
-    rpgEquipmentUserOnly: false,    // Снаряжение только для главного героя
-    sendRpgLevel: false,            // Отправлять уровень/опыт
-    rpgLevelUserOnly: false,        // Уровень только для главного героя
-    sendRpgCurrency: false,         // Отправлять систему валюты
-    rpgCurrencyUserOnly: false,     // Валюта только для главного героя
-    rpgUserOnly: false,             // Все RPG-модули только для главного героя (глобальный переключатель)
-    sendRpgStronghold: false,       // Отправлять систему укреплений/баз
     rpgBarConfig: [
         { key: 'hp', name: 'HP', color: '#22c55e' },
         { key: 'mp', name: 'MP', color: '#6366f1' },
         { key: 'sp', name: 'SP', color: '#f59e0b' },
     ],
     rpgAttributeConfig: [
-        { key: 'str', name: 'Сила', desc: 'Сила' },
-        { key: 'dex', name: 'Сила', desc: 'Сила' },
-        { key: 'con', name: 'Сила', desc: 'Сила' },
-        { key: 'int', name: 'Сила', desc: 'Сила' },
-        { key: 'wis', name: 'Сила', desc: 'Сила' },
-        { key: 'cha', name: 'Сила', desc: 'Сила' },
+        { key: 'str', name: 'Сила', desc: 'Физическая атака, грузоподъёмность и урон в ближнем бою' },
+        { key: 'dex', name: 'Ловкость', desc: 'Рефлексы, уклонение и точность дальнего боя' },
+        { key: 'con', name: 'Телосложение', desc: 'Жизнеспособность, выносливость и сопротивление яду' },
+        { key: 'int', name: 'Интеллект', desc: 'Знания, магия и способность к рассуждению' },
+        { key: 'wis', name: 'Мудрость', desc: 'Проницательность, интуиция и сила воли' },
+        { key: 'cha', name: 'Харизма', desc: 'Убеждение, лидерство и обаяние' },
     ],
     rpgAttrViewMode: 'radar',       // 'radar' или 'text'
     customRpgPrompt: '',            // Пользовательский промпт для RPG (пусто = по умолчанию)
-    promptPresets: [],              // Архив пресетов промптов [{name, prompts:{system,batch,...}}]
-    equipmentTemplates: [           // Шаблоны слотов снаряжения
-        { name: 'Человек', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Туловище', maxCount: 1 }, { name: 'Руки', maxCount: 1 },
-            { name: 'Пояс', maxCount: 1 }, { name: 'Низ тела', maxCount: 1 }, { name: 'Ноги', maxCount: 1 },
-            { name: 'Ожерелье', maxCount: 1 }, { name: 'Амулет', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-        { name: 'Орк', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Туловище', maxCount: 1 }, { name: 'Руки', maxCount: 1 },
-            { name: 'Пояс', maxCount: 1 }, { name: 'Низ тела', maxCount: 1 }, { name: 'Ноги', maxCount: 1 },
-            { name: 'Хвост', maxCount: 1 }, { name: 'Ожерелье', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-        { name: 'Крылатые', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Туловище', maxCount: 1 }, { name: 'Руки', maxCount: 1 },
-            { name: 'Пояс', maxCount: 1 }, { name: 'Низ тела', maxCount: 1 }, { name: 'Ноги', maxCount: 1 },
-            { name: 'Крылья', maxCount: 1 }, { name: 'Ожерелье', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-        { name: 'Кентавр', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Туловище', maxCount: 1 }, { name: 'Руки', maxCount: 1 },
-            { name: 'Пояс', maxCount: 1 }, { name: 'Попона', maxCount: 1 }, { name: 'Подковы', maxCount: 4 },
-            { name: 'Ожерелье', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-        { name: 'Ламия', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Туловище', maxCount: 1 }, { name: 'Руки', maxCount: 1 },
-            { name: 'Пояс', maxCount: 1 }, { name: 'Змеиный хвост', maxCount: 1 },
-            { name: 'Ожерелье', maxCount: 1 }, { name: 'Амулет', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-        { name: 'Демон', slots: [
-            { name: 'Голова', maxCount: 1 }, { name: 'Украшение рогов', maxCount: 1 }, { name: 'Туловище', maxCount: 1 },
-            { name: 'Руки', maxCount: 1 }, { name: 'Пояс', maxCount: 1 }, { name: 'Низ тела', maxCount: 1 },
-            { name: 'Ноги', maxCount: 1 }, { name: 'Крылья', maxCount: 1 }, { name: 'Хвост', maxCount: 1 },
-            { name: 'Ожерелье', maxCount: 1 }, { name: 'Кольцо', maxCount: 2 },
-        ]},
-    ],
     rpgDiceEnabled: false,          // Панель кубиков RPG
     dicePosX: null,                 // Позиция X панели кубиков (null = правый нижний угол по умолчанию)
     dicePosY: null,                 // Позиция Y панели кубиков
-// Константы
+    // Обучение
     tutorialCompleted: false,       // Завершено ли вводное обучение для нового пользователя
-// Константы
+    // Векторная память
     vectorEnabled: false,
     vectorSource: 'local',             // 'local' = локальная модель, 'api' = удалённый API
     vectorModel: 'Xenova/bge-small-zh-v1.5',
@@ -235,7 +188,6 @@ const DEFAULT_SETTINGS = {
     vectorThreshold: 0.72,
     vectorFullTextCount: 3,
     vectorFullTextThreshold: 0.9,
-    vectorStripTags: '',
 };
 
 // ============================================
@@ -259,11 +211,11 @@ let selectedTimelineEvents = new Set(); // Выбранные события (ф
 let timelineLongPressTimer = null;  // Таймер долгого нажатия для хронологии
 
 // ============================================
-// Константы
+// Вспомогательные функции
 // ============================================
 
 
-/** Автоматически добавляет регулярные выражения в систему ST (всегда в конец, чтобы не конфликтовать) */
+/** Автоматически внедряет регулярные выражения в нативную систему ST (всегда в конце, чтобы не конфликтовать с другими) */
 function ensureRegexRules() {
     if (!extension_settings.regex) extension_settings.regex = [];
 
@@ -271,7 +223,7 @@ function ensureRegexRules() {
     for (const rule of HORAE_REGEX_RULES) {
         const idx = extension_settings.regex.findIndex(r => r.id === rule.id);
         if (idx !== -1) {
-// Константы
+            // Сохраняет состояние disabled пользователя, удаляет старую позицию
             const userDisabled = extension_settings.regex[idx].disabled;
             extension_settings.regex.splice(idx, 1);
             extension_settings.regex.push({ ...rule, disabled: userDisabled });
@@ -288,20 +240,20 @@ function ensureRegexRules() {
     }
 }
 
-/** 获取HTML模板 */
+/** Получить HTML-шаблон */
 async function getTemplate(name) {
     return await renderExtensionTemplateAsync(TEMPLATE_PATH, name);
 }
 
 /**
- * 检查是否为新版导航栏
+ * Проверить, используется ли новая версия навигационной панели
  */
 function isNewNavbarVersion() {
     return typeof doNavbarIconClick === 'function';
 }
 
 /**
- * 初始化导航栏点击函数
+ * Инициализировать функцию клика по навигационной панели
  */
 async function initNavbarFunction() {
     try {
@@ -315,7 +267,7 @@ async function initNavbarFunction() {
 }
 
 /**
- * 加载设置
+ * Загрузить настройки
  */
 let _isFirstTimeUser = false;
 function loadSettings() {
@@ -328,12 +280,12 @@ function loadSettings() {
     }
 }
 
-/** 迁移旧版属性配置到 DND 六维 */
+/** Миграция старой конфигурации атрибутов на шесть параметров DnD */
 function _migrateAttrConfig() {
     const cfg = settings.rpgAttributeConfig;
     if (!cfg || !Array.isArray(cfg)) return;
     const oldKeys = cfg.map(a => a.key).sort().join(',');
-// Константы
+    // Старые значения по умолчанию (4 параметра: con,int,spr,str)
     if (oldKeys === 'con,int,spr,str' && cfg.length === 4) {
         settings.rpgAttributeConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgAttributeConfig));
         saveSettings();
@@ -342,7 +294,7 @@ function _migrateAttrConfig() {
 }
 
 /**
- * 保存设置
+ * Сохранить настройки
  */
 function saveSettings() {
     extension_settings[EXTENSION_NAME] = settings;
@@ -350,7 +302,7 @@ function saveSettings() {
 }
 
 /**
- * 显示 Toast 消息
+ * Показать всплывающее уведомление
  */
 function showToast(message, type = 'info') {
     if (window.toastr) {
@@ -360,7 +312,7 @@ function showToast(message, type = 'info') {
     }
 }
 
-/** 获取当前对话的自定义表格 */
+/** Получить пользовательские таблицы текущего диалога */
 function getChatTables() {
     const context = getContext();
     if (!context?.chat?.length) return [];
@@ -370,7 +322,7 @@ function getChatTables() {
         return firstMessage.horae_meta.customTables;
     }
     
-// Константы
+    // Совместимость с устаревшей версией: проверка свойств массива chat
     if (context.chat.horae_tables) {
         return context.chat.horae_tables;
     }
@@ -378,7 +330,7 @@ function getChatTables() {
     return [];
 }
 
-/** 设置当前对话的自定义表格 */
+/** Установить пользовательские таблицы текущего диалога */
 function setChatTables(tables) {
     const context = getContext();
     if (!context?.chat?.length) return;
@@ -387,7 +339,7 @@ function setChatTables(tables) {
         context.chat[0].horae_meta = createEmptyMeta();
     }
     
-// Константы
+    // Снимок baseData для отката
     for (const table of tables) {
         table.baseData = JSON.parse(JSON.stringify(table.data || {}));
         table.baseRows = table.rows || 2;
@@ -398,7 +350,7 @@ function setChatTables(tables) {
     getContext().saveChat();
 }
 
-/** 获取全局表格列表（返回结构+当前卡片数据的合并结果） */
+/** Получить список глобальных таблиц (возвращает объединение структуры и данных текущей карточки) */
 function getGlobalTables() {
     const templates = settings.globalTables || [];
     const chat = horaeManager.getChat();
@@ -428,7 +380,7 @@ function getGlobalTables() {
                 baseCols: overlay.baseCols ?? template.baseCols,
             };
         }
-// Константы
+        // Нет данных для карточки: возвращается только заголовок
         const headerData = {};
         for (const key of Object.keys(template.data || {})) {
             const [r, c] = key.split('-').map(Number);
@@ -444,17 +396,17 @@ function getGlobalTables() {
     });
 }
 
-/** 保存全局表格列表（结构存设置，数据存当前卡片） */
+/** Сохранить список глобальных таблиц (структура → настройки, данные → текущая карточка) */
 function setGlobalTables(tables) {
     const chat = horaeManager.getChat();
 
-// Константы
+    // Сохранить данные карточки в текущую карточку
     if (chat?.[0]) {
         if (!chat[0].horae_meta) return;
         if (!chat[0].horae_meta.globalTableData) chat[0].horae_meta.globalTableData = {};
         const perCardData = chat[0].horae_meta.globalTableData;
 
-// Константы
+        // Очистить данные карточки для удалённых таблиц
         const currentNames = new Set(tables.map(t => (t.name || '').trim()).filter(Boolean));
         for (const key of Object.keys(perCardData)) {
             if (!currentNames.has(key)) delete perCardData[key];
@@ -474,7 +426,7 @@ function setGlobalTables(tables) {
         }
     }
 
-// Константы
+    // Сохранять только структуру (заголовки) в глобальные настройки
     settings.globalTables = tables.map(table => {
         const headerData = {};
         for (const key of Object.keys(table.data || {})) {
@@ -496,12 +448,12 @@ function setGlobalTables(tables) {
     saveSettings();
 }
 
-/** 获取指定scope的表格 */
+/** Получить таблицы для указанного scope */
 function getTablesByScope(scope) {
     return scope === 'global' ? getGlobalTables() : getChatTables();
 }
 
-/** 保存指定scope的表格 */
+/** Сохранить таблицы для указанного scope */
 function setTablesByScope(scope, tables) {
     if (scope === 'global') {
         setGlobalTables(tables);
@@ -510,17 +462,17 @@ function setTablesByScope(scope, tables) {
     }
 }
 
-/** 获取合并后的所有表格（用于提示词注入） */
+/** Получить все объединённые таблицы (для внедрения в промпт) */
 function getAllTables() {
     return [...getGlobalTables(), ...getChatTables()];
 }
 
 // ============================================
-// Константы
+// Хранилище задач (Agenda) — привязано к текущему диалогу
 // ============================================
 
 /**
- * 获取用户手动创建的待办事项（存储在 chat[0]）
+ * Получить задачи, созданные вручную пользователем (хранятся в chat[0])
  */
 function getUserAgenda() {
     const context = getContext();
@@ -534,7 +486,7 @@ function getUserAgenda() {
 }
 
 /**
- * 设置用户手动创建的待办事项（存储在 chat[0]）
+ * Установить задачи, созданные вручную пользователем (хранятся в chat[0])
  */
 function setUserAgenda(agenda) {
     const context = getContext();
@@ -549,13 +501,13 @@ function setUserAgenda(agenda) {
 }
 
 /**
- * 获取所有待办事项（用户 + AI写入），统一格式返回
- * 每项: { text, date, source: 'user'|'ai', done, createdAt, _msgIndex? }
+ * Получить все задачи (пользовательские + ИИ), вернуть в унифицированном формате
+ * Каждый элемент: { text, date, source: 'user'|'ai', done, createdAt, _msgIndex? }
  */
 function getAllAgenda() {
     const all = [];
     
-// Константы
+    // 1. Созданные пользователем вручную
     const userItems = getUserAgenda();
     for (const item of userItems) {
         if (item._deleted) continue;
@@ -570,7 +522,7 @@ function getAllAgenda() {
         });
     }
     
-// Константы
+    // 2. Записанные ИИ (хранятся в horae_meta.agenda каждого сообщения)
     const context = getContext();
     if (context?.chat) {
         for (let i = 1; i < context.chat.length; i++) {
@@ -578,7 +530,7 @@ function getAllAgenda() {
             if (meta?.agenda?.length > 0) {
                 for (const item of meta.agenda) {
                     if (item._deleted) continue;
-// Константы
+                    // Дедупликация: проверить, существует ли уже такой же элемент
                     const isDupe = all.some(a => a.text === item.text);
                     if (!isDupe) {
                         all.push({
@@ -601,7 +553,7 @@ function getAllAgenda() {
 }
 
 /**
- * 根据全局索引切换待办完成状态
+ * Переключить состояние выполнения задачи по глобальному индексу
  */
 function toggleAgendaDone(agendaItem, done) {
     const context = getContext();
@@ -609,7 +561,7 @@ function toggleAgendaDone(agendaItem, done) {
     
     if (agendaItem._store === 'user') {
         const agenda = getUserAgenda();
-// Константы
+        // Поиск по тексту (более надёжно)
         const found = agenda.find(a => a.text === agendaItem.text);
         if (found) {
             found.done = done;
@@ -628,14 +580,14 @@ function toggleAgendaDone(agendaItem, done) {
 }
 
 /**
- * 删除指定的待办事项
+ * Удалить указанную задачу
  */
 function deleteAgendaItem(agendaItem) {
     const context = getContext();
     if (!context?.chat) return;
     const targetText = agendaItem.text;
     
-// Константы
+    // Пометить все совпадающие элементы как _deleted (предотвращает воскрешение одноимённых элементов из других сообщений)
     if (context.chat[0]?.horae_meta?.agenda) {
         for (const a of context.chat[0].horae_meta.agenda) {
             if (a.text === targetText) a._deleted = true;
@@ -650,7 +602,7 @@ function deleteAgendaItem(agendaItem) {
         }
     }
     
-// Константы
+    // Одновременно записывать удалённый текст в chat[0] для использования при перестройке
     if (!context.chat[0].horae_meta) context.chat[0].horae_meta = createEmptyMeta();
     if (!context.chat[0].horae_meta._deletedAgendaTexts) context.chat[0].horae_meta._deletedAgendaTexts = [];
     if (!context.chat[0].horae_meta._deletedAgendaTexts.includes(targetText)) {
@@ -660,7 +612,7 @@ function deleteAgendaItem(agendaItem) {
 }
 
 /**
- * 导出表格为JSON
+ * Экспортировать таблицу в JSON
  */
 function exportTable(tableIndex, scope = 'local') {
     const tables = getTablesByScope(scope);
@@ -681,7 +633,7 @@ function exportTable(tableIndex, scope = 'local') {
 }
 
 /**
- * 导入表格
+ * Импортировать таблицу
  */
 function importTable(file) {
     const reader = new FileReader();
@@ -701,12 +653,12 @@ function importTable(file) {
                 prompt: tableData.prompt || ''
             };
             
-// Константы
+            // Установить baseData как полные импортированные данные, чтобы не потерять при rebuildTableData
             newTable.baseData = JSON.parse(JSON.stringify(newTable.data));
             newTable.baseRows = newTable.rows;
             newTable.baseCols = newTable.cols;
             
-// Константы
+            // Очистить старые записи вклада ИИ для таблицы с тем же именем, чтобы предотвратить возврат старых данных при перестройке
             const importName = (newTable.name || '').trim();
             if (importName) {
                 const chat = horaeManager.getChat();
@@ -730,7 +682,7 @@ function importTable(file) {
             setChatTables(tables);
             
             renderCustomTablesList();
-            showToast('Таблица экспортирована', 'success');
+            showToast('Таблица импортирована', 'success');
         } catch (err) {
             showToast('Ошибка импорта: ' + err.message, 'error');
         }
@@ -739,22 +691,22 @@ function importTable(file) {
 }
 
 // ============================================
-// Константы
+// Функции рендеринга UI
 // ============================================
 
 /**
- * 更新状态页面显示
+ * Обновить отображение страницы статуса
  */
 function updateStatusDisplay() {
     const state = horaeManager.getLatestState();
     
-// Константы
+    // Обновить отображение времени (показывать день недели в стандартном календаре)
     const dateEl = document.getElementById('horae-current-date');
     const timeEl = document.getElementById('horae-current-time');
     if (dateEl) {
         const dateStr = state.timestamp?.story_date || '--/--';
         const parsed = parseStoryDate(dateStr);
-// Константы
+        // Добавить день недели в стандартный календарь
         if (parsed && parsed.type === 'standard') {
             dateEl.textContent = formatStoryDate(parsed, true);
         } else {
@@ -763,20 +715,20 @@ function updateStatusDisplay() {
     }
     if (timeEl) timeEl.textContent = state.timestamp?.story_time || '--:--';
     
-// Константы
+    // Обновить отображение места
     const locationEl = document.getElementById('horae-current-location');
     if (locationEl) locationEl.textContent = state.scene?.location || 'Не задано';
     
-// Константы
+    // Обновить атмосферу
     const atmosphereEl = document.getElementById('horae-current-atmosphere');
     if (atmosphereEl) atmosphereEl.textContent = state.scene?.atmosphere || '';
     
-// Константы
+    // Обновить список одежды (только для присутствующих персонажей)
     const costumesEl = document.getElementById('horae-costumes-list');
     if (costumesEl) {
         const presentChars = state.scene?.characters_present || [];
         const allCostumes = Object.entries(state.costumes || {});
-// Константы
+        // Фильтрация: оставить только персонажей из characters_present
         const entries = presentChars.length > 0
             ? allCostumes.filter(([char]) => presentChars.some(p => p === char || char.includes(p) || p.includes(char)))
             : allCostumes;
@@ -792,7 +744,7 @@ function updateStatusDisplay() {
         }
     }
     
-// Константы
+    // Обновить краткий список предметов
     const itemsEl = document.getElementById('horae-items-quick');
     if (itemsEl) {
         const entries = Object.entries(state.items || {});
@@ -810,7 +762,7 @@ function updateStatusDisplay() {
 }
 
 /**
- * 更新时间线显示
+ * Обновить отображение хронологии
  */
 function updateTimelineDisplay() {
     const filterLevel = document.getElementById('horae-timeline-filter')?.value || 'all';
@@ -820,7 +772,7 @@ function updateTimelineDisplay() {
     
     if (!listEl) return;
     
-// Константы
+    // Фильтрация по ключевым словам
     if (searchKeyword) {
         events = events.filter(e => {
             const summary = (e.event?.summary || '').toLowerCase();
@@ -836,7 +788,7 @@ function updateTimelineDisplay() {
         listEl.innerHTML = `
             <div class="horae-empty-state">
                 <i class="fa-regular fa-clock"></i>
-                <span>Событий ${searchText}${filterText} не найдено</span>
+                <span>Нет ${searchText}${filterText}записанных событий</span>
             </div>
         `;
         return;
@@ -845,28 +797,28 @@ function updateTimelineDisplay() {
     const state = horaeManager.getLatestState();
     const currentDate = state.timestamp?.story_date || getCurrentSystemTime().date;
     
-// Константы
+    // Обновить состояние кнопки множественного выбора
     const msBtn = document.getElementById('horae-btn-timeline-multiselect');
     if (msBtn) {
         msBtn.classList.toggle('active', timelineMultiSelectMode);
-        msBtn.title = timelineMultiSelectMode ? 'Выйти из режима выбора' : 'Выйти из режима выбора';
+        msBtn.title = timelineMultiSelectMode ? 'Выйти из режима выбора' : 'Режим выбора';
     }
     
-// Константы
+    // Получить карту сводок (summaryId → запись) для определения состояния сжатия
     const chat = horaeManager.getChat();
     const summaries = chat?.[0]?.horae_meta?.autoSummaries || [];
     const activeSummaryIds = new Set(summaries.filter(s => s.active).map(s => s.id));
     
     listEl.innerHTML = events.reverse().map(e => {
-        const isSummary = e.event?.isSummary || e.event?.level === 'Сводка';
+        const isSummary = e.event?.isSummary || e.event?.level === '摘要';
         const compressedBy = e.event?._compressedBy;
         const summaryId = e.event?._summaryId;
         
-// Константы
+        // Сжатые события: скрываются когда соответствующая сводка активна
         if (compressedBy && activeSummaryIds.has(compressedBy)) {
             return '';
         }
-// Константы
+        // События сводки: при inactive рендерятся как свёрнутый индикатор (кнопка переключения остаётся)
         if (summaryId && !activeSummaryIds.has(summaryId)) {
             const summaryEntry = summaries.find(s => s.id === summaryId);
             const rangeStr = summaryEntry ? `#${summaryEntry.range[0]}-#${summaryEntry.range[1]}` : '';
@@ -874,14 +826,14 @@ function updateTimelineDisplay() {
             <div class="horae-timeline-item summary horae-summary-collapsed" data-message-id="${e.messageIndex}" data-summary-id="${summaryId}">
                 <div class="horae-timeline-summary-icon"><i class="fa-solid fa-file-lines"></i></div>
                 <div class="horae-timeline-content">
-                    <div class="horae-timeline-summary"><span class="horae-level-badge summary">Сводка</span>Развёрнуто в исходные события</div>
-                    <div class="horae-timeline-meta">${rangeStr} · ${summaryEntry?.auto ? 'Авто' : 'Вручную'}сводка</div>
+                    <div class="horae-timeline-summary"><span class="horae-level-badge summary">Сводка</span> развёрнута в исходные события</div>
+                    <div class="horae-timeline-meta">${rangeStr} · ${summaryEntry?.auto ? 'авто' : 'ручная'} сводка</div>
                 </div>
                 <div class="horae-summary-actions">
                     <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="Переключить на сводку">
                         <i class="fa-solid fa-compress"></i>
                     </button>
-                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Переключить на сводку">
+                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Удалить сводку">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
@@ -894,9 +846,11 @@ function updateTimelineDisplay() {
         );
         const relTime = result.relative;
         const levelClass = isSummary ? 'summary' :
-                          e.event?.level === 'Ключевое' ? 'critical' : 
-                          e.event?.level === 'Важное' ? 'important' : '';
-        const levelBadge = e.event?.level ? `<span class="horae-level-badge ${levelClass}">${e.event.level}</span>` : '';
+                          e.event?.level === '关键' ? 'critical' : 
+                          e.event?.level === '重要' ? 'important' : '';
+        const levelDisplayMap = {'一般': 'Обычн.', '重要': 'Важное', '关键': 'Ключ.', '摘要': 'Конспект'};
+        const levelDisplay = levelDisplayMap[e.event?.level] || e.event?.level || '';
+        const levelBadge = e.event?.level ? `<span class="horae-level-badge ${levelClass}">${levelDisplay}</span>` : '';
         
         const dateStr = e.timestamp?.story_date || '?';
         const parsed = parseStoryDate(dateStr);
@@ -907,7 +861,7 @@ function updateTimelineDisplay() {
         const selectedClass = isSelected ? 'selected' : '';
         const checkboxDisplay = timelineMultiSelectMode ? 'flex' : 'none';
         
-// Константы
+        // Событие помечено как сжатое, но сводка inactive — отображается пунктирной рамкой
         const isRestoredFromCompress = compressedBy && !activeSummaryIds.has(compressedBy);
         const compressedClass = isRestoredFromCompress ? 'horae-compressed-restored' : '';
         
@@ -917,7 +871,7 @@ function updateTimelineDisplay() {
             const summaryEntry = summaryId ? summaries.find(s => s.id === summaryId) : null;
             const isActive = summaryEntry?.active;
             const rangeStr = summaryEntry ? `#${summaryEntry.range[0]}-#${summaryEntry.range[1]}` : '';
-// Константы
+            // Событие сводки с summaryId имеет кнопки переключения/удаления/редактирования
             const toggleBtns = summaryId ? `
                 <div class="horae-summary-actions">
                     <button class="horae-summary-edit-btn" data-summary-id="${summaryId}" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="Редактировать содержимое сводки">
@@ -926,7 +880,7 @@ function updateTimelineDisplay() {
                     <button class="horae-summary-toggle-btn" data-summary-id="${summaryId}" title="${isActive ? 'Переключить на исходную хронологию' : 'Переключить на сводку'}">
                         <i class="fa-solid ${isActive ? 'fa-expand' : 'fa-compress'}"></i>
                     </button>
-                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Переключить на сводку">
+                    <button class="horae-summary-delete-btn" data-summary-id="${summaryId}" title="Удалить сводку">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>` : '';
@@ -940,7 +894,7 @@ function updateTimelineDisplay() {
                 </div>
                 <div class="horae-timeline-content">
                     <div class="horae-timeline-summary">${levelBadge}${summaryDisplay}</div>
-                    <div class="horae-timeline-meta">${rangeStr ? rangeStr + ' · ' : ''}${summaryEntry?.auto ? 'Авто' : ''}сводка · Сообщение #${e.messageIndex}</div>
+                    <div class="horae-timeline-meta">${rangeStr ? rangeStr + ' · ' : ''}${summaryEntry?.auto ? 'Авто-' : ''}сводка · Сообщение #${e.messageIndex}</div>
                 </div>
                 ${toggleBtns}
                 <button class="horae-item-edit-btn" data-edit-type="event" data-message-id="${e.messageIndex}" data-event-index="${e.eventIndex || 0}" title="Редактировать" style="${timelineMultiSelectMode ? 'display:none' : ''}${!summaryId ? '' : 'display:none'}">
@@ -976,7 +930,7 @@ function updateTimelineDisplay() {
         `;
     }).join('');
     
-// Константы
+    // Привязать события
     listEl.querySelectorAll('.horae-timeline-item').forEach(item => {
         const eventKey = item.dataset.eventKey;
         
@@ -1001,7 +955,7 @@ function updateTimelineDisplay() {
         }
     });
     
-// Константы
+    // Кнопки переключения/удаления сводки
     listEl.querySelectorAll('.horae-summary-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1024,11 +978,11 @@ function updateTimelineDisplay() {
     bindEditButtons();
 }
 
-/** 批量隐藏/显示聊天消息楼层（调用酒馆原生 /hide /unhide） */
+/** Пакетно скрыть/показать сообщения чата (вызывает нативные команды SillyTavern /hide /unhide) */
 async function setMessagesHidden(chat, indices, hidden) {
     if (!indices?.length) return;
 
-// Константы
+    // Предустановить состояние в памяти: сначала записать is_hidden, чтобы предотвратить перезапись при гонке saveChat
     for (const idx of indices) {
         if (chat[idx]) chat[idx].is_hidden = hidden;
     }
@@ -1049,7 +1003,7 @@ async function setMessagesHidden(chat, indices, hidden) {
         console.warn('[Horae] Не удалось загрузить модуль команд SillyTavern, переход к ручной установке:', e);
     }
 
-// Константы
+    // Пост-верификация + синхронизация DOM + принудительное сохранение (не зависит от успеха /hide)
     for (const idx of indices) {
         if (!chat[idx]) continue;
         chat[idx].is_hidden = hidden;
@@ -1060,7 +1014,7 @@ async function setMessagesHidden(chat, indices, hidden) {
     await getContext().saveChat();
 }
 
-/** 从摘要条目中取回所有关联的消息索引 */
+/** Получить все связанные индексы сообщений из записи сводки */
 function getSummaryMsgIndices(entry) {
     if (!entry) return [];
     const fromEvents = (entry.originalEvents || []).map(e => e.msgIdx);
@@ -1070,7 +1024,7 @@ function getSummaryMsgIndices(entry) {
     return [...new Set(fromEvents)];
 }
 
-/** 切换摘要的 active 状态（摘要视图 ↔ 原始时间线） */
+/** Переключить состояние active сводки (вид сводки ↔ исходная хронология) */
 async function toggleSummaryActive(summaryId) {
     if (!summaryId) return;
     const chat = horaeManager.getChat();
@@ -1079,14 +1033,14 @@ async function toggleSummaryActive(summaryId) {
     const entry = sums.find(s => s.id === summaryId);
     if (!entry) return;
     entry.active = !entry.active;
-// Константы
+    // Синхронизировать видимость сообщений: active=режим сводки→скрыть оригиналы, inactive=исходный режим→показать оригиналы
     const indices = getSummaryMsgIndices(entry);
     await setMessagesHidden(chat, indices, entry.active);
     await getContext().saveChat();
     updateTimelineDisplay();
 }
 
-/** 删除摘要并恢复原始事件的压缩标记 */
+/** Удалить сводку и восстановить метки сжатия исходных событий */
 async function deleteSummary(summaryId) {
     if (!summaryId) return;
     if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
@@ -1094,7 +1048,7 @@ async function deleteSummary(summaryId) {
     const chat = horaeManager.getChat();
     const firstMeta = chat?.[0]?.horae_meta;
     
-// Константы
+    // Удалить запись из autoSummaries (если есть)
     let removedEntry = null;
     if (firstMeta?.autoSummaries) {
         const idx = firstMeta.autoSummaries.findIndex(s => s.id === summaryId);
@@ -1103,7 +1057,7 @@ async function deleteSummary(summaryId) {
         }
     }
     
-// Константы
+    // Очистить соответствующие метки _compressedBy и события сводки во всех сообщениях (независимо от наличия записи в autoSummaries)
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i]?.horae_meta;
         if (!meta?.events) continue;
@@ -1113,7 +1067,7 @@ async function deleteSummary(summaryId) {
         }
     }
     
-// Константы
+    // Восстановить скрытые сообщения
     if (removedEntry) {
         const indices = getSummaryMsgIndices(removedEntry);
         await setMessagesHidden(chat, indices, false);
@@ -1121,10 +1075,10 @@ async function deleteSummary(summaryId) {
     
     await getContext().saveChat();
     updateTimelineDisplay();
-    showToast('Таблица экспортирована', 'success');
+    showToast('Сводка удалена, исходные события восстановлены', 'success');
 }
 
-/** 打开摘要编辑弹窗，允许用户手动修改摘要内容 */
+/** Открыть окно редактирования сводки для ручного изменения содержимого */
 function openSummaryEditModal(summaryId, messageId, eventIndex) {
     closeEditModal();
     const chat = horaeManager.getChat();
@@ -1144,7 +1098,7 @@ function openSummaryEditModal(summaryId, messageId, eventIndex) {
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>Содержание сводки</label>
+                        <label>Содержимое сводки</label>
                         <textarea id="horae-summary-edit-text" rows="10" style="width:100%;min-height:180px;font-size:13px;line-height:1.6;">${escapeHtml(currentText)}</textarea>
                     </div>
                 </div>
@@ -1175,14 +1129,14 @@ function openSummaryEditModal(summaryId, messageId, eventIndex) {
         await getContext().saveChat();
         closeEditModal();
         updateTimelineDisplay();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Сводка обновлена', 'success');
     });
 
     document.getElementById('horae-summary-edit-cancel').addEventListener('click', () => closeEditModal());
 }
 
 /**
- * 更新待办事项显示
+ * Обновить отображение задач
  */
 function updateAgendaDisplay() {
     const listEl = document.getElementById('horae-agenda-list');
@@ -1192,7 +1146,7 @@ function updateAgendaDisplay() {
     
     if (agenda.length === 0) {
         listEl.innerHTML = '<div class="horae-empty-hint">Нет задач</div>';
-// Константы
+        // Выйти из режима множественного выбора (если все задачи удалены)
         if (agendaMultiSelectMode) exitAgendaMultiSelect();
         return;
     }
@@ -1203,7 +1157,7 @@ function updateAgendaDisplay() {
             : '<i class="fa-solid fa-user horae-agenda-source-user" title="Добавлено пользователем"></i>';
         const dateDisplay = item.date ? `<span class="horae-agenda-date"><i class="fa-regular fa-calendar"></i> ${escapeHtml(item.date)}</span>` : '';
         
-// Константы
+        // Режим множественного выбора: показать checkbox
         const checkboxHtml = agendaMultiSelectMode
             ? `<label class="horae-agenda-select-check"><input type="checkbox" ${selectedAgendaIndices.has(index) ? 'checked' : ''} data-agenda-select="${index}"></label>`
             : '';
@@ -1226,20 +1180,20 @@ function updateAgendaDisplay() {
         const idx = parseInt(el.dataset.agendaIdx);
         
         if (agendaMultiSelectMode) {
-// Константы
+            // Режим множественного выбора: клик переключает выбор
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleAgendaSelection(idx);
             });
         } else {
-// Константы
+            // Обычный режим: клик для редактирования, долгое нажатие для входа в режим выбора
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const item = currentAgenda[idx];
                 if (item) openAgendaEditModal(item);
             });
             
-// Константы
+            // Долгое нажатие для входа в режим множественного выбора（только для элементов agenda)
             el.addEventListener('mousedown', (e) => startAgendaLongPress(e, idx));
             el.addEventListener('touchstart', (e) => startAgendaLongPress(e, idx), { passive: true });
             el.addEventListener('mouseup', cancelAgendaLongPress);
@@ -1251,7 +1205,7 @@ function updateAgendaDisplay() {
     });
 }
 
-// Константы
+// ---- Режим множественного выбора задач ----
 
 function startAgendaLongPress(e, agendaIdx) {
     if (agendaMultiSelectMode) return;
@@ -1277,13 +1231,13 @@ function enterAgendaMultiSelect(initialIdx) {
     const bar = document.getElementById('horae-agenda-multiselect-bar');
     if (bar) bar.style.display = 'flex';
     
-// Константы
+    // Скрыть кнопку добавления
     const addBtn = document.getElementById('horae-btn-add-agenda');
     if (addBtn) addBtn.style.display = 'none';
     
     updateAgendaDisplay();
     updateAgendaSelectedCount();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Режим множественного выбора активирован. Нажмите для выбора задач', 'info');
 }
 
 function exitAgendaMultiSelect() {
@@ -1293,7 +1247,7 @@ function exitAgendaMultiSelect() {
     const bar = document.getElementById('horae-agenda-multiselect-bar');
     if (bar) bar.style.display = 'none';
     
-// Константы
+    // Восстановить кнопку добавления
     const addBtn = document.getElementById('horae-btn-add-agenda');
     if (addBtn) addBtn.style.display = '';
     
@@ -1307,7 +1261,7 @@ function toggleAgendaSelection(idx) {
         selectedAgendaIndices.add(idx);
     }
     
-// Константы
+    // Обновить UI этого элемента
     const item = document.querySelector(`#horae-agenda-list .horae-agenda-item[data-agenda-idx="${idx}"]`);
     if (item) {
         const cb = item.querySelector('input[type="checkbox"]');
@@ -1335,14 +1289,14 @@ function updateAgendaSelectedCount() {
 
 async function deleteSelectedAgenda() {
     if (selectedAgendaIndices.size === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Не выбрано ни одной задачи', 'warning');
         return;
     }
     
     const confirmed = confirm(`Удалить выбранные ${selectedAgendaIndices.size} задач(у/и)? Это действие необратимо.`);
     if (!confirmed) return;
     
-// Константы
+    // Получить полный список задач, удалять в обратном порядке по индексам
     const agenda = getAllAgenda();
     const sortedIndices = Array.from(selectedAgendaIndices).sort((a, b) => b - a);
     
@@ -1360,10 +1314,10 @@ async function deleteSelectedAgenda() {
 }
 
 // ============================================
-// Константы
+// Режим множественного выбора хронологии & контекстное меню по долгому нажатию
 // ============================================
 
-/** 时间线长按开始（弹出插入菜单） */
+/** Начало долгого нажатия на хронологию (показывает меню вставки) */
 let _timelineLongPressFired = false;
 function startTimelineLongPress(e, eventKey) {
     if (timelineMultiSelectMode) return;
@@ -1375,7 +1329,7 @@ function startTimelineLongPress(e, eventKey) {
     }, 800);
 }
 
-/** 取消时间线长按 */
+/** Отменить долгое нажатие на хронологии */
 function cancelTimelineLongPress() {
     if (timelineLongPressTimer) {
         clearTimeout(timelineLongPressTimer);
@@ -1383,7 +1337,7 @@ function cancelTimelineLongPress() {
     }
 }
 
-/** 显示时间线长按上下文菜单 */
+/** Показать контекстное меню долгого нажатия хронологии */
 function showTimelineContextMenu(e, eventKey) {
     closeTimelineContextMenu();
     const [msgIdx, evtIdx] = eventKey.split('-').map(Number);
@@ -1413,12 +1367,12 @@ function showTimelineContextMenu(e, eventKey) {
     
     document.body.appendChild(menu);
     
-// Константы
+    // Предотвратить всплытие событий самого меню (чтобы ящик не закрывался на мобильных)
     ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(evType => {
         menu.addEventListener(evType, (ev) => ev.stopPropagation());
     });
     
-// Константы
+    // Позиционирование
     const rect = e.target.closest('.horae-timeline-item')?.getBoundingClientRect();
     if (rect) {
         let top = rect.bottom + 4;
@@ -1433,7 +1387,7 @@ function showTimelineContextMenu(e, eventKey) {
         menu.style.left = `${(e.clientX || e.touches?.[0]?.clientX || 100)}px`;
     }
     
-// Константы
+    // Привязать действия пунктов меню (двойная привязка click + touchend для поддержки мобильных)
     menu.querySelectorAll('.horae-context-item').forEach(item => {
         let handled = false;
         const handler = (ev) => {
@@ -1450,7 +1404,7 @@ function showTimelineContextMenu(e, eventKey) {
         item.addEventListener('touchend', handler);
     });
     
-// Константы
+    // Клик вне меню закрывает его (только click, не touchstart, чтобы не перехватывать мобильные касания)
     setTimeout(() => {
         const dismissHandler = (ev) => {
             if (menu.contains(ev.target)) return;
@@ -1461,18 +1415,18 @@ function showTimelineContextMenu(e, eventKey) {
     }, 100);
 }
 
-/** 关闭时间线上下文菜单 */
+/** Закрыть контекстное меню хронологии */
 function closeTimelineContextMenu() {
     const menu = document.getElementById('horae-timeline-context-menu');
     if (menu) menu.remove();
 }
 
-/** 处理时间线上下文菜单操作 */
+/** Обработать действие контекстного меню хронологии */
 async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
     const chat = horaeManager.getChat();
     
     if (action === 'delete') {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Удалить это событие?')) return;
         const meta = chat[msgIdx]?.horae_meta;
         if (!meta) return;
         if (meta.events && evtIdx < meta.events.length) {
@@ -1481,7 +1435,7 @@ async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
             delete meta.event;
         }
         await getContext().saveChat();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Событие удалено', 'success');
         updateTimelineDisplay();
         updateStatusDisplay();
         return;
@@ -1497,7 +1451,7 @@ async function handleTimelineContextAction(action, msgIdx, evtIdx, eventKey) {
     }
 }
 
-/** 打开插入事件弹窗 */
+/** Открыть окно вставки события */
 function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
     const state = horaeManager.getLatestState();
     const currentDate = state.timestamp?.story_date || '';
@@ -1507,7 +1461,7 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-timeline"></i> ${isAbove ? 'Выше' : 'Ниже'} — добавить событие
+                    <i class="fa-solid fa-timeline"></i> ${isAbove ? 'выше' : 'ниже'} добавить событие
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
@@ -1516,14 +1470,14 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
                     </div>
                     <div class="horae-edit-field">
                         <label>Время</label>
-                        <input type="text" id="insert-event-time" value="${currentTime}" placeholder="Например 2026/2/14">
+                        <input type="text" id="insert-event-time" value="${currentTime}" placeholder="Например 15:00">
                     </div>
                     <div class="horae-edit-field">
                         <label>Уровень важности</label>
                         <select id="insert-event-level" class="horae-select">
-                            <option value="Обычное">Обычное</option>
-                            <option value="Важное">Важное</option>
-                            <option value="Ключевое">Ключевое</option>
+                            <option value="一般">Обычное</option>
+                            <option value="重要">Важное</option>
+                            <option value="关键">Ключевое</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
@@ -1556,7 +1510,7 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         if (!summary) { showToast('Введите краткое описание события', 'warning'); return; }
         
         const newEvent = {
-            is_important: level === 'Ключевое' || level === 'Важное',
+            is_important: level === '重要' || level === '关键',
             level: level,
             summary: summary
         };
@@ -1581,7 +1535,7 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
         closeEditModal();
         updateTimelineDisplay();
         updateStatusDisplay();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Событие добавлено', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -1590,18 +1544,18 @@ function openTimelineInsertEventModal(refMsgIdx, refEvtIdx, isAbove) {
     });
 }
 
-/** 打开插入摘要弹窗 */
+/** Открыть окно вставки сводки */
 function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
     const modalHtml = `
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-file-lines"></i> ${isAbove ? 'Выше' : 'Ниже'} — вставить сводку
+                    <i class="fa-solid fa-file-lines"></i> ${isAbove ? 'выше' : 'ниже'} вставить сводку
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>Содержание сводки</label>
-                        <textarea id="insert-summary-text" rows="5" placeholder="Опишите событие кратко..."></textarea>
+                        <label>Содержимое сводки</label>
+                        <textarea id="insert-summary-text" rows="5" placeholder="Введите содержимое сводки, заменяющей удалённые события хронологии...&#10;&#10;Подсказка: не удаляй хронологию в начале, иначе расчёт относительного времени и автоматическое вычисление возраста перестанут работать."></textarea>
                     </div>
                 </div>
                 <div class="horae-modal-footer">
@@ -1626,7 +1580,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
         
         const newEvent = {
             is_important: true,
-            level: 'Сводка',
+            level: '摘要',
             summary: summaryText,
             isSummary: true
         };
@@ -1643,7 +1597,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
         closeEditModal();
         updateTimelineDisplay();
         updateStatusDisplay();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Сводка вставлена', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -1652,7 +1606,7 @@ function openTimelineSummaryModal(refMsgIdx, refEvtIdx, isAbove) {
     });
 }
 
-/** 进入时间线多选模式 */
+/** Войти в режим множественного выбора хронологии */
 function enterTimelineMultiSelect(initialKey) {
     timelineMultiSelectMode = true;
     selectedTimelineEvents.clear();
@@ -1663,10 +1617,10 @@ function enterTimelineMultiSelect(initialKey) {
     
     updateTimelineDisplay();
     updateTimelineSelectedCount();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Режим множественного выбора активирован. Нажмите для выбора событий', 'info');
 }
 
-/** 退出时间线多选模式 */
+/** Выйти из режима множественного выбора хронологии */
 function exitTimelineMultiSelect() {
     timelineMultiSelectMode = false;
     selectedTimelineEvents.clear();
@@ -1677,7 +1631,7 @@ function exitTimelineMultiSelect() {
     updateTimelineDisplay();
 }
 
-/** 切换时间线事件选中状态 */
+/** Переключить состояние выбора события хронологии */
 function toggleTimelineSelection(eventKey) {
     if (selectedTimelineEvents.has(eventKey)) {
         selectedTimelineEvents.delete(eventKey);
@@ -1694,7 +1648,7 @@ function toggleTimelineSelection(eventKey) {
     updateTimelineSelectedCount();
 }
 
-/** 全选时间线事件 */
+/** Выбрать все события хронологии */
 function selectAllTimelineEvents() {
     document.querySelectorAll('#horae-timeline-list .horae-timeline-item').forEach(item => {
         const key = item.dataset.eventKey;
@@ -1704,13 +1658,13 @@ function selectAllTimelineEvents() {
     updateTimelineSelectedCount();
 }
 
-/** 更新时间线选中计数 */
+/** Обновить счётчик выбранных событий хронологии */
 function updateTimelineSelectedCount() {
     const el = document.getElementById('horae-timeline-selected-count');
     if (el) el.textContent = selectedTimelineEvents.size;
 }
 
-/** 选择压缩模式弹窗 */
+/** Окно выбора режима сжатия */
 function showCompressModeDialog(eventCount, msgRange) {
     return new Promise(resolve => {
         const modal = document.createElement('div');
@@ -1721,20 +1675,20 @@ function showCompressModeDialog(eventCount, msgRange) {
                 <div class="horae-modal-body" style="padding: 16px;">
                     <p style="margin: 0 0 12px; color: var(--horae-text-muted); font-size: 13px;">
                         Выбрано <strong style="color: var(--horae-primary-light);">${eventCount}</strong> событий,
-                        охватывает сообщения #${msgRange[0]} ~ #${msgRange[1]}
+                        охватывают сообщения #${msgRange[0]} – #${msgRange[1]}
                     </p>
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--horae-border); border-radius: 6px; cursor: pointer; margin-bottom: 8px;">
                         <input type="radio" name="horae-compress-mode" value="event" checked style="margin-top: 3px;">
                         <div>
                             <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">Сжатие событий</div>
-                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Сжимает из уже извлечённого текста событий — быстро, но только по тому, что записано в хронологии</div>
+                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Сжатие из извлечённого текста сводок событий (быстро, только данные из хронологии)</div>
                         </div>
                     </label>
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--horae-border); border-radius: 6px; cursor: pointer;">
                         <input type="radio" name="horae-compress-mode" value="fulltext" style="margin-top: 3px;">
                         <div>
-                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">Полный текст</div>
-                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Перечитывает полный текст сообщений выбранных событий — богаче деталями, но расходует больше токенов</div>
+                            <div style="font-size: 13px; color: var(--horae-text); font-weight: 500;">Полнотекстовая сводка</div>
+                            <div style="font-size: 11px; color: var(--horae-text-muted); margin-top: 2px;">Перечитать полный текст сообщений с выбранными событиями (больше деталей, но расходует больше токенов)</div>
                         </div>
                     </label>
                 </div>
@@ -1755,10 +1709,10 @@ function showCompressModeDialog(eventCount, msgRange) {
     });
 }
 
-/** AI智能压缩选中的时间线事件为一条摘要 */
+/** ИИ: умное сжатие выбранных событий хронологии в одну сводку */
 async function compressSelectedTimelineEvents() {
     if (selectedTimelineEvents.size < 2) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Выберите не менее 2 событий для сжатия', 'warning');
         return;
     }
     
@@ -1776,14 +1730,14 @@ async function compressSelectedTimelineEvents() {
         events.push({
             key, msgIdx, evtIdx,
             date, time,
-            level: evt.level || 'Обычное',
+            level: evt.level || '一般',
             summary: evt.summary || '',
-            isSummary: evt.isSummary || evt.level === 'Сводка'
+            isSummary: evt.isSummary || evt.level === '摘要'
         });
     }
     
     if (events.length < 2) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Недостаточно действительных событий (менее 2)', 'warning');
         return;
     }
     
@@ -1795,7 +1749,7 @@ async function compressSelectedTimelineEvents() {
     
     let sourceText;
     if (mode === 'fulltext') {
-// Константы
+        // Собрать полные тексты затронутых сообщений
         const msgIndices = [...new Set(events.map(e => e.msgIdx))].sort((a, b) => a - b);
         const fullTexts = msgIndices.map(idx => {
             const msg = chat[idx];
@@ -1834,9 +1788,9 @@ async function compressSelectedTimelineEvents() {
     overlay.className = 'horae-progress-overlay' + (isLightMode() ? ' horae-light' : '');
     overlay.innerHTML = `
         <div class="horae-progress-container">
-            <div class="horae-progress-title">ИИ сжимает...</div>
+            <div class="horae-progress-title">ИИ: сжатие...</div>
             <div class="horae-progress-bar"><div class="horae-progress-fill" style="width: 50%"></div></div>
-            <div class="horae-progress-text">${mode === 'fulltext' ? 'Перечитываю полный текст для создания сводки...' : 'Перечитываю полный текст для создания сводки...'}</div>
+            <div class="horae-progress-text">${mode === 'fulltext' ? 'Перечитываю полный текст для создания сводки...' : 'Создаю сводку...'}</div>
             <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> Отменить сжатие</button>
         </div>
     `;
@@ -1844,14 +1798,14 @@ async function compressSelectedTimelineEvents() {
 
     overlay.querySelector('.horae-progress-cancel').addEventListener('click', () => {
         if (cancelled) return;
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('После отмены сводка не будет сохранена. Отменить?')) return;
         cancelled = true;
         fetchAbort.abort();
         try { getContext().stopGeneration(); } catch (_) {}
         cancelResolve();
         overlay.remove();
         window.fetch = _origFetch;
-        showToast('Таблица экспортирована', 'info');
+        showToast('Сжатие отменено', 'info');
     });
     
     try {
@@ -1884,27 +1838,18 @@ async function compressSelectedTimelineEvents() {
         
         if (!response || !response.trim()) {
             overlay.remove();
-            showToast('Таблица экспортирована', 'warning');
+            showToast('ИИ не вернул действительную сводку', 'warning');
             return;
         }
         
-        let summaryText = response.trim()
-            .replace(/<horae>[\s\S]*?<\/horae>/gi, '')
-            .replace(/<horaeevent>[\s\S]*?<\/horaeevent>/gi, '')
-            .replace(/<!--horae[\s\S]*?-->/gi, '')
-            .trim();
-        if (!summaryText) {
-            overlay.remove();
-            showToast('Таблица экспортирована', 'warning');
-            return;
-        }
+        const summaryText = response.trim();
         
-// Константы
+        // Неразрушающее сжатие: сохранить исходные события и сводку в autoSummaries
         const firstMsg = chat[0];
         if (!firstMsg.horae_meta) firstMsg.horae_meta = createEmptyMeta();
         if (!firstMsg.horae_meta.autoSummaries) firstMsg.horae_meta.autoSummaries = [];
         
-// Константы
+        // Собрать резервную копию исходных сжатых событий
         const originalEvents = events.map(e => ({
             msgIdx: e.msgIdx,
             evtIdx: e.evtIdx,
@@ -1924,8 +1869,8 @@ async function compressSelectedTimelineEvents() {
         };
         firstMsg.horae_meta.autoSummaries.push(summaryEntry);
         
-// Константы
-// Константы
+        // Пометить исходные события как сжатые (не удалять), совместимость со старым форматом meta.event
+        // Пометить все события во всех затронутых сообщениях, чтобы предотвратить утечку невыбранных событий из того же сообщения
         const compressedMsgIndices = [...new Set(events.map(e => e.msgIdx))];
         for (const msgIdx of compressedMsgIndices) {
             const meta = chat[msgIdx]?.horae_meta;
@@ -1942,21 +1887,21 @@ async function compressSelectedTimelineEvents() {
             }
         }
         
-// Константы
+        // Вставить событие сводки на позицию самого раннего сообщения
         const firstEvent = events[0];
         const firstMeta = chat[firstEvent.msgIdx]?.horae_meta;
         if (firstMeta) {
             if (!firstMeta.events) firstMeta.events = [];
             firstMeta.events.push({
                 is_important: true,
-                level: 'Сводка',
+                level: '摘要',
                 summary: summaryText,
                 isSummary: true,
                 _summaryId: summaryId
             });
         }
         
-// Константы
+        // Скрыть все сообщения в диапазоне (включая промежуточные сообщения пользователя)
         const hideMin = compressedMsgIndices[0];
         const hideMax = compressedMsgIndices[compressedMsgIndices.length - 1];
         const hideIndices = [];
@@ -1968,46 +1913,34 @@ async function compressSelectedTimelineEvents() {
         exitTimelineMultiSelect();
         updateTimelineDisplay();
         updateStatusDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`${events.length} событий${mode === 'fulltext' ? ' (режим полного текста)' : ''} сжаты в сводку`, 'success');
     } catch (err) {
         window.fetch = _origFetch;
         overlay.remove();
         if (cancelled || err?.name === 'AbortError') return;
         console.error('[Horae] Ошибка сжатия:', err);
-        showToast('Ошибка сжатия ИИ: ' + (err.message || 'Ошибка сжатия ИИ: '), 'error');
+        showToast('Ошибка сжатия ИИ: ' + (err.message || 'Неизвестная ошибка'), 'error');
     }
 }
 
-/** 删除选中的时间线事件 */
+/** Удалить выбранные события хронологии */
 async function deleteSelectedTimelineEvents() {
     if (selectedTimelineEvents.size === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Не выбрано ни одного события', 'warning');
         return;
     }
     
-    const confirmed = confirm(`Удалить выбранные ${selectedAgendaIndices.size} задач(у/и)? Это действие необратимо.`);
+    const confirmed = confirm(`Удалить выбранные ${selectedTimelineEvents.size} записей хронологии?\n\nМожно восстановить через кнопку «Отменить» рядом с «Обновить».`);
     if (!confirmed) return;
     
     const chat = horaeManager.getChat();
-    const firstMeta = chat?.[0]?.horae_meta;
     
-// Константы
+    // Группировать по сообщениям, удалять индексы событий в обратном порядке
     const msgMap = new Map();
     for (const key of selectedTimelineEvents) {
         const [msgIdx, evtIdx] = key.split('-').map(Number);
         if (!msgMap.has(msgIdx)) msgMap.set(msgIdx, []);
         msgMap.get(msgIdx).push(evtIdx);
-    }
-    
-// Константы
-    const deletedSummaryIds = new Set();
-    for (const [msgIdx, evtIndices] of msgMap) {
-        const meta = chat[msgIdx]?.horae_meta;
-        if (!meta?.events) continue;
-        for (const ei of evtIndices) {
-            const evt = meta.events[ei];
-            if (evt?._summaryId) deletedSummaryIds.add(evt._summaryId);
-        }
     }
     
     for (const [msgIdx, evtIndices] of msgMap) {
@@ -2026,44 +1959,21 @@ async function deleteSelectedTimelineEvents() {
         }
     }
     
-// Константы
-    if (deletedSummaryIds.size > 0 && firstMeta?.autoSummaries) {
-        for (const summaryId of deletedSummaryIds) {
-            const idx = firstMeta.autoSummaries.findIndex(s => s.id === summaryId);
-            let removedEntry = null;
-            if (idx !== -1) {
-                removedEntry = firstMeta.autoSummaries.splice(idx, 1)[0];
-            }
-            for (let i = 0; i < chat.length; i++) {
-                const meta = chat[i]?.horae_meta;
-                if (!meta?.events) continue;
-                for (const evt of meta.events) {
-                    if (evt._compressedBy === summaryId) delete evt._compressedBy;
-                }
-            }
-            if (removedEntry) {
-                const indices = getSummaryMsgIndices(removedEntry);
-                await setMessagesHidden(chat, indices, false);
-            }
-        }
-    }
-    
     await getContext().saveChat();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+    showToast(`Удалено ${selectedTimelineEvents.size} записей хронологии`, 'success');
     exitTimelineMultiSelect();
-    updateTimelineDisplay();
     updateStatusDisplay();
 }
 
 /**
- * 打开待办事项添加/编辑弹窗
- * @param {Object|null} agendaItem - 编辑时传入完整 agenda 对象，新增时传 null
+ * Открыть окно добавления/редактирования задачи
+ * @param {Object|null} agendaItem - при редактировании передаётся полный объект agenda, при добавлении — null
  */
 function openAgendaEditModal(agendaItem = null) {
     const isEdit = agendaItem !== null;
     const currentText = isEdit ? (agendaItem.text || '') : '';
     const currentDate = isEdit ? (agendaItem.date || '') : '';
-    const title = isEdit ? 'Редактировать задачу' : 'Редактировать задачу';
+    const title = isEdit ? 'Редактировать задачу' : 'Добавить задачу';
     
     closeEditModal();
     
@@ -2081,10 +1991,10 @@ function openAgendaEditModal(agendaItem = null) {
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
                         <label>Дата (необязательно)</label>
-                        <input type="text" id="agenda-edit-date" value="${escapeHtml(currentDate)}" placeholder="Например 2026/2/14">
+                        <input type="text" id="agenda-edit-date" value="${escapeHtml(currentDate)}" placeholder="Например 2026/02/10">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Содержание</label>
+                        <label>Содержимое</label>
                         <textarea id="agenda-edit-text" rows="3" placeholder="Введите задачу. Для относительного времени укажите абсолютную дату, напр.: Алан пригласил Алис на вечер в День святого Валентина (2026/02/14 18:00)">${escapeHtml(currentText)}</textarea>
                     </div>
                 </div>
@@ -2119,12 +2029,12 @@ function openAgendaEditModal(agendaItem = null) {
         const text = document.getElementById('agenda-edit-text').value.trim();
         const date = document.getElementById('agenda-edit-date').value.trim();
         if (!text) {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Содержимое не может быть пустым', 'warning');
             return;
         }
         
         if (isEdit) {
-// Константы
+            // Редактировать существующий элемент
             const context = getContext();
             if (agendaItem._store === 'user') {
                 const agenda = getUserAgenda();
@@ -2146,7 +2056,7 @@ function openAgendaEditModal(agendaItem = null) {
                 }
             }
         } else {
-// Константы
+            // Новый элемент
             const agenda = getUserAgenda();
             agenda.push({ text, date, source: 'user', done: false, createdAt: Date.now() });
             setUserAgenda(agenda);
@@ -2154,7 +2064,7 @@ function openAgendaEditModal(agendaItem = null) {
         
         closeEditModal();
         updateAgendaDisplay();
-        showToast(isEdit ? 'Задача обновлена' : 'Задача обновлена', 'success');
+        showToast(isEdit ? 'Задача обновлена' : 'Задача добавлена', 'success');
     });
     
     document.getElementById('agenda-modal-cancel').addEventListener('click', (e) => {
@@ -2163,36 +2073,36 @@ function openAgendaEditModal(agendaItem = null) {
         closeEditModal();
     });
     
-// Константы
+    // Кнопка удаления (только в режиме редактирования)
     const deleteEl = document.getElementById('agenda-modal-delete');
     if (deleteEl && isEdit) {
         deleteEl.addEventListener('click', (e) => {
             e.stopPropagation();
             e.stopImmediatePropagation();
             
-            if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+            if (!confirm('Удалить эту задачу? Это действие необратимо.')) return;
             
             deleteAgendaItem(agendaItem);
             closeEditModal();
             updateAgendaDisplay();
-            showToast('Таблица экспортирована', 'info');
+            showToast('Задача удалена', 'info');
         });
     }
 }
 
 /**
- * 更新角色页面显示
+ * Обновить отображение страницы персонажей
  */
 function updateCharactersDisplay() {
     const state = horaeManager.getLatestState();
     const presentChars = state.scene?.characters_present || [];
     const favoriteNpcs = settings.favoriteNpcs || [];
     
-// Константы
+    // Получить имя главного персонажа карточки (для закрепления и специального стиля)
     const context = getContext();
     const mainCharName = context?.name2 || '';
     
-// Константы
+    // Присутствующие персонажи
     const presentEl = document.getElementById('horae-present-characters');
     if (presentEl) {
         if (presentChars.length === 0) {
@@ -2210,7 +2120,7 @@ function updateCharactersDisplay() {
         }
     }
     
-// Константы
+    // Расположение — многоуровневое отображение: важные > присутствующие > остальные
     const affectionEl = document.getElementById('horae-affection-list');
     const pinnedNpcsAff = settings.pinnedNpcs || [];
     if (affectionEl) {
@@ -2218,7 +2128,7 @@ function updateCharactersDisplay() {
         if (entries.length === 0) {
             affectionEl.innerHTML = '<div class="horae-empty-hint">Нет записей о расположении</div>';
         } else {
-// Константы
+            // Определить, является ли персонаж важным
             const isMainCharAff = (key) => {
                 if (pinnedNpcsAff.includes(key)) return true;
                 if (mainCharName && key.includes(mainCharName)) return true;
@@ -2251,7 +2161,7 @@ function updateCharactersDisplay() {
             }).join('');
             
             let html = '';
-// Константы
+            // Закрепить персонажей карточки вверху
             if (mainCharAffection.length > 0) {
                 html += renderAffection(mainCharAffection, true);
             }
@@ -2271,7 +2181,7 @@ function updateCharactersDisplay() {
         }
     }
     
-// Константы
+    // Список NPC — многоуровневое отображение: важные > со звёздочкой > обычные
     const npcEl = document.getElementById('horae-npc-list');
     const pinnedNpcs = settings.pinnedNpcs || [];
     if (npcEl) {
@@ -2279,7 +2189,7 @@ function updateCharactersDisplay() {
         if (entries.length === 0) {
             npcEl.innerHTML = '<div class="horae-empty-hint">Нет записей о персонажах</div>';
         } else {
-// Константы
+            // Определить, является ли персонаж важным(главный персонаж карточки или помечен вручную)
             const isMainChar = (name) => {
                 if (pinnedNpcs.includes(name)) return true;
                 if (mainCharName && name.includes(mainCharName)) return true;
@@ -2305,7 +2215,7 @@ function updateCharactersDisplay() {
                     descHtml = '<span class="horae-npc-legacy">Нет описания</span>';
                 }
                 
-// Константы
+                // Расширенная информация (возраст/раса/профессия)
                 const extraTags = [];
                 if (info.race) extraTags.push(info.race);
                 if (info.age) {
@@ -2320,9 +2230,6 @@ function updateCharactersDisplay() {
                 if (extraTags.length > 0) {
                     descHtml += `<span class="horae-npc-extras">${extraTags.join(' · ')}</span>`;
                 }
-                if (info.birthday) {
-                    descHtml += `<span class="horae-npc-birthday"><i class="fa-solid fa-cake-candles"></i>${info.birthday}</span>`;
-                }
                 if (info.note) {
                     descHtml += `<span class="horae-npc-note">${info.note}</span>`;
                 }
@@ -2331,7 +2238,7 @@ function updateCharactersDisplay() {
                 const mainClass = isMainChar ? 'main-character' : '';
                 const starIcon = isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star';
                 
-// Константы
+                // Маппинг иконок пола
                 let genderIcon, genderClass;
                 if (isMainChar) {
                     genderIcon = 'fa-solid fa-crown';
@@ -2364,7 +2271,7 @@ function updateCharactersDisplay() {
                                 <button class="horae-item-edit-btn" data-edit-type="npc" data-edit-name="${name}" title="Редактировать" style="opacity:1;position:static;">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button class="horae-npc-star" title="${isFavorite ? 'Убрать звёздочку' : 'Убрать звёздочку'}">
+                                <button class="horae-npc-star" title="${isFavorite ? 'Убрать звёздочку' : 'Добавить звёздочку'}">
                                     <i class="${starIcon}"></i>
                                 </button>
                             </div>
@@ -2374,17 +2281,17 @@ function updateCharactersDisplay() {
                 `;
             };
             
-// Константы
+            // Панель фильтрации по полу
             let html = `
                 <div class="horae-gender-filter">
                     <button class="horae-gender-btn active" data-filter="all" title="Все">Все</button>
                     <button class="horae-gender-btn" data-filter="male" title="Мужской"><i class="fa-solid fa-person"></i></button>
-                    <button class="horae-gender-btn" data-filter="female" title="Мужской"><i class="fa-solid fa-person-dress"></i></button>
-                    <button class="horae-gender-btn" data-filter="other" title="Мужской"><i class="fa-solid fa-user"></i></button>
+                    <button class="horae-gender-btn" data-filter="female" title="Женский"><i class="fa-solid fa-person-dress"></i></button>
+                    <button class="horae-gender-btn" data-filter="other" title="Другой/Неизвестно"><i class="fa-solid fa-user"></i></button>
                 </div>
             `;
             
-// Константы
+            // Область персонажей карточки (закреплённые)
             if (mainCharEntries.length > 0) {
                 html += '<div class="horae-npc-section main-character-section">';
                 html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
@@ -2392,25 +2299,25 @@ function updateCharactersDisplay() {
                 html += '</div>';
             }
             
-// Константы
+            // Область NPC со звёздочкой
             if (favoriteEntries.length > 0) {
                 if (mainCharEntries.length > 0) {
                     html += '<div class="horae-npc-section-divider"></div>';
                 }
                 html += '<div class="horae-npc-section favorite-section">';
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
+                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-star"></i> NPC со звёздочкой</div>';
                 html += favoriteEntries.map(([name, info]) => renderNpc(name, info, true)).join('');
                 html += '</div>';
             }
             
-// Константы
+            // Область обычных NPC
             if (normalEntries.length > 0) {
                 if (mainCharEntries.length > 0 || favoriteEntries.length > 0) {
                     html += '<div class="horae-npc-section-divider"></div>';
                 }
                 html += '<div class="horae-npc-section">';
                 if (mainCharEntries.length > 0 || favoriteEntries.length > 0) {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
+                    html += '<div class="horae-npc-section-title">Прочие NPC</div>';
                 }
                 html += normalEntries.map(([name, info]) => renderNpc(name, info, false)).join('');
                 html += '</div>';
@@ -2427,7 +2334,7 @@ function updateCharactersDisplay() {
                 });
             });
             
-// Константы
+            // Клик множественного выбора NPC
             npcEl.querySelectorAll('.horae-npc-item').forEach(item => {
                 item.addEventListener('click', (e) => {
                     if (!npcMultiSelectMode) return;
@@ -2461,14 +2368,14 @@ function updateCharactersDisplay() {
         }
     }
     
-// Константы
+    // Рендеринг сети отношений
     if (settings.sendRelationships) {
         updateRelationshipDisplay();
     }
 }
 
 /**
- * 更新关系网络显示
+ * Обновить отображение сети отношений
  */
 function updateRelationshipDisplay() {
     const listEl = document.getElementById('horae-relationship-list');
@@ -2477,7 +2384,7 @@ function updateRelationshipDisplay() {
     const relationships = horaeManager.getRelationships();
     
     if (relationships.length === 0) {
-        listEl.innerHTML = '<div class="horae-empty-hint">Нет задач</div>';
+        listEl.innerHTML = '<div class="horae-empty-hint">Нет записей о связях. ИИ запишет их автоматически при взаимодействии персонажей</div>';
         return;
     }
     
@@ -2492,14 +2399,14 @@ function updateRelationshipDisplay() {
             </div>
             <div class="horae-rel-actions">
                 <button class="horae-rel-edit" title="Редактировать"><i class="fa-solid fa-pen"></i></button>
-                <button class="horae-rel-delete" title="Редактировать"><i class="fa-solid fa-trash"></i></button>
+                <button class="horae-rel-delete" title="Удалить"><i class="fa-solid fa-trash"></i></button>
             </div>
         </div>
     `).join('');
     
     listEl.innerHTML = html;
     
-// Константы
+    // Привязать события редактирования/удаления
     listEl.querySelectorAll('.horae-rel-edit').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const idx = parseInt(btn.closest('.horae-relationship-item').dataset.relIndex);
@@ -2515,7 +2422,7 @@ function updateRelationshipDisplay() {
             if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
             rels.splice(idx, 1);
             horaeManager.setRelationships(rels);
-// Константы
+            // Синхронно очищать данные об отношениях того же направления во всех сообщениях, чтобы предотвратить воскрешение при rebuildRelationships
             const chat = horaeManager.getChat();
             for (let i = 1; i < chat.length; i++) {
                 const meta = chat[i]?.horae_meta;
@@ -2528,7 +2435,7 @@ function updateRelationshipDisplay() {
             }
             await getContext().saveChat();
             updateRelationshipDisplay();
-            showToast('Таблица экспортирована', 'info');
+            showToast('Связь удалена', 'info');
         });
     });
 }
@@ -2543,24 +2450,24 @@ function openRelationshipEditModal(editIndex = null) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-diagram-project"></i> ${isEdit ? 'Редактировать связь' : 'Редактировать связь'}
+                    <i class="fa-solid fa-diagram-project"></i> ${isEdit ? 'Редактировать связь' : 'Добавить связь'}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>Персонаж А</label>
-                        <input type="text" id="horae-rel-from" value="${escapeHtml(existing.from)}" placeholder="Например 2026/2/14">
+                        <label>Персонаж A</label>
+                        <input type="text" id="horae-rel-from" value="${escapeHtml(existing.from)}" placeholder="Имя персонажа (инициатор связи)">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Персонаж Б</label>
-                        <input type="text" id="horae-rel-to" value="${escapeHtml(existing.to)}" placeholder="Например 2026/2/14">
+                        <label>Персонаж B</label>
+                        <input type="text" id="horae-rel-to" value="${escapeHtml(existing.to)}" placeholder="Имя персонажа (получатель связи)">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Тип отношений</label>
-                        <input type="text" id="horae-rel-type" value="${escapeHtml(existing.type)}" placeholder="Например 2026/2/14">
+                        <label>Тип связи</label>
+                        <input type="text" id="horae-rel-type" value="${escapeHtml(existing.type)}" placeholder="Например: друзья, возлюбленные, начальник/подчинённый, учитель/ученик">
                     </div>
                     <div class="horae-edit-field">
                         <label>Примечание (необязательно)</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <input type="text" id="horae-rel-note" value="${escapeHtml(existing.note || '')}" placeholder="Дополнительное описание связи">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
@@ -2589,14 +2496,14 @@ function openRelationshipEditModal(editIndex = null) {
         const note = document.getElementById('horae-rel-note').value.trim();
         
         if (!from || !to || !type) {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Имя персонажа и тип связи не могут быть пустыми', 'warning');
             return;
         }
         
         if (isEdit) {
             const oldRel = rels[editIndex];
             rels[editIndex] = { from, to, type, note, _userEdited: true };
-// Константы
+            // Синхронно обновлять данные об отношениях во всех сообщениях, чтобы rebuildRelationships не восстановил старые значения
             const chat = horaeManager.getChat();
             for (let i = 1; i < chat.length; i++) {
                 const meta = chat[i]?.horae_meta;
@@ -2619,14 +2526,14 @@ function openRelationshipEditModal(editIndex = null) {
         await getContext().saveChat();
         updateRelationshipDisplay();
         closeEditModal();
-        showToast(isEdit ? 'Задача обновлена' : 'Задача обновлена', 'success');
+        showToast(isEdit ? 'Связь обновлена' : 'Связь добавлена', 'success');
     });
     
     document.getElementById('horae-rel-modal-cancel').addEventListener('click', () => closeEditModal());
 }
 
 /**
- * 切换NPC星标状态
+ * Переключить состояние звёздочки NPC
  */
 function toggleNpcFavorite(npcName) {
     if (!settings.favoriteNpcs) {
@@ -2635,13 +2542,13 @@ function toggleNpcFavorite(npcName) {
     
     const index = settings.favoriteNpcs.indexOf(npcName);
     if (index > -1) {
-// Константы
+        // Убрать звёздочку
         settings.favoriteNpcs.splice(index, 1);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Звёздочка у ${npcName} убрана`, 'info');
     } else {
-// Константы
+        // Добавить звёздочку
         settings.favoriteNpcs.push(npcName);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`${npcName} добавлен в список со звёздочкой`, 'success');
     }
     
     saveSettings();
@@ -2649,7 +2556,7 @@ function toggleNpcFavorite(npcName) {
 }
 
 /**
- * 更新物品页面显示
+ * Обновить отображение страницы предметов
  */
 function updateItemsDisplay() {
     const state = horaeManager.getLatestState();
@@ -2672,7 +2579,7 @@ function updateItemsDisplay() {
             if (info.holder) holders.add(info.holder);
         });
         
-// Константы
+        // Сохранить текущий выбор, обновить список опций
         const holderOptions = ['<option value="all">Все</option>'];
         holders.forEach(holder => {
             holderOptions.push(`<option value="${holder}" ${holder === currentHolder ? 'selected' : ''}>${holder}</option>`);
@@ -2680,7 +2587,7 @@ function updateItemsDisplay() {
         holderFilterEl.innerHTML = holderOptions.join('');
     }
     
-// Константы
+    // Поиск предметов — по ключевым словам
     if (searchQuery) {
         entries = entries.filter(([name, info]) => {
             const searchTarget = `${name} ${info.icon || ''} ${info.description || ''} ${info.holder || ''} ${info.location || ''}`.toLowerCase();
@@ -2688,12 +2595,12 @@ function updateItemsDisplay() {
         });
     }
     
-// Константы
+    // Фильтрация предметов — по уровню важности
     if (filterValue !== 'all') {
         entries = entries.filter(([name, info]) => info.importance === filterValue);
     }
     
-// Константы
+    // Фильтрация предметов — по владельцу
     if (holderFilter !== 'all') {
         entries = entries.filter(([name, info]) => info.holder === holderFilter);
     }
@@ -2715,22 +2622,22 @@ function updateItemsDisplay() {
     listEl.innerHTML = entries.map(([name, info]) => {
         const icon = info.icon || '📦';
         const importance = info.importance || '';
-// Константы
-        const isCritical = importance === '!!' || importance === 'Ключевой';
-        const isImportant = importance === '!' || importance === 'Ключевой';
+        // Поддерживаются два формата: ""/"!"/"!!" и "一般"/"重要"/"关键"
+        const isCritical = importance === '!!' || importance === '关键';
+        const isImportant = importance === '!' || importance === '重要';
         const importanceClass = isCritical ? 'critical' : isImportant ? 'important' : 'normal';
-// Константы
-        const importanceLabel = isCritical ? 'Ключевой' : isImportant ? 'Ключевой' : '';
+        // Показать метку
+        const importanceLabel = isCritical ? 'Ключевой' : isImportant ? 'Важный' : '';
         const importanceBadge = importanceLabel ? `<span class="horae-item-importance ${importanceClass}">${importanceLabel}</span>` : '';
         
-// Константы
+        // Исправить формат отображения: владелец · местоположение
         let positionStr = '';
         if (info.holder && info.location) {
             positionStr = `<span class="holder">${info.holder}</span> · ${info.location}`;
         } else if (info.holder) {
             positionStr = `<span class="holder">${info.holder}</span> владеет`;
         } else if (info.location) {
-            positionStr = `<span class="holder">${info.holder}</span> владеет`;
+            positionStr = `Находится: ${info.location}`;
         } else {
             positionStr = 'Местоположение неизвестно';
         }
@@ -2740,9 +2647,6 @@ function updateItemsDisplay() {
         const checkboxDisplay = itemsMultiSelectMode ? 'flex' : 'none';
         const description = info.description || '';
         const descHtml = description ? `<div class="horae-full-item-desc">${description}</div>` : '';
-        const isLocked = !!info._locked;
-        const lockIcon = isLocked ? 'fa-lock' : 'fa-lock-open';
-        const lockTitle = isLocked ? 'Заблокировано (ИИ не может изменять описание и важность)' : 'Нажмите для блокировки';
         
         return `
             <div class="horae-full-item horae-editable-item ${importanceClass} ${selectedClass}" data-item-name="${name}">
@@ -2757,10 +2661,6 @@ function updateItemsDisplay() {
                     <div class="horae-full-item-location">${positionStr}</div>
                     ${descHtml}
                 </div>
-                ${(settings.rpgMode && settings.sendRpgEquipment) ? `<button class="horae-item-equip-btn" data-item-name="${name}" title="Надеть на персонажа"><i class="fa-solid fa-shirt"></i></button>` : ''}
-                <button class="horae-item-lock-btn" data-item-name="${name}" title="${lockTitle}" style="opacity:${isLocked ? '1' : '0.35'}">
-                    <i class="fa-solid ${lockIcon}"></i>
-                </button>
                 <button class="horae-item-edit-btn" data-edit-type="item" data-edit-name="${name}" title="Редактировать">
                     <i class="fa-solid fa-pen"></i>
                 </button>
@@ -2773,11 +2673,11 @@ function updateItemsDisplay() {
 }
 
 /**
- * 绑定编辑按钮事件
+ * Привязать события кнопок редактирования
  */
 function bindEditButtons() {
     document.querySelectorAll('.horae-item-edit-btn').forEach(btn => {
-// Константы
+        // Удалить старые обработчики (избегать двойной привязки)
         btn.replaceWith(btn.cloneNode(true));
     });
     
@@ -2804,13 +2704,13 @@ function bindEditButtons() {
 }
 
 /**
- * 打开物品编辑弹窗
+ * Открыть окно редактирования предмета
  */
 function openItemEditModal(itemName) {
     const state = horaeManager.getLatestState();
     const item = state.items?.[itemName];
     if (!item) {
-        showToast('Таблица экспортирована', 'error');
+        showToast('Предмет не найден', 'error');
         return;
     }
     
@@ -2823,7 +2723,7 @@ function openItemEditModal(itemName) {
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
                         <label>Название предмета</label>
-                        <input type="text" id="edit-item-name" value="${itemName}" placeholder="Например 2026/2/14">
+                        <input type="text" id="edit-item-name" value="${itemName}" placeholder="Название предмета">
                     </div>
                     <div class="horae-edit-field">
                         <label>Иконка (emoji)</label>
@@ -2832,22 +2732,22 @@ function openItemEditModal(itemName) {
                     <div class="horae-edit-field">
                         <label>Уровень важности</label>
                         <select id="edit-item-importance">
-                            <option value="" ${!item.importance || item.importance === 'Обычное' || item.importance === '' ? 'selected' : ''}>Обычное</option>
-                            <option value="!" ${item.importance === '!' || item.importance === 'Ключевой' ? 'selected' : ''}>Важный !</option>
-                            <option value="!!" ${item.importance === '!!' || item.importance === 'Ключевой' ? 'selected' : ''}>Ключевой !!</option>
+                            <option value="" ${!item.importance || item.importance === '一般' || item.importance === '' ? 'selected' : ''}>Обычный</option>
+                            <option value="!" ${item.importance === '!' || item.importance === '重要' ? 'selected' : ''}>Важный !</option>
+                            <option value="!!" ${item.importance === '!!' || item.importance === '关键' ? 'selected' : ''}>Ключевой !!</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>Описание (функция/источник)</label>
+                        <label>Описание (особые функции/происхождение и т.д.)</label>
                         <textarea id="edit-item-desc" placeholder="Например: подарено Алисой на свидании">${item.description || ''}</textarea>
                     </div>
                     <div class="horae-edit-field">
                         <label>Владелец</label>
-                        <input type="text" id="edit-item-holder" value="${item.holder || ''}" placeholder="эмоциональное состояние">
+                        <input type="text" id="edit-item-holder" value="${item.holder || ''}" placeholder="Имя персонажа">
                     </div>
                     <div class="horae-edit-field">
                         <label>Местоположение</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <input type="text" id="edit-item-location" value="${item.location || ''}" placeholder="Например: рюкзак, карман, стол в доме">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
@@ -2870,7 +2770,7 @@ function openItemEditModal(itemName) {
         e.stopImmediatePropagation();
         const newName = document.getElementById('edit-item-name').value.trim();
         if (!newName) {
-            showToast('Таблица экспортирована', 'error');
+            showToast('Название предмета не может быть пустым', 'error');
             return;
         }
         
@@ -2882,23 +2782,20 @@ function openItemEditModal(itemName) {
             location: document.getElementById('edit-item-location').value
         };
         
-// Константы
+        // Обновить этот предмет во всех сообщениях
         const chat = horaeManager.getChat();
         const nameChanged = newName !== itemName;
-        const editBaseName = getItemBaseName(itemName).toLowerCase();
         
         for (let i = 0; i < chat.length; i++) {
             const meta = chat[i].horae_meta;
-            if (!meta?.items) continue;
-            const matchKey = Object.keys(meta.items).find(k =>
-                k === itemName || getItemBaseName(k).toLowerCase() === editBaseName
-            );
-            if (!matchKey) continue;
-            if (nameChanged) {
-                meta.items[newName] = { ...meta.items[matchKey], ...newData };
-                delete meta.items[matchKey];
-            } else {
-                Object.assign(meta.items[matchKey], newData);
+            if (meta?.items?.[itemName]) {
+                if (nameChanged) {
+                    meta.items[newName] = { ...meta.items[itemName], ...newData };
+                    delete meta.items[itemName];
+                } else {
+                    Object.assign(meta.items[itemName], newData);
+                }
+                injectHoraeTagToMessage(i, meta);
             }
         }
         
@@ -2906,7 +2803,7 @@ function openItemEditModal(itemName) {
         closeEditModal();
         updateItemsDisplay();
         updateStatusDisplay();
-        showToast(nameChanged ? 'Предмет переименован и обновлён' : 'Предмет переименован и обновлён', 'success');
+        showToast(nameChanged ? 'Предмет переименован и обновлён' : 'Предмет обновлён', 'success');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -2917,7 +2814,7 @@ function openItemEditModal(itemName) {
 }
 
 /**
- * 打开好感度编辑弹窗
+ * Открыть диалог редактирования расположения
  */
 function openAffectionEditModal(charName) {
     const state = horaeManager.getLatestState();
@@ -2929,15 +2826,15 @@ function openAffectionEditModal(charName) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-heart"></i> Редактировать привязанность: ${charName}
+                    <i class="fa-solid fa-heart"></i> Редактировать расположение: ${charName}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>Текущая привязанность</label>
+                        <label>Текущее расположение</label>
                         <input type="number" step="0.1" id="edit-affection-value" value="${numValue}" placeholder="0-100">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Уровень привязанности</label>
+                        <label>Уровень расположения</label>
                         <span class="horae-affection-level-preview">${level}</span>
                     </div>
                 </div>
@@ -2959,7 +2856,7 @@ function openAffectionEditModal(charName) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     preventModalBubble();
     
-// Константы
+    // Обновление предпросмотра уровня расположения в реальном времени
     document.getElementById('edit-affection-value').addEventListener('input', (e) => {
         const val = parseFloat(e.target.value) || 0;
         const newLevel = horaeManager.getAffectionLevel(val);
@@ -2982,32 +2879,30 @@ function openAffectionEditModal(charName) {
             }
         }
         
-        let affectedIdx;
         if (lastMessageWithAffection >= 0) {
             chat[lastMessageWithAffection].horae_meta.affection[charName] = { 
                 type: 'absolute', 
                 value: newValue 
             };
-            affectedIdx = lastMessageWithAffection;
         } else {
-            affectedIdx = chat.length - 1;
-            const lastMeta = chat[affectedIdx]?.horae_meta;
+            const lastMeta = chat[chat.length - 1]?.horae_meta;
             if (lastMeta) {
                 if (!lastMeta.affection) lastMeta.affection = {};
                 lastMeta.affection[charName] = { type: 'absolute', value: newValue };
             }
         }
+        
         getContext().saveChat();
         closeEditModal();
         updateCharactersDisplay();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Расположение обновлено', 'success');
     });
 
-// Константы
+    // Удалить все записи расположения для персонажа
     document.getElementById('edit-modal-delete').addEventListener('click', (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+        if (!confirm(`Удалить записи расположения «${charName}»? Будет удалено из всех сообщений.`)) return;
         const chat = horaeManager.getChat();
         let removed = 0;
         for (let i = 0; i < chat.length; i++) {
@@ -3020,7 +2915,7 @@ function openAffectionEditModal(charName) {
         getContext().saveChat();
         closeEditModal();
         updateCharactersDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Расположение «${charName}» удалено (${removed} записей)`, 'info');
     });
     
     document.getElementById('edit-modal-cancel').addEventListener('click', (e) => {
@@ -3031,8 +2926,8 @@ function openAffectionEditModal(charName) {
 }
 
 /**
- * 完整级联删除 NPC：从所有消息中清除目标角色的 npcs/affection/relationships/mood/costumes/RPG，
- * 并记录到 chat[0]._deletedNpcs 防止 rebuild 回滚。
+ * Полное каскадное удаление NPC: очищает npcs/affection/relationships/mood/costumes/RPG во всех сообщениях
+ * и записывает в chat[0]._deletedNpcs для предотвращения отката rebuild.
  */
 function _cascadeDeleteNpcs(names) {
     if (!names?.length) return;
@@ -3056,13 +2951,13 @@ function _cascadeDeleteNpcs(names) {
         }
         if (meta.relationships?.length) {
             const before = meta.relationships.length;
-            meta.relationships = meta.relationships.filter(r => !nameSet.has(r.from) && !nameSet.has(r.to));
+            meta.relationships = meta.relationships.filter(r => !nameSet.has(r.source) && !nameSet.has(r.target));
             if (meta.relationships.length !== before) changed = true;
         }
         if (changed && i > 0) injectHoraeTagToMessage(i, meta);
     }
     
-// Константы
+    // RPG данные
     const rpg = chat[0]?.horae_meta?.rpg;
     if (rpg) {
         for (const name of nameSet) {
@@ -3078,7 +2973,7 @@ function _cascadeDeleteNpcs(names) {
         saveSettings();
     }
     
-// Константы
+    // Антиоткат: запись в chat[0]
     if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
     if (!chat[0].horae_meta._deletedNpcs) chat[0].horae_meta._deletedNpcs = [];
     for (const name of nameSet) {
@@ -3089,31 +2984,26 @@ function _cascadeDeleteNpcs(names) {
 }
 
 /**
- * 打开NPC编辑弹窗
+ * Открыть диалог редактирования NPC
  */
 function openNpcEditModal(npcName) {
     const state = horaeManager.getLatestState();
     const npc = state.npcs?.[npcName];
     if (!npc) {
-        showToast('Таблица экспортирована', 'error');
+        showToast('Персонаж не найден', 'error');
         return;
     }
     
     const isPinned = (settings.pinnedNpcs || []).includes(npcName);
     
-// Константы
+    // Варианты пола
     const genderVal = npc.gender || '';
-    const presetGenders = ['', 'Мужской', 'Мужской'];
-    const isCustomGender = genderVal !== '' && !presetGenders.includes(genderVal);
     const genderOptions = [
         { val: '', label: 'Неизвестно' },
-        { val: 'Мужской', label: 'Мужской' },
-        { val: 'Мужской', label: 'Мужской' },
-        { val: '__custom__', label: 'Другой' }
-    ].map(o => {
-        const selected = isCustomGender ? o.val === '__custom__' : genderVal === o.val;
-        return `<option value="${o.val}" ${selected ? 'selected' : ''}>${o.label}</option>`;
-    }).join('');
+        { val: '男', label: 'Мужской' },
+        { val: '女', label: 'Женский' },
+        { val: '其他', label: 'Другой' }
+    ].map(o => `<option value="${o.val}" ${genderVal === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
     
     const modalHtml = `
         <div id="horae-edit-modal" class="horae-modal">
@@ -3123,36 +3013,35 @@ function openNpcEditModal(npcName) {
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
-                        <label>Имя персонажа${npc._aliases?.length ? ` <span style="font-weight:normal;color:var(--horae-text-dim)">(быв. имена: ${npc._aliases.join(', ')})</span>` : ''}</label>
-                        <input type="text" id="edit-npc-name" value="${npcName}" placeholder="Например 2026/2/14">
+                        <label>Имя персонажа${npc._aliases?.length ? ` <span style="font-weight:normal;color:var(--horae-text-dim)">(псевдонимы: ${npc._aliases.join('、')})</span>` : ''}</label>
+                        <input type="text" id="edit-npc-name" value="${npcName}" placeholder="При смене имени старое сохранится как псевдоним">
                     </div>
                     <div class="horae-edit-field">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                             <input type="checkbox" id="edit-npc-pinned" ${isPinned ? 'checked' : ''}>
                             <i class="fa-solid fa-crown" style="color:${isPinned ? '#b388ff' : '#666'}"></i>
-                            Отметить как важного персонажа (закрепить + особая рамка)
+                            Пометить как важного персонажа (закрепить + особая рамка)
                         </label>
                     </div>
                     <div class="horae-edit-field-row">
                         <div class="horae-edit-field horae-edit-field-compact">
                             <label>Пол</label>
                             <select id="edit-npc-gender">${genderOptions}</select>
-                            <input type="text" id="edit-npc-gender-custom" value="${isCustomGender ? genderVal : ''}" placeholder="Ввести пол вручную" style="display:${isCustomGender ? 'block' : 'none'};margin-top:4px;">
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
                             <label>Возраст${(() => {
                                 const ar = horaeManager.calcCurrentAge(npc, state.timestamp?.story_date);
                                 return ar.changed ? ` <span style="font-weight:normal;color:var(--horae-accent)">(текущий расчёт:${ar.display})</span>` : '';
                             })()}</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                            <input type="text" id="edit-npc-age" value="${npc.age || ''}" placeholder="напр.: 25, около 35">
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
                             <label>Раса</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                            <input type="text" id="edit-npc-race" value="${npc.race || ''}" placeholder="напр.: человек, эльф">
                         </div>
                         <div class="horae-edit-field horae-edit-field-compact">
                             <label>Профессия</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                            <input type="text" id="edit-npc-job" value="${npc.job || ''}" placeholder="напр.: наёмник, студент">
                         </div>
                     </div>
                     <div class="horae-edit-field">
@@ -3161,19 +3050,15 @@ function openNpcEditModal(npcName) {
                     </div>
                     <div class="horae-edit-field">
                         <label>Характер</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <input type="text" id="edit-npc-personality" value="${npc.personality || ''}" placeholder="напр.: весёлый, жизнерадостный">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Отношения с {{user}}</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
-                    </div>
-                    <div class="horae-edit-field">
-                        <label>День рождения <span style="font-weight:normal;color:var(--horae-text-dim);font-size:11px">yyyy/mm/dd или mm/dd</span></label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <label>Статус/отношения</label>
+                        <input type="text" id="edit-npc-relationship" value="${npc.relationship || ''}" placeholder="напр.: сосед главного героя">
                     </div>
                     <div class="horae-edit-field">
                         <label>Дополнительно</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <input type="text" id="edit-npc-note" value="${npc.note || ''}" placeholder="прочая важная информация (необязательно)">
                     </div>
                 </div>
                 <div class="horae-modal-footer">
@@ -3194,27 +3079,21 @@ function openNpcEditModal(npcName) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     preventModalBubble();
     
-    document.getElementById('edit-npc-gender').addEventListener('change', function() {
-        const customInput = document.getElementById('edit-npc-gender-custom');
-        customInput.style.display = this.value === '__custom__' ? 'block' : 'none';
-        if (this.value !== '__custom__') customInput.value = '';
-    });
-    
-// Константы
+    // Удалить NPC (полный каскад: npcs/affection/relationships/mood/costumes/RPG + антиоткат)
     document.getElementById('edit-modal-delete').addEventListener('click', async (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+        if (!confirm(`Удалить персонажа «${npcName}»?\n\nВся информация о нём будет удалена из всех сообщений (расположение, отношения, RPG-данные и т.д.), восстановление невозможно.`)) return;
         
         _cascadeDeleteNpcs([npcName]);
         
         await getContext().saveChat();
         closeEditModal();
         refreshAllDisplays();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Персонаж «${npcName}» удалён`, 'success');
     });
     
-// Константы
+    // Сохранить изменения NPC (поддержка переименования + псевдонимов)
     document.getElementById('edit-modal-save').addEventListener('click', async (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -3225,13 +3104,10 @@ function openNpcEditModal(npcName) {
             appearance: document.getElementById('edit-npc-appearance').value,
             personality: document.getElementById('edit-npc-personality').value,
             relationship: document.getElementById('edit-npc-relationship').value,
-            gender: document.getElementById('edit-npc-gender').value === '__custom__'
-                ? document.getElementById('edit-npc-gender-custom').value.trim()
-                : document.getElementById('edit-npc-gender').value,
+            gender: document.getElementById('edit-npc-gender').value,
             age: newAge,
             race: document.getElementById('edit-npc-race').value,
             job: document.getElementById('edit-npc-job').value,
-            birthday: document.getElementById('edit-npc-birthday').value.trim(),
             note: document.getElementById('edit-npc-note').value
         };
         
@@ -3240,25 +3116,12 @@ function openNpcEditModal(npcName) {
         const currentState = horaeManager.getLatestState();
         const ageChanged = newAge !== (npc.age || '');
         if (ageChanged && newAge) {
-            const ageCalc = horaeManager.calcCurrentAge(npc, currentState.timestamp?.story_date);
-            const storyDate = currentState.timestamp?.story_date || '（дата сюжета не задана）';
-            const confirmed = confirm(
-                `⚠ Изменение точки отсчёта возраста\n\n` +
-                `Исходный записанный возраст: ${npc.age || 'Нет'}\n` +
-                (ageCalc.changed ? `Текущий расчётный возраст: ${ageCalc.display}\n` : '') +
-                `Новый заданный возраст: ${newAge}\n` +
-                `Текущая дата сюжета: ${storyDate}\n\n` +
-                `После подтверждения система будет использовать «${newAge} лет + ${storyDate}» как новую точку отсчёта.\n` +
-                `Дальнейший прирост возраста будет считаться с этой точки, а не со старого момента инъекции.\n\n` +
-                `Подтвердить изменение?`
-            );
-            if (!confirmed) return;
-            newData._ageRefDate = storyDate;
+            newData._ageRefDate = currentState.timestamp?.story_date || '';
         }
         
         const isRename = newName !== npcName;
         
-// Константы
+        // Переименование: каскадная миграция ключей во всех сообщениях + запись псевдонима
         if (isRename) {
             const aliases = npc._aliases ? [...npc._aliases] : [];
             if (!aliases.includes(npcName)) aliases.push(npcName);
@@ -3301,7 +3164,7 @@ function openNpcEditModal(npcName) {
                 if (changed && i > 0) injectHoraeTagToMessage(i, meta);
             }
             
-// Константы
+            // Миграция RPG данных
             const rpg = chat[0]?.horae_meta?.rpg;
             if (rpg) {
                 for (const sub of ['bars', 'status', 'skills', 'attributes']) {
@@ -3312,13 +3175,13 @@ function openNpcEditModal(npcName) {
                 }
             }
             
-// Константы
+            // Миграция pinnedNpcs
             if (settings.pinnedNpcs) {
                 const idx = settings.pinnedNpcs.indexOf(npcName);
                 if (idx !== -1) settings.pinnedNpcs[idx] = newName;
             }
         } else {
-// Константы
+            // Без переименования, только обновление атрибутов
             for (let i = 0; i < chat.length; i++) {
                 const meta = chat[i].horae_meta;
                 if (meta?.npcs?.[npcName]) {
@@ -3328,7 +3191,7 @@ function openNpcEditModal(npcName) {
             }
         }
         
-// Константы
+        // Обработка пометки «важный персонаж»
         const finalName = isRename ? newName : npcName;
         const newPinned = document.getElementById('edit-npc-pinned').checked;
         if (!settings.pinnedNpcs) settings.pinnedNpcs = [];
@@ -3353,15 +3216,15 @@ function openNpcEditModal(npcName) {
     });
 }
 
-/** 打开事件编辑弹窗 */
+/** Открыть диалог редактирования события */
 function openEventEditModal(messageId, eventIndex = 0) {
     const meta = horaeManager.getMessageMeta(messageId);
     if (!meta) {
-        showToast('Таблица экспортирована', 'error');
+        showToast('Метаданные сообщения не найдены', 'error');
         return;
     }
     
-// Константы
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const event = eventsArr[eventIndex] || {};
     const totalEvents = eventsArr.length;
@@ -3376,10 +3239,10 @@ function openEventEditModal(messageId, eventIndex = 0) {
                     <div class="horae-edit-field">
                         <label>Уровень события</label>
                         <select id="edit-event-level">
-                            <option value="Обычное" ${event.level === 'Обычное' || !event.level ? 'selected' : ''}>Обычное</option>
-                            <option value="Важное" ${event.level === 'Важное' ? 'selected' : ''}>Важное</option>
-                            <option value="Ключевое" ${event.level === 'Ключевое' ? 'selected' : ''}>Ключевое</option>
-                            <option value="Сводка" ${event.level === 'Сводка' ? 'selected' : ''}>Сводка</option>
+                            <option value="一般" ${event.level === '一般' || !event.level ? 'selected' : ''}>Обычное</option>
+                            <option value="重要" ${event.level === '重要' ? 'selected' : ''}>Важное</option>
+                            <option value="关键" ${event.level === '关键' ? 'selected' : ''}>Ключевое</option>
+                            <option value="摘要" ${event.level === '摘要' ? 'selected' : ''}>Сводка</option>
                         </select>
                     </div>
                     <div class="horae-edit-field">
@@ -3414,12 +3277,12 @@ function openEventEditModal(messageId, eventIndex = 0) {
             const newLevel = document.getElementById('edit-event-level').value;
             const newSummary = document.getElementById('edit-event-summary').value.trim();
             
-// Константы
+            // Подтверждение: пустое описание = удаление события
             if (!newSummary) {
                 if (!confirm('Описание события пусто!\n\nПосле сохранения событие будет удалено.\n\nПодтвердить удаление?')) {
                     return;
                 }
-// Константы
+                // Пользователь подтвердил удаление, выполнить логику удаления
                 if (!chatMeta.events) {
                     chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
                 }
@@ -3431,44 +3294,44 @@ function openEventEditModal(messageId, eventIndex = 0) {
                 await getContext().saveChat();
                 closeEditModal();
                 updateTimelineDisplay();
-                showToast('Таблица экспортирована', 'success');
+                showToast('Событие удалено', 'success');
                 return;
             }
             
-// Константы
+            // Убедиться, что массив events существует
             if (!chatMeta.events) {
                 chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
             }
             
-// Константы
-            const isSummaryLevel = newLevel === 'Сводка';
+            // Обновить или добавить событие
+            const isSummaryLevel = newLevel === '摘要';
             if (chatMeta.events[eventIndex]) {
                 chatMeta.events[eventIndex] = {
-                    is_important: newLevel === 'Ключевое' || newLevel === 'Важное',
+                    is_important: newLevel === '重要' || newLevel === '关键',
                     level: newLevel,
                     summary: newSummary,
                     ...(isSummaryLevel ? { isSummary: true } : {})
                 };
             } else {
                 chatMeta.events.push({
-                    is_important: newLevel === 'Ключевое' || newLevel === 'Важное',
+                    is_important: newLevel === '重要' || newLevel === '关键',
                     level: newLevel,
                     summary: newSummary,
                     ...(isSummaryLevel ? { isSummary: true } : {})
                 });
             }
             
-// Константы
+            // Очистить старый формат
             delete chatMeta.event;
         }
         
         await getContext().saveChat();
         closeEditModal();
         updateTimelineDisplay();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Событие обновлено', 'success');
     });
     
-// Константы
+    // Удалить событие (с подтверждением)
     document.getElementById('edit-modal-delete').addEventListener('click', (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -3476,18 +3339,23 @@ function openEventEditModal(messageId, eventIndex = 0) {
             const chat = horaeManager.getChat();
             const chatMeta = chat[messageId]?.horae_meta;
             if (chatMeta) {
+                // Убедиться, что массив events существует
                 if (!chatMeta.events) {
                     chatMeta.events = chatMeta.event ? [chatMeta.event] : [];
                 }
+                
+                // Удалить событие по указанному индексу
                 if (chatMeta.events.length > eventIndex) {
                     chatMeta.events.splice(eventIndex, 1);
                 }
+                
+                // Очистить старый формат
                 delete chatMeta.event;
                 
                 getContext().saveChat();
                 closeEditModal();
                 updateTimelineDisplay();
-                showToast('Таблица экспортирована', 'success');
+                showToast('Событие удалено', 'success');
             }
         }
     });
@@ -3500,14 +3368,14 @@ function openEventEditModal(messageId, eventIndex = 0) {
 }
 
 /**
- * 关闭编辑弹窗
+ * Закрыть диалог редактирования
  */
 function closeEditModal() {
     const modal = document.getElementById('horae-edit-modal');
     if (modal) modal.remove();
 }
 
-/** 阻止编辑弹窗事件冒泡 */
+/** Предотвратить всплытие событий в диалоге */
 function preventModalBubble() {
     const targets = [
         document.getElementById('horae-edit-modal'),
@@ -3515,7 +3383,7 @@ function preventModalBubble() {
     ].filter(Boolean);
 
     targets.forEach(modal => {
-// Константы
+        // Наследовать режим темы
         if (isLightMode()) modal.classList.add('horae-light');
 
         ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(evType => {
@@ -3527,10 +3395,10 @@ function preventModalBubble() {
 }
 
 // ============================================
-// Константы
+// Функция пользовательских таблиц в стиле Excel
 // ============================================
 
-// Константы
+// Независимые стеки Undo/Redo для каждой таблицы, ключ = tableId
 const TABLE_HISTORY_MAX = 20;
 const _perTableUndo = {};  // { tableId: [snapshot, ...] }
 const _perTableRedo = {};  // { tableId: [snapshot, ...] }
@@ -3546,7 +3414,7 @@ function _deepCopyOneTable(scope, tableIndex) {
     return JSON.parse(JSON.stringify(tables[tableIndex]));
 }
 
-/** 在修改前调用：保存指定表格的快照到其独立 undo 栈 */
+/** Вызывать перед изменением: сохранить снимок таблицы в стек undo */
 function pushTableSnapshot(scope, tableIndex) {
     if (tableIndex == null) return;
     const tid = _getTableId(scope, tableIndex);
@@ -3559,14 +3427,14 @@ function pushTableSnapshot(scope, tableIndex) {
     _updatePerTableUndoRedoButtons(tid);
 }
 
-/** 撤回指定表格 */
+/** Отменить действие в таблице */
 function undoSingleTable(tid) {
     const stack = _perTableUndo[tid];
     if (!stack?.length) return;
     const snap = stack.pop();
     const tables = getTablesByScope(snap.scope);
     if (!tables[snap.tableIndex]) return;
-// Константы
+    // Сохранить текущее состояние в redo
     if (!_perTableRedo[tid]) _perTableRedo[tid] = [];
     _perTableRedo[tid].push({
         scope: snap.scope,
@@ -3576,10 +3444,10 @@ function undoSingleTable(tid) {
     tables[snap.tableIndex] = snap.table;
     setTablesByScope(snap.scope, tables);
     renderCustomTablesList();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Операция с таблицей отменена', 'info');
 }
 
-/** 复原指定表格 */
+/** Повторить действие в таблице */
 function redoSingleTable(tid) {
     const stack = _perTableRedo[tid];
     if (!stack?.length) return;
@@ -3595,7 +3463,7 @@ function redoSingleTable(tid) {
     tables[snap.tableIndex] = snap.table;
     setTablesByScope(snap.scope, tables);
     renderCustomTablesList();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Операция с таблицей восстановлена', 'info');
 }
 
 function _updatePerTableUndoRedoButtons(tid) {
@@ -3605,7 +3473,7 @@ function _updatePerTableUndoRedoButtons(tid) {
     if (redoBtn) redoBtn.disabled = !_perTableRedo[tid]?.length;
 }
 
-/** 切换聊天时清空所有 undo/redo 栈 */
+/** При смене диалога очищать все стеки undo/redo */
 function clearTableHistory() {
     for (const k of Object.keys(_perTableUndo)) delete _perTableUndo[k];
     for (const k of Object.keys(_perTableRedo)) delete _perTableRedo[k];
@@ -3614,7 +3482,7 @@ function clearTableHistory() {
 let activeContextMenu = null;
 
 /**
- * 渲染自定义表格列表
+ * Рендеринг списка пользовательских таблиц
  */
 function renderCustomTablesList() {
     const listEl = document.getElementById('horae-custom-tables-list');
@@ -3627,14 +3495,14 @@ function renderCustomTablesList() {
         listEl.innerHTML = `
             <div class="horae-custom-tables-empty">
                 <i class="fa-solid fa-table-cells"></i>
-                <div>Пользовательских таблиц нет</div>
+                <div>Нет пользовательских таблиц</div>
                 <div style="font-size:11px;opacity:0.7;margin-top:4px;">Нажмите кнопку ниже, чтобы добавить таблицу</div>
             </div>
         `;
         return;
     }
 
-    /** 渲染单个表格 */
+    /** Рендеринг отдельной таблицы */
     function renderOneTable(table, idx, scope) {
         const rows = table.rows || 2;
         const cols = table.cols || 2;
@@ -3644,8 +3512,8 @@ function renderCustomTablesList() {
         const lockedCells = new Set(table.lockedCells || []);
         const isGlobal = scope === 'global';
         const scopeIcon = isGlobal ? 'fa-globe' : 'fa-bookmark';
-        const scopeLabel = isGlobal ? 'Глобальная' : 'Глобальная';
-        const scopeTitle = isGlobal ? 'Глобальная таблица, доступна во всех диалогах' : 'Глобальная таблица, доступна во всех диалогах';
+        const scopeLabel = isGlobal ? 'Глобальная' : 'Локальная';
+        const scopeTitle = isGlobal ? 'Глобальная таблица, доступна во всех диалогах' : 'Локальная таблица, только текущий диалог';
 
         let tableHtml = '<table class="horae-excel-table">';
         for (let r = 0; r < rows; r++) {
@@ -3690,10 +3558,10 @@ function renderCustomTablesList() {
                         <button class="clear-table-data-btn" title="Очистить данные (сохранить заголовки)" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-eraser"></i>
                         </button>
-                        <button class="export-table-btn" title="Очистить данные (сохранить заголовки)" data-table-index="${idx}" data-scope="${scope}">
+                        <button class="export-table-btn" title="Экспортировать таблицу" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-download"></i>
                         </button>
-                        <button class="delete-table-btn danger" title="Очистить данные (сохранить заголовки)" data-table-index="${idx}" data-scope="${scope}">
+                        <button class="delete-table-btn danger" title="Удалить таблицу" data-table-index="${idx}" data-scope="${scope}">
                             <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
@@ -3714,7 +3582,7 @@ function renderCustomTablesList() {
         html += globalTables.map((t, i) => renderOneTable(t, i, 'global')).join('');
     }
     if (chatTables.length > 0) {
-        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-globe"></i> Глобальные таблицы</div>`;
+        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-bookmark"></i> Локальные таблицы (текущий диалог)</div>`;
         html += chatTables.map((t, i) => renderOneTable(t, i, 'local')).join('');
     }
     listEl.innerHTML = html;
@@ -3723,7 +3591,7 @@ function renderCustomTablesList() {
 }
 
 /**
- * HTML转义
+ * HTML-экранирование
  */
 function escapeHtml(str) {
     if (!str) return '';
@@ -3735,13 +3603,13 @@ function escapeHtml(str) {
 }
 
 /**
- * 绑定Excel表格事件
+ * Привязка событий таблицы Excel
  */
 function bindExcelTableEvents() {
-    /** 从元素属性获取scope */
+    /** Получить scope из атрибутов элемента */
     const getScope = (el) => el.dataset.scope || el.closest('[data-scope]')?.dataset.scope || 'local';
 
-// Константы
+    // Событие ввода ячейки — автосохранение + динамическая подстройка ширины
     document.querySelectorAll('.horae-excel-table input').forEach(input => {
         input.addEventListener('focus', (e) => {
             e.target._horaeSnapshotPushed = false;
@@ -3778,7 +3646,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Событие ввода названия таблицы
     document.querySelectorAll('input[data-table-name]').forEach(input => {
         input.addEventListener('change', (e) => {
             const scope = getScope(e.target);
@@ -3791,7 +3659,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Событие ввода промпта таблицы
     document.querySelectorAll('input[data-table-prompt]').forEach(input => {
         input.addEventListener('change', (e) => {
             const scope = getScope(e.target);
@@ -3804,7 +3672,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Кнопка экспорта таблицы
     document.querySelectorAll('.export-table-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3814,7 +3682,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Кнопка удаления таблицы
     document.querySelectorAll('.delete-table-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const container = btn.closest('.horae-excel-table-container');
@@ -3824,7 +3692,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Кнопка очистки данных таблицы (сохранить заголовки)
     document.querySelectorAll('.clear-table-data-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -3834,7 +3702,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Переключение глобальная/локальная
     document.querySelectorAll('[data-toggle-scope]').forEach(el => {
         el.addEventListener('click', (e) => {
             const currentScope = el.dataset.scope;
@@ -3843,7 +3711,7 @@ function bindExcelTableEvents() {
         });
     });
     
-// Константы
+    // Длинное нажатие/ПКМ на любой ячейке показывает меню
     document.querySelectorAll('.horae-excel-table th, .horae-excel-table td').forEach(cell => {
         let pressTimer = null;
 
@@ -3881,7 +3749,7 @@ function bindExcelTableEvents() {
         });
     });
 
-// Константы
+    // Независимые кнопки Undo/Redo для каждой таблицы
     document.querySelectorAll('.horae-table-undo-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3896,7 +3764,7 @@ function bindExcelTableEvents() {
     });
 }
 
-/** 显示表格右键菜单 */
+/** Показ контекстного меню таблицы */
 let contextMenuCloseHandler = null;
 
 function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
@@ -3917,7 +3785,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
 
     let menuItems = '';
 
-// Константы
+    // Операции со строками (первый столбец / любая ячейка может добавить строку)
     if (isCorner) {
         menuItems += `
             <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-plus"></i> Добавить строку</div>
@@ -3929,7 +3797,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
             <div class="horae-context-menu-item" data-action="add-col-left"><i class="fa-solid fa-arrow-left"></i> Добавить столбец слева</div>
             <div class="horae-context-menu-item" data-action="add-col-right"><i class="fa-solid fa-arrow-right"></i> Добавить столбец справа</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-col"><i class="fa-solid ${colLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${colLocked ? 'Разблокировать столбец' : 'Разблокировать столбец'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-col"><i class="fa-solid ${colLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${colLocked ? 'Разблокировать столбец' : 'Заблокировать столбец'}</div>
             <div class="horae-context-menu-divider"></div>
             <div class="horae-context-menu-item danger" data-action="delete-col"><i class="fa-solid fa-trash-can"></i> Удалить столбец</div>
         `;
@@ -3939,12 +3807,12 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
             <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> Добавить строку выше</div>
             <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> Добавить строку ниже</div>
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-row"><i class="fa-solid ${rowLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${rowLocked ? 'Разблокировать строку' : 'Разблокировать строку'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-row"><i class="fa-solid ${rowLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${rowLocked ? 'Разблокировать строку' : 'Заблокировать строку'}</div>
             <div class="horae-context-menu-divider"></div>
             <div class="horae-context-menu-item danger" data-action="delete-row"><i class="fa-solid fa-trash-can"></i> Удалить строку</div>
         `;
     } else {
-// Константы
+        // Обычная ячейка с данными
         menuItems += `
             <div class="horae-context-menu-item" data-action="add-row-above"><i class="fa-solid fa-arrow-up"></i> Добавить строку выше</div>
             <div class="horae-context-menu-item" data-action="add-row-below"><i class="fa-solid fa-arrow-down"></i> Добавить строку ниже</div>
@@ -3953,12 +3821,12 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
         `;
     }
 
-// Константы
+    // Все не угловые ячейки можно заблокировать/разблокировать
     if (!isCorner) {
         const cellLocked = lockedCells.has(cellKey);
         menuItems += `
             <div class="horae-context-menu-divider"></div>
-            <div class="horae-context-menu-item" data-action="toggle-lock-cell"><i class="fa-solid ${cellLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${cellLocked ? 'Разблокировать ячейку' : 'Разблокировать ячейку'}</div>
+            <div class="horae-context-menu-item" data-action="toggle-lock-cell"><i class="fa-solid ${cellLocked ? 'fa-lock-open' : 'fa-lock'}"></i> ${cellLocked ? 'Разблокировать ячейку' : 'Заблокировать ячейку'}</div>
         `;
     }
     
@@ -3967,7 +3835,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
     if (isLightMode()) menu.classList.add('horae-light');
     menu.innerHTML = menuItems;
     
-// Константы
+    // Получить позицию
     const x = e.clientX || e.touches?.[0]?.clientX || 100;
     const y = e.clientY || e.touches?.[0]?.clientY || 100;
     menu.style.left = `${x}px`;
@@ -3976,7 +3844,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
     document.body.appendChild(menu);
     activeContextMenu = menu;
     
-// Константы
+    // Убедиться, что меню не выходит за пределы экрана
     const rect = menu.getBoundingClientRect();
     if (rect.right > window.innerWidth) {
         menu.style.left = `${window.innerWidth - rect.width - 10}px`;
@@ -3985,7 +3853,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
         menu.style.top = `${window.innerHeight - rect.height - 10}px`;
     }
     
-// Константы
+    // Привязать клик по пункту меню — выполнить действие и закрыть
     menu.querySelectorAll('.horae-context-menu-item').forEach(item => {
         item.addEventListener('click', (ev) => {
             ev.preventDefault();
@@ -4017,7 +3885,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
         });
     });
     
-// Константы
+    // Отложенная привязка, чтобы текущее событие не сработало
     setTimeout(() => {
         contextMenuCloseHandler = (ev) => {
             if (activeContextMenu && !activeContextMenu.contains(ev.target)) {
@@ -4033,7 +3901,7 @@ function showTableContextMenu(e, tableIndex, row, col, scope = 'local') {
 }
 
 /**
- * 隐藏右键菜单
+ * Скрыть контекстное меню
  */
 function hideContextMenu() {
     if (contextMenuCloseHandler) {
@@ -4049,11 +3917,11 @@ function hideContextMenu() {
 }
 
 /**
- * 执行表格操作
+ * Выполнение действий с таблицей
  */
 function executeTableAction(tableIndex, row, col, action, scope = 'local') {
     pushTableSnapshot(scope, tableIndex);
-// Константы
+    // Сначала записать незафиксированные значения из DOM, чтобы не потерять редактируемые данные
     const container = document.querySelector(`.horae-excel-table-container[data-table-index="${tableIndex}"][data-scope="${scope}"]`);
     if (container) {
         const tbl = getTablesByScope(scope)[tableIndex];
@@ -4142,10 +4010,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedRows.indexOf(row);
             if (idx >= 0) {
                 table.lockedRows.splice(idx, 1);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Строка ${row + 1} разблокирована`, 'info');
             } else {
                 table.lockedRows.push(row);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Строка ${row + 1} заблокирована (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4155,10 +4023,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedCols.indexOf(col);
             if (idx >= 0) {
                 table.lockedCols.splice(idx, 1);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Столбец ${col + 1} разблокирован`, 'info');
             } else {
                 table.lockedCols.push(col);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Столбец ${col + 1} заблокирован (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4169,10 +4037,10 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
             const idx = table.lockedCells.indexOf(cellKey);
             if (idx >= 0) {
                 table.lockedCells.splice(idx, 1);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Ячейка [${row},${col}] разблокирована`, 'info');
             } else {
                 table.lockedCells.push(cellKey);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Ячейка [${row},${col}] заблокирована (ИИ не может редактировать)`, 'success');
             }
             break;
         }
@@ -4183,7 +4051,7 @@ function executeTableAction(tableIndex, row, col, action, scope = 'local') {
 }
 
 /**
- * 添加新的2x2表格
+ * Добавить новую таблицу 2x2
  */
 function addNewExcelTable(scope = 'local') {
     const tables = getTablesByScope(scope);
@@ -4205,14 +4073,14 @@ function addNewExcelTable(scope = 'local') {
 
     setTablesByScope(scope, tables);
     renderCustomTablesList();
-    showToast(scope === 'global' ? 'Глобальная таблица добавлена' : 'Глобальная таблица добавлена', 'success');
+    showToast(scope === 'global' ? 'Глобальная таблица добавлена' : 'Локальная таблица добавлена', 'success');
 }
 
 /**
- * 删除表格
+ * Удалить таблицу
  */
 function deleteCustomTable(index, scope = 'local') {
-    if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+    if (!confirm('Удалить эту таблицу?')) return;
     pushTableSnapshot(scope, index);
 
     const tables = getTablesByScope(scope);
@@ -4221,7 +4089,7 @@ function deleteCustomTable(index, scope = 'local') {
     tables.splice(index, 1);
     setTablesByScope(scope, tables);
 
-// Константы
+    // Очистить tableContributions, ссылающиеся на это имя таблицы, во всех сообщениях
     const chat = horaeManager.getChat();
     if (deletedName) {
         for (let i = 0; i < chat.length; i++) {
@@ -4237,27 +4105,24 @@ function deleteCustomTable(index, scope = 'local') {
         }
     }
 
-// Константы
+    // Глобальная таблица: очистить per-card overlay
     if (scope === 'global' && deletedName && chat?.[0]?.horae_meta?.globalTableData) {
         delete chat[0].horae_meta.globalTableData[deletedName];
     }
 
     horaeManager.rebuildTableData();
     getContext().saveChat();
-    if (scope === 'global' && typeof saveSettingsDebounced.flush === 'function') {
-        saveSettingsDebounced.flush();
-    }
     renderCustomTablesList();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Таблица удалена', 'info');
 }
 
-/** 清除指定表格的所有 tableContributions，将当前数据写入 baseData 作为新基准 */
+/** Очистить все tableContributions указанной таблицы, записать текущие данные в baseData как новую базу */
 function purgeTableContributions(tableName, scope = 'local') {
     if (!tableName) return;
     const chat = horaeManager.getChat();
     if (!chat?.length) return;
 
-// Константы
+    // Очистить все tableContributions данной таблицы во всех сообщениях (вклад ИИ + старые снимки пользователя)
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i]?.horae_meta;
         if (meta?.tableContributions) {
@@ -4270,8 +4135,8 @@ function purgeTableContributions(tableName, scope = 'local') {
         }
     }
 
-// Константы
-// Константы
+    // Записать текущие полные данные (включая правки пользователя) в baseData как новую базу
+    // Так rebuildTableData сможет восстановиться с правильной базы, даже если сообщения были перегенерированы
     const tables = getTablesByScope(scope);
     const table = tables.find(t => (t.name || '').trim() === tableName);
     if (table) {
@@ -4287,9 +4152,9 @@ function purgeTableContributions(tableName, scope = 'local') {
     }
 }
 
-/** 清空表格数据区（保留第0行和第0列的表头） */
+/** Очистить область данных таблицы (сохранить заголовки строки 0 и столбца 0) */
 function clearTableData(index, scope = 'local') {
-    if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+    if (!confirm('Очистить область данных этой таблицы? Заголовки будут сохранены.\n\nОдновременно будут удалены исторические записи ИИ, чтобы предотвратить возврат старых данных.')) return;
     pushTableSnapshot(scope, index);
 
     const tables = getTablesByScope(scope);
@@ -4298,7 +4163,7 @@ function clearTableData(index, scope = 'local') {
     const data = table.data || {};
     const tableName = (table.name || '').trim();
 
-// Константы
+    // Удалить данные всех ячеек с row>0 и col>0
     for (const key of Object.keys(data)) {
         const [r, c] = key.split('-').map(Number);
         if (r > 0 && c > 0) {
@@ -4308,7 +4173,7 @@ function clearTableData(index, scope = 'local') {
 
     table.data = data;
 
-// Константы
+    // Синхронно обновить baseData (очистить область данных, сохранить заголовки)
     if (table.baseData) {
         for (const key of Object.keys(table.baseData)) {
             const [r, c] = key.split('-').map(Number);
@@ -4318,7 +4183,7 @@ function clearTableData(index, scope = 'local') {
         }
     }
 
-// Константы
+    // Очистить tableContributions данной таблицы во всех сообщениях (предотвратить воспроизведение старых данных при rebuildTableData)
     const chat = horaeManager.getChat();
     if (tableName) {
         for (let i = 0; i < chat.length; i++) {
@@ -4334,15 +4199,15 @@ function clearTableData(index, scope = 'local') {
         }
     }
 
-// Константы
+    // Глобальная таблица: синхронно очистить область данных и baseData в per-card overlay
     if (scope === 'global' && tableName && chat?.[0]?.horae_meta?.globalTableData?.[tableName]) {
         const overlay = chat[0].horae_meta.globalTableData[tableName];
-// Константы
+        // Очистить область данных overlay.data
         for (const key of Object.keys(overlay.data || {})) {
             const [r, c] = key.split('-').map(Number);
             if (r > 0 && c > 0) delete overlay.data[key];
         }
-// Константы
+        // Очистить область данных overlay.baseData
         if (overlay.baseData) {
             for (const key of Object.keys(overlay.baseData)) {
                 const [r, c] = key.split('-').map(Number);
@@ -4355,14 +4220,14 @@ function clearTableData(index, scope = 'local') {
     horaeManager.rebuildTableData();
     getContext().saveChat();
     renderCustomTablesList();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Данные таблицы очищены', 'info');
 }
 
-/** 切换表格的全局/本地属性 */
+/** Переключить таблицу между глобальной/локальной областью */
 function toggleTableScope(tableIndex, currentScope) {
     const newScope = currentScope === 'global' ? 'local' : 'global';
-    const label = newScope === 'global' ? 'глобальную (общую для всех диалогов, данные независимы по карточкам)' : 'глобальную (общую для всех диалогов, данные независимы по карточкам)';
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+    const label = newScope === 'global' ? 'глобальную (общую для всех диалогов, данные независимы по карточкам)' : 'локальную (только для текущего диалога)';
+    if (!confirm(`Преобразовать эту таблицу в ${label}?`)) return;
     pushTableSnapshot(currentScope, tableIndex);
 
     const srcTables = getTablesByScope(currentScope);
@@ -4370,7 +4235,7 @@ function toggleTableScope(tableIndex, currentScope) {
     const table = JSON.parse(JSON.stringify(srcTables[tableIndex]));
     const tableName = (table.name || '').trim();
 
-// Константы
+    // При преобразовании из глобальной в локальную очистить старый per-card overlay
     if (currentScope === 'global' && tableName) {
         const chat = horaeManager.getChat();
         if (chat?.[0]?.horae_meta?.globalTableData) {
@@ -4378,23 +4243,23 @@ function toggleTableScope(tableIndex, currentScope) {
         }
     }
 
-// Константы
+    // Удалить из исходного списка
     srcTables.splice(tableIndex, 1);
     setTablesByScope(currentScope, srcTables);
 
-// Константы
+    // Добавить в целевой список
     const dstTables = getTablesByScope(newScope);
     dstTables.push(table);
     setTablesByScope(newScope, dstTables);
 
     renderCustomTablesList();
     getContext().saveChat();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+    showToast(`Таблица преобразована в ${label}`, 'success');
 }
 
 
 /**
- * 绑定物品列表事件
+ * Привязать события списка предметов
  */
 function bindItemsEvents() {
     const items = document.querySelectorAll('#horae-items-full-list .horae-full-item');
@@ -4403,7 +4268,7 @@ function bindItemsEvents() {
         const itemName = item.dataset.itemName;
         if (!itemName) return;
         
-// Константы
+        // Долгое нажатие для входа в режим множественного выбора
         item.addEventListener('mousedown', (e) => startLongPress(e, itemName));
         item.addEventListener('touchstart', (e) => startLongPress(e, itemName), { passive: true });
         item.addEventListener('mouseup', cancelLongPress);
@@ -4411,279 +4276,17 @@ function bindItemsEvents() {
         item.addEventListener('touchend', cancelLongPress);
         item.addEventListener('touchcancel', cancelLongPress);
         
-// Константы
+        // В режиме выбора клик переключает выбор
         item.addEventListener('click', () => {
             if (itemsMultiSelectMode) {
                 toggleItemSelection(itemName);
             }
         });
     });
-
-    document.querySelectorAll('.horae-item-equip-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            _openEquipItemDialog(btn.dataset.itemName);
-        });
-    });
-
-    document.querySelectorAll('.horae-item-lock-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const name = btn.dataset.itemName;
-            if (!name) return;
-            const state = horaeManager.getLatestState();
-            const itemInfo = state.items?.[name];
-            if (!itemInfo) return;
-            const chat = horaeManager.getChat();
-            for (let i = chat.length - 1; i >= 0; i--) {
-                const meta = chat[i]?.horae_meta;
-                if (!meta?.items) continue;
-                const key = Object.keys(meta.items).find(k => k === name || k.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, '').trim() === name);
-                if (key) {
-                    meta.items[key]._locked = !meta.items[key]._locked;
-                    getContext().saveChat();
-                    updateItemsDisplay();
-                    showToast(meta.items[key]._locked ? `Заблокировано «${name}» (ИИ не может изменять описание и важность)` : `Разблокировано «${name}»`, meta.items[key]._locked ? 'success' : 'info');
-                    return;
-                }
-            }
-            const first = chat[0];
-            if (!first.horae_meta) first.horae_meta = createEmptyMeta();
-            if (!first.horae_meta.items) first.horae_meta.items = {};
-            first.horae_meta.items[name] = { ...itemInfo, _locked: true };
-            getContext().saveChat();
-            updateItemsDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-        });
-    });
-}
-
-// ═══════════════════════════════════════════════════
-// Константы
-// ═══════════════════════════════════════════════════
-
-/**
- * 从物品栏穿戴到装备栏
- * @param {string} itemName 物品名
- * @param {string} owner    角色名
- * @param {string} slotName 格位名
- * @param {object} [replacedItem] 被替换的旧装备（自动归还物品栏）
- */
-function _equipItemToChar(itemName, owner, slotName, replacedItem) {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return;
-    const first = chat[0];
-    if (!first.horae_meta) first.horae_meta = createEmptyMeta();
-    const state = horaeManager.getLatestState();
-    const itemInfo = state.items?.[itemName];
-    if (!itemInfo) { showToast(`Предмет «${itemName}» не найден`, 'warning'); return; }
-
-    if (!first.horae_meta.rpg) first.horae_meta.rpg = {};
-    const rpg = first.horae_meta.rpg;
-    if (!rpg.equipment) rpg.equipment = {};
-
-// Константы
-    if (replacedItem) {
-        _unequipToItems(owner, slotName, replacedItem.name, true);
-    }
-
-// Константы
-    if (!rpg.equipment[owner]) rpg.equipment[owner] = {};
-    if (!rpg.equipment[owner][slotName]) rpg.equipment[owner][slotName] = [];
-
-// Константы
-    const eqEntry = {
-        name: itemName,
-        attrs: {},
-        _itemMeta: {
-            icon: itemInfo.icon || '',
-            description: itemInfo.description || '',
-            importance: itemInfo.importance || '',
-            _id: itemInfo._id || '',
-            _locked: itemInfo._locked || false,
-        },
-    };
-// Константы
-    const existingEqData = _findExistingEquipAttrs(itemName);
-    if (existingEqData) eqEntry.attrs = { ...existingEqData };
-
-    rpg.equipment[owner][slotName].push(eqEntry);
-
-// Константы
-    _removeItemFromState(itemName);
-
-    getContext().saveChat();
 }
 
 /**
- * 脱下装备归还物品栏
- */
-function _unequipToItems(owner, slotName, equipName, skipSave) {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return;
-    const first = chat[0];
-    if (!first.horae_meta?.rpg?.equipment?.[owner]?.[slotName]) return;
-
-    const slotArr = first.horae_meta.rpg.equipment[owner][slotName];
-    const idx = slotArr.findIndex(e => e.name === equipName);
-    if (idx < 0) return;
-    const removed = slotArr.splice(idx, 1)[0];
-
-// Константы
-    if (!slotArr.length) delete first.horae_meta.rpg.equipment[owner][slotName];
-    if (first.horae_meta.rpg.equipment[owner] && !Object.keys(first.horae_meta.rpg.equipment[owner]).length) delete first.horae_meta.rpg.equipment[owner];
-
-// Константы
-    if (!first.horae_meta.items) first.horae_meta.items = {};
-    const meta = removed._itemMeta || {};
-    first.horae_meta.items[equipName] = {
-        icon: meta.icon || '📦',
-        description: meta.description || '',
-        importance: meta.importance || '',
-        holder: owner,
-        location: '',
-        _id: meta._id || '',
-        _locked: meta._locked || false,
-    };
-// Константы
-    if (removed.attrs && Object.keys(removed.attrs).length > 0) {
-        const attrStr = Object.entries(removed.attrs).map(([k, v]) => `${k}${v >= 0 ? '+' : ''}${v}`).join(', ');
-        const desc = first.horae_meta.items[equipName].description;
-        if (!desc.includes(attrStr)) {
-            first.horae_meta.items[equipName].description = desc ? `${desc} (${attrStr})` : attrStr;
-        }
-    }
-
-    if (!skipSave) getContext().saveChat();
-}
-
-function _removeItemFromState(itemName) {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return;
-    for (let i = chat.length - 1; i >= 0; i--) {
-        const meta = chat[i]?.horae_meta;
-        if (meta?.items?.[itemName]) {
-            delete meta.items[itemName];
-            return;
-        }
-    }
-}
-
-function _findExistingEquipAttrs(itemName) {
-    try {
-        const rpg = horaeManager.getRpgStateAt(0);
-        for (const [, slots] of Object.entries(rpg.equipment || {})) {
-            for (const [, items] of Object.entries(slots)) {
-                const found = items.find(e => e.name === itemName);
-                if (found?.attrs && Object.keys(found.attrs).length > 0) return { ...found.attrs };
-            }
-        }
-    } catch (_) { /* ignore */ }
-    return null;
-}
-
-/**
- * 打开装备穿戴对话框：选角色 → 选格位 → 穿戴
- */
-function _openEquipItemDialog(itemName) {
-    const cfgMap = _getEqConfigMap();
-    const perChar = cfgMap.perChar || {};
-    const candidates = Object.entries(perChar).filter(([, cfg]) => cfg.slots?.length > 0);
-    if (!candidates.length) {
-        showToast('Таблица экспортирована', 'warning');
-        return;
-    }
-    const state = horaeManager.getLatestState();
-    const itemInfo = state.items?.[itemName];
-    if (!itemInfo) return;
-
-    const modal = document.createElement('div');
-    modal.className = 'horae-modal-overlay';
-
-    let bodyHtml = `<div class="horae-edit-field"><label>Выбрать персонажа</label><select id="horae-equip-char">`;
-    for (const [owner] of candidates) {
-        bodyHtml += `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`;
-    }
-    bodyHtml += `</select></div>`;
-    bodyHtml += `<div class="horae-edit-field"><label>Выбрать слот</label><select id="horae-equip-slot"></select></div>`;
-    bodyHtml += `<div id="horae-equip-conflict" style="color:#ef4444;font-size:.85em;margin-top:4px;display:none;"></div>`;
-
-    modal.innerHTML = `
-        <div class="horae-modal-content" style="max-width:400px;width:92vw;box-sizing:border-box;">
-            <div class="horae-modal-header"><h3>Надеть «${escapeHtml(itemName)}»</h3></div>
-            <div class="horae-modal-body">${bodyHtml}</div>
-            <div class="horae-modal-footer">
-                <button id="horae-equip-ok" class="horae-btn primary">Надеть</button>
-                <button id="horae-equip-cancel" class="horae-btn">Отмена</button>
-            </div>
-        </div>`;
-    document.body.appendChild(modal);
-    _horaeModalStopDrawerCollapse(modal);
-
-    const charSel = modal.querySelector('#horae-equip-char');
-    const slotSel = modal.querySelector('#horae-equip-slot');
-    const conflictDiv = modal.querySelector('#horae-equip-conflict');
-
-    const _updateSlots = () => {
-        const owner = charSel.value;
-        const cfg = perChar[owner];
-        if (!cfg?.slots?.length) { slotSel.innerHTML = '<option>Нет доступных слотов</option>'; return; }
-        const eqValues = _getEqValues();
-        const ownerEq = eqValues[owner] || {};
-        slotSel.innerHTML = cfg.slots.map(s => {
-            const cur = (ownerEq[s.name] || []).length;
-            const max = s.maxCount ?? 1;
-            return `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${cur}/${max})</option>`;
-        }).join('');
-        _checkConflict();
-    };
-
-    const _checkConflict = () => {
-        const owner = charSel.value;
-        const slotName = slotSel.value;
-        const cfg = perChar[owner];
-        const slotCfg = cfg?.slots?.find(s => s.name === slotName);
-        const max = slotCfg?.maxCount ?? 1;
-        const eqValues = _getEqValues();
-        const existing = eqValues[owner]?.[slotName] || [];
-        if (existing.length >= max) {
-            const oldest = existing[0];
-            conflictDiv.style.display = '';
-            conflictDiv.textContent = `⚠ Слот ${slotName} заполнен (${max} шт.), будет заменён «${oldest.name}» (возврат в инвентарь)`;
-        } else {
-            conflictDiv.style.display = 'none';
-        }
-    };
-
-    charSel.addEventListener('change', _updateSlots);
-    slotSel.addEventListener('change', _checkConflict);
-    _updateSlots();
-
-    modal.querySelector('#horae-equip-ok').onclick = () => {
-        const owner = charSel.value;
-        const slotName = slotSel.value;
-        if (!owner || !slotName) return;
-        const cfg = perChar[owner];
-        const slotCfg = cfg?.slots?.find(s => s.name === slotName);
-        const max = slotCfg?.maxCount ?? 1;
-        const eqValues = _getEqValues();
-        const existing = eqValues[owner]?.[slotName] || [];
-        const replaced = existing.length >= max ? existing[0] : null;
-
-        _equipItemToChar(itemName, owner, slotName, replaced);
-        modal.remove();
-        updateItemsDisplay();
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-        updateAllRpgHuds();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    };
-
-    modal.querySelector('#horae-equip-cancel').onclick = () => modal.remove();
-}
-
-/**
- * 开始长按计时
+ * Начать таймер долгого нажатия
  */
 function startLongPress(e, itemName) {
     if (itemsMultiSelectMode) return; // Уже в режиме множественного выбора
@@ -4694,7 +4297,7 @@ function startLongPress(e, itemName) {
 }
 
 /**
- * 取消长按
+ * Отменить долгое нажатие
  */
 function cancelLongPress() {
     if (longPressTimer) {
@@ -4704,7 +4307,7 @@ function cancelLongPress() {
 }
 
 /**
- * 进入多选模式
+ * Войти в режим множественного выбора
  */
 function enterMultiSelectMode(initialItem) {
     itemsMultiSelectMode = true;
@@ -4713,32 +4316,32 @@ function enterMultiSelectMode(initialItem) {
         selectedItems.add(initialItem);
     }
     
-// Константы
+    // Показать панель множественного выбора
     const bar = document.getElementById('horae-items-multiselect-bar');
     if (bar) bar.style.display = 'flex';
     
-// Константы
+    // Скрыть подсказку
     const hint = document.querySelector('#horae-tab-items .horae-items-hint');
     if (hint) hint.style.display = 'none';
     
     updateItemsDisplay();
     updateSelectedCount();
     
-    showToast('Таблица экспортирована', 'info');
+    showToast('Активирован режим множественного выбора', 'info');
 }
 
 /**
- * 退出多选模式
+ * Выйти из режима множественного выбора
  */
 function exitMultiSelectMode() {
     itemsMultiSelectMode = false;
     selectedItems.clear();
     
-// Константы
+    // Скрыть панель множественного выбора
     const bar = document.getElementById('horae-items-multiselect-bar');
     if (bar) bar.style.display = 'none';
     
-// Константы
+    // Показать подсказку
     const hint = document.querySelector('#horae-tab-items .horae-items-hint');
     if (hint) hint.style.display = 'block';
     
@@ -4746,7 +4349,7 @@ function exitMultiSelectMode() {
 }
 
 /**
- * 切换物品选中状态
+ * Переключить состояние выбора предмета
  */
 function toggleItemSelection(itemName) {
     if (selectedItems.has(itemName)) {
@@ -4755,7 +4358,7 @@ function toggleItemSelection(itemName) {
         selectedItems.add(itemName);
     }
     
-// Константы
+    // Обновить UI
     const item = document.querySelector(`#horae-items-full-list .horae-full-item[data-item-name="${itemName}"]`);
     if (item) {
         const checkbox = item.querySelector('input[type="checkbox"]');
@@ -4767,7 +4370,7 @@ function toggleItemSelection(itemName) {
 }
 
 /**
- * 全选物品
+ * Выбрать все предметы
  */
 function selectAllItems() {
     const items = document.querySelectorAll('#horae-items-full-list .horae-full-item');
@@ -4780,7 +4383,7 @@ function selectAllItems() {
 }
 
 /**
- * 更新选中数量显示
+ * Обновить отображение количества выбранных
  */
 function updateSelectedCount() {
     const countEl = document.getElementById('horae-items-selected-count');
@@ -4788,19 +4391,19 @@ function updateSelectedCount() {
 }
 
 /**
- * 删除选中的物品
+ * Удалить выбранные предметы
  */
 async function deleteSelectedItems() {
     if (selectedItems.size === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Не выбрано ни одного предмета', 'warning');
         return;
     }
     
-// Константы
-    const confirmed = confirm(`Удалить выбранные ${selectedAgendaIndices.size} задач(у/и)? Это действие необратимо.`);
+    // Диалог подтверждения
+    const confirmed = confirm(`Удалить выбранные ${selectedItems.size} предмет(а/ов)?\n\nЭто действие удалит предметы из всей истории необратимо.`);
     if (!confirmed) return;
     
-// Константы
+    // Удалить эти предметы из meta всех сообщений
     const chat = horaeManager.getChat();
     const itemsToDelete = Array.from(selectedItems);
     
@@ -4818,17 +4421,17 @@ async function deleteSelectedItems() {
         }
     }
     
-// Константы
+    // Сохранить изменения
     await getContext().saveChat();
     
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+    showToast(`Удалено ${itemsToDelete.length} предмет(а/ов)`, 'success');
     
     exitMultiSelectMode();
     updateStatusDisplay();
 }
 
 // ============================================
-// Константы
+// Режим множественного выбора NPC
 // ============================================
 
 function enterNpcMultiSelect(initialName) {
@@ -4849,7 +4452,7 @@ function exitNpcMultiSelect() {
     const bar = document.getElementById('horae-npc-multiselect-bar');
     if (bar) bar.style.display = 'none';
     const btn = document.getElementById('horae-btn-npc-multiselect');
-    if (btn) { btn.classList.remove('active'); btn.title = 'Выйти из режима выбора'; }
+    if (btn) { btn.classList.remove('active'); btn.title = 'Режим выбора'; }
     updateCharactersDisplay();
 }
 
@@ -4872,44 +4475,44 @@ function _updateNpcSelectedCount() {
 
 async function deleteSelectedNpcs() {
     if (selectedNpcs.size === 0) { showToast('Не выбрано ни одного персонажа', 'warning'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+    if (!confirm(`Удалить выбранных ${selectedNpcs.size} персонаж(а/ей)?\n\nЭто удалит информацию из всей истории (включая расположение, связи, RPG-данные) необратимо.`)) return;
     
     _cascadeDeleteNpcs(Array.from(selectedNpcs));
     await getContext().saveChat();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+    showToast(`Удалено ${selectedNpcs.size} персонаж(а/ей)`, 'success');
     exitNpcMultiSelect();
     refreshAllDisplays();
 }
 
-// Константы
+// Сопоставление аномальных состояний с иконками FontAwesome
 const RPG_STATUS_ICONS = {
-    'Оглушение': 'fa-dizzy', 'Головокружение': 'fa-dizzy', 'Головокружение': 'fa-dizzy',
-    'Истекает кровью': 'fa-droplet', 'Кровотечение': 'fa-droplet', 'Кровь': 'fa-droplet',
-    'Тяжёлое ранение': 'fa-heart-crack', 'Тяжёлое ранение': 'fa-heart-crack', 'При смерти': 'fa-heart-crack',
-    'Заморожен': 'fa-snowflake', 'Лёд': 'fa-snowflake', 'Озноб': 'fa-snowflake',
-    'Окаменение': 'fa-gem', 'Кальцинация': 'fa-gem', 'Кристаллизация': 'fa-gem',
-    'Яд': 'fa-skull-crossbones', 'Коррозия': 'fa-skull-crossbones',
-    'Огонь': 'fa-fire', 'Горение': 'fa-fire', 'Ожог': 'fa-fire', 'Поджог': 'fa-fire', 'Воспаление': 'fa-fire',
-    'Медленный': 'fa-hourglass-half', 'Замедление': 'fa-hourglass-half', 'Замедление': 'fa-hourglass-half',
-    'Слепой': 'fa-eye-slash', 'Слепота': 'fa-eye-slash',
-    'Безмолвие': 'fa-comment-slash', 'Немота': 'fa-comment-slash', 'Печать': 'fa-ban',
-    'Онемение': 'fa-bolt', 'Паралич': 'fa-bolt', 'Электричество': 'fa-bolt', 'Молния': 'fa-bolt',
-    'Слабый': 'fa-feather', 'Упадок': 'fa-feather', 'Истощён': 'fa-feather',
-    'Страх': 'fa-ghost', 'Ужас': 'fa-ghost', 'Потрясение': 'fa-ghost',
-    'Смятение': 'fa-shuffle', 'Хаос': 'fa-shuffle', 'Берсерк': 'fa-shuffle',
-    'Сон': 'fa-moon', 'Спящий': 'fa-moon', 'Гипноз': 'fa-moon',
-    'Оковы': 'fa-link', 'Заточение': 'fa-link', 'Связывание': 'fa-link',
-    'Голод': 'fa-utensils', 'Голодный': 'fa-utensils', 'Голодание': 'fa-utensils',
-    'Жажда': 'fa-glass-water', 'Обезвоживание': 'fa-glass-water',
-    'Усталость': 'fa-battery-quarter', 'Истощение': 'fa-battery-quarter', 'Усталость': 'fa-battery-quarter', 'Слабость': 'fa-battery-quarter',
-    'Ранение': 'fa-bandage', 'Рана': 'fa-bandage',
-    'Исцеление': 'fa-heart-pulse', 'Восстановление': 'fa-heart-pulse', 'Регенерация': 'fa-heart-pulse',
-    'Невидимость': 'fa-user-secret', 'Маскировка': 'fa-user-secret', 'Скрытность': 'fa-user-secret',
-    'Щит': 'fa-shield', 'Защита': 'fa-shield', 'Железный щит': 'fa-shield',
-    'Норма': 'fa-circle-check',
+    '昏': 'fa-dizzy', '眩': 'fa-dizzy', '晕': 'fa-dizzy',
+    '流血': 'fa-droplet', '出血': 'fa-droplet', '血': 'fa-droplet',
+    '重伤': 'fa-heart-crack', '重傷': 'fa-heart-crack', '濒死': 'fa-heart-crack',
+    '冻': 'fa-snowflake', '冰': 'fa-snowflake', '寒': 'fa-snowflake',
+    '石化': 'fa-gem', '钙化': 'fa-gem', '结晶': 'fa-gem',
+    '毒': 'fa-skull-crossbones', '腐蚀': 'fa-skull-crossbones',
+    '火': 'fa-fire', '烧': 'fa-fire', '灼': 'fa-fire', '燃': 'fa-fire', '炎': 'fa-fire',
+    '慢': 'fa-hourglass-half', '减速': 'fa-hourglass-half', '迟缓': 'fa-hourglass-half',
+    '盲': 'fa-eye-slash', '失明': 'fa-eye-slash',
+    '沉默': 'fa-comment-slash', '禁言': 'fa-comment-slash', '封印': 'fa-ban',
+    '麻': 'fa-bolt', '痹': 'fa-bolt', '电': 'fa-bolt', '雷': 'fa-bolt',
+    '弱': 'fa-feather', '衰': 'fa-feather', '虚': 'fa-feather',
+    '恐': 'fa-ghost', '惧': 'fa-ghost', '惊': 'fa-ghost',
+    '乱': 'fa-shuffle', '混乱': 'fa-shuffle', '狂暴': 'fa-shuffle',
+    '眠': 'fa-moon', '睡': 'fa-moon', '催眠': 'fa-moon',
+    '缚': 'fa-link', '禁锢': 'fa-link', '束': 'fa-link',
+    '饥': 'fa-utensils', '饿': 'fa-utensils', '饥饿': 'fa-utensils',
+    '渴': 'fa-glass-water', '脱水': 'fa-glass-water',
+    '疲': 'fa-battery-quarter', '累': 'fa-battery-quarter', '倦': 'fa-battery-quarter', '乏': 'fa-battery-quarter',
+    '伤': 'fa-bandage', '创': 'fa-bandage',
+    '愈': 'fa-heart-pulse', '恢复': 'fa-heart-pulse', '再生': 'fa-heart-pulse',
+    '隐': 'fa-user-secret', '伪装': 'fa-user-secret', '潜行': 'fa-user-secret',
+    '护盾': 'fa-shield', '防御': 'fa-shield', '铁壁': 'fa-shield',
+    '正常': 'fa-circle-check',
 };
 
-/** 根据异常状态文本匹配图标 */
+/** Подобрать иконку по тексту аномального состояния */
 function getStatusIcon(text) {
     for (const [kw, icon] of Object.entries(RPG_STATUS_ICONS)) {
         if (text.includes(kw)) return icon;
@@ -4917,22 +4520,21 @@ function getStatusIcon(text) {
     return 'fa-triangle-exclamation';
 }
 
-/** 根据配置获取属性条颜色 */
+/** Получить цвет полосы атрибута из настроек */
 function getRpgBarColor(key) {
     const cfg = (settings.rpgBarConfig || []).find(b => b.key === key);
     return cfg?.color || '#6366f1';
 }
 
-/** 根据配置获取属性条显示名（用户自定义名 > AI标签 > 默认key大写） */
+/** Получить отображаемое имя полосы атрибута из настроек */
 function getRpgBarName(key, aiLabel) {
+    if (aiLabel) return aiLabel;
     const cfg = (settings.rpgBarConfig || []).find(b => b.key === key);
-    const cfgName = cfg?.name;
-    if (cfgName && cfgName !== key.toUpperCase()) return cfgName;
-    return aiLabel || cfgName || key.toUpperCase();
+    return cfg?.name || key.toUpperCase();
 }
 
 // ============================================
-// Константы
+// RPG система кубиков
 // ============================================
 
 const RPG_DICE_TYPES = [
@@ -4990,7 +4592,7 @@ function renderDicePanel() {
                 <div class="horae-rpg-dice-types">${btns}</div>
                 <div class="horae-rpg-dice-config">
                     <label>Количество<input type="number" id="horae-dice-count" value="1" min="1" max="20" class="horae-rpg-dice-input"></label>
-                    <label>Модификатор<input type="number" id="horae-dice-mod" value="0" min="-99" max="99" class="horae-rpg-dice-input"></label>
+                    <label>Бонус<input type="number" id="horae-dice-mod" value="0" min="-99" max="99" class="horae-rpg-dice-input"></label>
                 </div>
                 <div class="horae-rpg-dice-result" id="horae-dice-result"></div>
                 <button id="horae-dice-inject" class="horae-rpg-dice-inject" style="display:none;">
@@ -5012,7 +4614,7 @@ function renderDicePanel() {
     let lastResult = null;
     let selectedFaces = 20;
 
-// Константы
+    // ---- Логика перетаскивания (поддерживает mouse + touch) ----
     const toggle = panel.querySelector('.horae-rpg-dice-toggle');
     let dragging = false, dragMoved = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
 
@@ -5030,7 +4632,7 @@ function renderDicePanel() {
         const dx = ev.clientX - startX, dy = ev.clientY - startY;
         if (!dragMoved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
             dragMoved = true;
-// Константы
+            // При первом движении удаляет центрирующий transform и переходит на абсолютные пиксельные координаты
             if (!panel.classList.contains('horae-dice-placed')) {
                 panel.style.left = origLeft + 'px';
                 panel.style.top = origTop + 'px';
@@ -5065,7 +4667,7 @@ function renderDicePanel() {
     document.addEventListener('touchmove', onDragMove, { passive: false, signal: sig });
     document.addEventListener('touchend', onDragEnd, { signal: sig });
 
-// Константы
+    // Клик для раскрытия/сворачивания (срабатывает только без перетаскивания)
     toggle.addEventListener('click', () => {
         if (dragMoved) return;
         const body = panel.querySelector('.horae-rpg-dice-body');
@@ -5091,12 +4693,12 @@ function renderDicePanel() {
     document.getElementById('horae-dice-inject')?.addEventListener('click', () => {
         if (lastResult) {
             injectDiceToChat(lastResult.display);
-            showToast('Таблица экспортирована', 'success');
+            showToast('Результат броска вставлен в чат', 'success');
         }
     }, { signal: sig });
 }
 
-/** 应用骰子面板保存的位置；坐标超出当前视口则自动重置 */
+/** Применить сохранённую позицию панели кубиков; автоматически сбросить, если координаты выходят за пределы видимой области */
 function _applyDicePos(panel) {
     if (settings.dicePosX != null && settings.dicePosY != null) {
         const vw = window.innerWidth, vh = window.innerHeight;
@@ -5114,7 +4716,7 @@ function _applyDicePos(panel) {
     }
 }
 
-/** 渲染属性条配置列表 */
+/** Рендеринг списка конфигурации полос атрибутов */
 function renderBarConfig() {
     const list = document.getElementById('horae-rpg-bar-config-list');
     if (!list) return;
@@ -5124,12 +4726,12 @@ function renderBarConfig() {
             <input class="horae-rpg-config-key" value="${escapeHtml(b.key)}" maxlength="10" data-idx="${i}" />
             <input class="horae-rpg-config-name" value="${escapeHtml(b.name)}" maxlength="8" data-idx="${i}" />
             <input type="color" class="horae-rpg-config-color" value="${b.color}" data-idx="${i}" />
-            <button class="horae-rpg-config-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button>
+            <button class="horae-rpg-config-del" data-idx="${i}" title="Удалить"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-/** 构建角色下拉选项（{{user}} + NPC列表） */
+/** Построить опции выпадающего списка персонажей ({{user}} + список NPC) */
 function buildCharacterOptions() {
     const userName = getContext().name1 || '{{user}}';
     let html = `<option value="__user__">${escapeHtml(userName)}</option>`;
@@ -5141,59 +4743,32 @@ function buildCharacterOptions() {
     return html;
 }
 
-/** 在 Canvas 上绘制雷达图（自适应 DPI + 动态尺寸 + 跟随主题色） */
+/** Рисовать радар-диаграмму на Canvas (адаптивный DPI) */
 function drawRadarChart(canvas, values, config, maxVal = 100) {
     const n = config.length;
     if (n < 3) return;
     const dpr = window.devicePixelRatio || 1;
-
-// Константы
-    const themeRoot = canvas.closest('#horae_drawer') || canvas.closest('.horae-rpg-char-detail-body') || document.getElementById('horae_drawer') || document.body;
-    const cs = getComputedStyle(themeRoot);
-    const radarHex = cs.getPropertyValue('--horae-radar-color').trim() || cs.getPropertyValue('--horae-primary').trim() || '#7c3aed';
-    const labelColor = cs.getPropertyValue('--horae-radar-label').trim() || cs.getPropertyValue('--horae-text').trim() || '#e2e8f0';
-    const gridColor = cs.getPropertyValue('--horae-border').trim() || 'rgba(255,255,255,0.1)';
-    const rr = parseInt(radarHex.slice(1, 3), 16) || 124;
-    const rg = parseInt(radarHex.slice(3, 5), 16) || 58;
-    const rb = parseInt(radarHex.slice(5, 7), 16) || 237;
-
-// Константы
-    const maxNameLen = Math.max(...config.map(c => c.name.length));
-    const fontSize = maxNameLen > 3 ? 11 : 12;
-
-    const tmpCtx = canvas.getContext('2d');
-    tmpCtx.font = `${fontSize}px sans-serif`;
-    let maxLabelW = 0;
-    for (const c of config) {
-        const w = tmpCtx.measureText(`${c.name} ${maxVal}`).width;
-        if (w > maxLabelW) maxLabelW = w;
-    }
-
-// Константы
-    const labelGap = 18;
-    const labelMargin = 4;
-    const pad = Math.max(38, Math.ceil(maxLabelW) + labelGap + labelMargin);
-    const r = 92;
-    const cssW = Math.min(400, 2 * (r + pad));
-    const cssH = cssW;
-    const cx = cssW / 2, cy = cssH / 2;
-    const actualR = Math.min(r, cx - pad);
-
+    const cssW = 260, cssH = 260;
     canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
     canvas.width = cssW * dpr;
     canvas.height = cssH * dpr;
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
+
+    const cx = cssW / 2, cy = cssH / 2;
+    const pad = 38;
+    const r = Math.min(cx, cy) - pad;
     ctx.clearRect(0, 0, cssW, cssH);
 
     const angle = i => -Math.PI / 2 + (2 * Math.PI * i) / n;
 
-// Константы
-    ctx.strokeStyle = gridColor;
+    // Фоновая сетка
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.lineWidth = 1;
     for (let lv = 1; lv <= 4; lv++) {
         ctx.beginPath();
-        const lr = (actualR * lv) / 4;
+        const lr = (r * lv) / 4;
         for (let i = 0; i <= n; i++) {
             const a = angle(i % n);
             const x = cx + lr * Math.cos(a), y = cy + lr * Math.sin(a);
@@ -5201,43 +4776,44 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
         }
         ctx.stroke();
     }
-// Константы
+    // Радиальные линии
     for (let i = 0; i < n; i++) {
         const a = angle(i);
         ctx.beginPath();
         ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + actualR * Math.cos(a), cy + actualR * Math.sin(a));
+        ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
         ctx.stroke();
     }
-// Константы
+    // Область данных
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
         const a = angle(i % n);
         const v = Math.min(maxVal, values[config[i % n].key] || 0);
-        const dr = (v / maxVal) * actualR;
+        const dr = (v / maxVal) * r;
         const x = cx + dr * Math.cos(a), y = cy + dr * Math.sin(a);
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
-    ctx.fillStyle = `rgba(${rr},${rg},${rb},0.25)`;
+    ctx.fillStyle = 'rgba(124, 58, 237, 0.25)';
     ctx.fill();
-    ctx.strokeStyle = `rgba(${rr},${rg},${rb},0.8)`;
+    ctx.strokeStyle = 'rgba(124, 58, 237, 0.8)';
     ctx.lineWidth = 2;
     ctx.stroke();
-// Константы
-    ctx.font = `${fontSize}px sans-serif`;
+    // Точки вершин + метки
+    ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i < n; i++) {
         const a = angle(i);
         const v = Math.min(maxVal, values[config[i].key] || 0);
-        const dr = (v / maxVal) * actualR;
+        const dr = (v / maxVal) * r;
         ctx.beginPath();
         ctx.arc(cx + dr * Math.cos(a), cy + dr * Math.sin(a), 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${rr},${rg},${rb},1)`;
+        ctx.fillStyle = 'rgba(124, 58, 237, 1)';
         ctx.fill();
-        const labelR = actualR + labelGap;
+        // Смещение меток адаптируется по количеству измерений
+        const labelR = r + 22;
         const lx = cx + labelR * Math.cos(a);
         const ly = cy + labelR * Math.sin(a);
-        ctx.fillStyle = labelColor;
+        ctx.fillStyle = '#e2e8f0';
         const cosA = Math.cos(a);
         ctx.textAlign = cosA < -0.1 ? 'right' : cosA > 0.1 ? 'left' : 'center';
         ctx.textBaseline = ly < cy - 5 ? 'bottom' : ly > cy + 5 ? 'top' : 'middle';
@@ -5245,30 +4821,20 @@ function drawRadarChart(canvas, values, config, maxVal = 100) {
     }
 }
 
-/** 同步 RPG 分页可见性及各子区段显隐 */
+/** Синхронизировать видимость вкладки RPG и всех подразделов */
 function _syncRpgTabVisibility() {
     const sendBars = settings.rpgMode && settings.sendRpgBars !== false;
     const sendAttrs = settings.rpgMode && settings.sendRpgAttributes !== false;
     const sendSkills = settings.rpgMode && settings.sendRpgSkills !== false;
-    const sendRep = settings.rpgMode && !!settings.sendRpgReputation;
-    const sendEq = settings.rpgMode && !!settings.sendRpgEquipment;
-    const sendLvl = settings.rpgMode && !!settings.sendRpgLevel;
-    const sendCur = settings.rpgMode && !!settings.sendRpgCurrency;
-    const sendSh = settings.rpgMode && !!settings.sendRpgStronghold;
-    const hasContent = sendBars || sendAttrs || sendSkills || sendRep || sendEq || sendLvl || sendCur || sendSh;
+    const hasContent = sendBars || sendAttrs || sendSkills;
     $('#horae-tab-btn-rpg').toggle(hasContent);
     $('#horae-rpg-bar-config-area').toggle(sendBars);
     $('#horae-rpg-attr-config-area').toggle(sendAttrs);
     $('.horae-rpg-manual-section').toggle(sendAttrs);
     $('.horae-rpg-skills-area').toggle(sendSkills);
-    $('#horae-rpg-reputation-area').toggle(sendRep);
-    $('#horae-rpg-equipment-area').toggle(sendEq);
-    $('#horae-rpg-level-area').toggle(sendLvl);
-    $('#horae-rpg-currency-area').toggle(sendCur);
-    $('#horae-rpg-stronghold-area').toggle(sendSh);
 }
 
-/** 更新 RPG 分页（角色卡模式，按当前消息位置快照） */
+/** Обновить вкладку RPG (режим карточки персонажа, снимок по позиции текущего сообщения) */
 function updateRpgDisplay() {
     if (!settings.rpgMode) return;
     const rpg = horaeManager.getRpgStateAt(0);
@@ -5279,185 +4845,37 @@ function updateRpgDisplay() {
     const sendBars = settings.sendRpgBars !== false;
     const sendAttrs = settings.sendRpgAttributes !== false;
     const sendSkills = settings.sendRpgSkills !== false;
-    const sendEq = !!settings.sendRpgEquipment;
-    const sendRep = !!settings.sendRpgReputation;
-    const sendLvl = !!settings.sendRpgLevel;
-    const sendCur = !!settings.sendRpgCurrency;
-    const sendSh = !!settings.sendRpgStronghold;
     const attrCfg = settings.rpgAttributeConfig || [];
     const hasAttrModule = sendAttrs && attrCfg.length > 0;
-    const detailModules = [hasAttrModule, sendSkills, sendEq, sendRep, sendCur, sendSh].filter(Boolean).length;
-    const moduleCount = [sendBars, hasAttrModule, sendSkills, sendEq, sendRep, sendLvl, sendCur, sendSh].filter(Boolean).length;
-    const useCardLayout = detailModules >= 1 || moduleCount >= 2;
+    const moduleCount = [sendBars, hasAttrModule, sendSkills].filter(Boolean).length;
+    const useCardLayout = hasAttrModule || moduleCount >= 2;
 
-// Константы
+    // Раздел конфигурации всегда рендерится
     renderBarConfig();
     renderAttrConfig();
-    if (sendRep) {
-        renderReputationConfig();
-        renderReputationValues();
-    }
-    if (sendEq) {
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-    }
-    if (sendCur) renderCurrencyConfig();
-    if (sendLvl) renderLevelValues();
-    if (sendSh) { renderStrongholdTree(); _bindStrongholdEvents(); }
 
     const barsSection = document.getElementById('horae-rpg-bars-section');
     const charCardsSection = document.getElementById('horae-rpg-char-cards');
     if (!barsSection || !charCardsSection) return;
 
-// Константы
+    // Собрать всех персонажей
     const allNames = new Set([
         ...Object.keys(rpg.bars || {}),
         ...Object.keys(rpg.status || {}),
         ...Object.keys(rpg.skills || {}),
         ...Object.keys(rpg.attributes || {}),
-        ...Object.keys(rpg.reputation || {}),
-        ...Object.keys(rpg.equipment || {}),
-        ...Object.keys(rpg.levels || {}),
-        ...Object.keys(rpg.xp || {}),
-        ...Object.keys(rpg.currency || {}),
     ]);
 
-    /** 构建单个角色的分页标签 HTML */
-    function _buildCharTabs(name) {
-        const tabs = [];
-        const panels = [];
-        const eid = name.replace(/[^a-zA-Z0-9]/g, '_');
-        const attrs = rpg.attributes?.[name] || {};
-        const skills = rpg.skills?.[name] || [];
-        const charEq = rpg.equipment?.[name] || {};
-        const charRep = rpg.reputation?.[name] || {};
-        const charCur = rpg.currency?.[name] || {};
-        const charLv = rpg.levels?.[name];
-        const charXp = rpg.xp?.[name];
-
-        if (hasAttrModule) {
-            tabs.push({ id: `attr_${eid}`, label: 'Атрибуты' });
-            const hasAttrs = Object.keys(attrs).length > 0;
-            const viewMode = settings.rpgAttrViewMode || 'radar';
-            let html = '<div class="horae-rpg-attr-section">';
-        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-globe"></i> Глобальные таблицы</div>`;
-            if (hasAttrs) {
-                if (viewMode === 'radar') {
-                    html += `<canvas class="horae-rpg-radar" data-char="${escapeHtml(name)}"></canvas>`;
-                } else {
-                    html += '<div class="horae-rpg-attr-text">';
-                    for (const a of attrCfg) html += `<div class="horae-rpg-attr-row"><span>${escapeHtml(a.name)}</span><span>${attrs[a.key] ?? '?'}</span></div>`;
-                    html += '</div>';
-                }
-            } else {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-            }
-            html += '</div>';
-            panels.push(html);
-        }
-        if (sendSkills) {
-            tabs.push({ id: `skill_${eid}`, label: 'Навыки' });
-            let html = '';
-            if (skills.length > 0) {
-                html += '<div class="horae-rpg-card-skills">';
-                for (const sk of skills) {
-                    html += `<details class="horae-rpg-skill-detail"><summary class="horae-rpg-skill-summary">${escapeHtml(sk.name)}`;
-                    if (sk.level) html += ` <span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>`;
-                    html += `<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button></summary>`;
-                    if (sk.desc) html += `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>`;
-                    html += '</details>';
-                }
-                html += '</div>';
-            } else {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-            }
-            panels.push(html);
-        }
-        if (sendEq) {
-            tabs.push({ id: `eq_${eid}`, label: 'Снаряжение' });
-            let html = '';
-            const slotEntries = Object.entries(charEq);
-            if (slotEntries.length > 0) {
-                html += '<div class="horae-rpg-card-eq">';
-                for (const [slotName, items] of slotEntries) {
-                    for (const item of items) {
-                        const attrStr = Object.entries(item.attrs || {}).map(([k, v]) => `${k}${v >= 0 ? '+' : ''}${v}`).join(', ');
-                        html += `<div class="horae-rpg-card-eq-item"><span class="horae-rpg-card-eq-slot">[${escapeHtml(slotName)}]</span> ${escapeHtml(item.name)}`;
-                        if (attrStr) html += ` <span class="horae-rpg-card-eq-attrs">(${attrStr})</span>`;
-                        html += '</div>';
-                    }
-                }
-                html += '</div>';
-            } else {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-            }
-            panels.push(html);
-        }
-        if (sendRep) {
-            tabs.push({ id: `rep_${eid}`, label: 'Репутация' });
-            let html = '';
-            const catEntries = Object.entries(charRep);
-            if (catEntries.length > 0) {
-                html += '<div class="horae-rpg-card-rep">';
-                for (const [catName, data] of catEntries) {
-                    html += `<div class="horae-rpg-card-rep-row"><span>${escapeHtml(catName)}</span><span>${data.value}</span></div>`;
-                }
-                html += '</div>';
-            } else {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-            }
-            panels.push(html);
-        }
-// Константы
-        if (sendCur) {
-            tabs.push({ id: `cur_${eid}`, label: 'Валюта' });
-            const denomConfig = rpg.currencyConfig?.denominations || [];
-            let html = '<div class="horae-rpg-card-cur">';
-            const hasCur = denomConfig.some(d => charCur[d.name] != null);
-            if (hasCur) {
-                for (const d of denomConfig) {
-                    const val = charCur[d.name] ?? 0;
-                    const emojiStr = d.emoji ? `${d.emoji} ` : '';
-                    html += `<div class="horae-rpg-card-cur-row"><span>${emojiStr}${escapeHtml(d.name)}</span><span>${val}</span></div>`;
-                }
-            } else {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-            }
-            html += '</div>';
-            panels.push(html);
-        }
-        if (tabs.length === 0) return '';
-        let html = '<div class="horae-rpg-card-tabs" data-char="' + escapeHtml(name) + '">';
-        html += '<div class="horae-rpg-card-tab-bar">';
-        for (let i = 0; i < tabs.length; i++) {
-            html += `<button class="horae-rpg-card-tab-btn${i === 0 ? ' active' : ''}" data-idx="${i}">${tabs[i].label}</button>`;
-        }
-        html += '</div>';
-        for (let i = 0; i < panels.length; i++) {
-            html += `<div class="horae-rpg-card-tab-panel${i === 0 ? ' active' : ''}" data-idx="${i}">${panels[i]}</div>`;
-        }
-        html += '</div>';
-        return html;
-    }
-
     if (useCardLayout) {
+        // Режим карточки персонажа: полосы атрибутов + карточка в одном блоке, присутствующие персонажи в приоритете
         barsSection.style.display = '';
-        const presentChars = new Set((state.scene?.characters_present || []).map(n => n.trim()).filter(Boolean));
-        const userName = getContext().name1 || '';
+
+        // Классификация: присутствующие (есть bars или status) vs отсутствующие
         const inScene = [], offScene = [];
         for (const name of allNames) {
-            let isInScene = presentChars.has(name);
-            if (!isInScene && name === userName) {
-                for (const p of presentChars) {
-                    if (p.includes(name) || name.includes(p)) { isInScene = true; break; }
-                }
-            }
-            if (!isInScene) {
-                for (const p of presentChars) {
-                    if (p.includes(name) || name.includes(p)) { isInScene = true; break; }
-                }
-            }
-            (isInScene ? inScene : offScene).push(name);
+            const hasBars = rpg.bars[name] && Object.keys(rpg.bars[name]).length > 0;
+            const hasStatus = (rpg.status?.[name] || []).length > 0;
+            (hasBars || hasStatus ? inScene : offScene).push(name);
         }
         const sortedNames = [...inScene, ...offScene];
 
@@ -5467,38 +4885,20 @@ function updateRpgDisplay() {
             const effects = rpg.status?.[name] || [];
             const npc = state.npcs[name];
             const profession = npc?.personality?.split(/[,，]/)?.[0]?.trim() || '';
+            const attrs = rpg.attributes?.[name] || {};
+            const skills = rpg.skills?.[name] || [];
             const isPresent = inScene.includes(name);
-            const charLv = rpg.levels?.[name];
 
-            if (!isPresent) continue;
-            barsHtml += '<div class="horae-rpg-char-block">';
+            // Контейнер персонажа
+            barsHtml += `<div class="horae-rpg-char-block${isPresent ? '' : ' horae-rpg-offscene'}">`;
 
-            if (sendBars) {
-                barsHtml += '<div class="horae-rpg-char-card horae-rpg-bar-card">';
-// Константы
-                barsHtml += '<div class="horae-rpg-bar-card-header">';
-                barsHtml += `<span class="horae-rpg-char-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && charLv != null) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${charLv}</span>`;
+            // Полосы атрибутов (только присутствующие персонажи)
+            if (isPresent && sendBars) {
+                barsHtml += `<div class="horae-rpg-char-card horae-rpg-bar-card"><div class="horae-rpg-char-name">${escapeHtml(name)}`;
                 for (const e of effects) {
-                    barsHtml += `<i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
+                    barsHtml += ` <i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
                 }
-                let curRightHtml = '';
-                const charCurTop = rpg.currency?.[name] || {};
-                const denomCfgTop = rpg.currencyConfig?.denominations || [];
-                if (sendCur && denomCfgTop.length > 0) {
-                    for (const d of denomCfgTop) {
-                        const v = charCurTop[d.name];
-                        if (v != null) curRightHtml += `<span class="horae-rpg-hud-cur-tag">${d.emoji || '💰'}${v}</span>`;
-                    }
-                }
-                if (curRightHtml) barsHtml += `<span class="horae-rpg-bar-card-right">${curRightHtml}</span>`;
                 barsHtml += '</div>';
-// Константы
-                const charXpTop = rpg.xp?.[name];
-                if (sendLvl && charXpTop && charXpTop[1] > 0) {
-                    const xpPct = Math.min(100, Math.round(charXpTop[0] / charXpTop[1] * 100));
-                    barsHtml += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">XP</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${xpPct}%;background:#a78bfa;"></div></div><span class="horae-rpg-bar-val">${charXpTop[0]}/${charXpTop[1]}</span></div>`;
-                }
                 if (bars) {
                     for (const [type, val] of Object.entries(bars)) {
                         const label = getRpgBarName(type, val[2]);
@@ -5516,29 +4916,54 @@ function updateRpgDisplay() {
                 barsHtml += '</div>';
             }
 
-            const tabContent = _buildCharTabs(name);
-            if (tabContent) {
+            // Свёрнутая карточка персонажа (атрибуты + навыки) сразу под полосами атрибутов
+            const hasDetailContent = (sendAttrs && attrCfg.length > 0) || (sendSkills && skills.length > 0);
+            if (hasDetailContent) {
                 barsHtml += `<details class="horae-rpg-char-detail"><summary class="horae-rpg-char-summary"><span class="horae-rpg-char-detail-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && rpg.levels?.[name] != null) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${rpg.levels[name]}</span>`;
                 if (profession) barsHtml += `<span class="horae-rpg-char-prof">${escapeHtml(profession)}</span>`;
-                barsHtml += `</summary><div class="horae-rpg-char-detail-body">${tabContent}</div></details>`;
+                barsHtml += '</summary><div class="horae-rpg-char-detail-body">';
+
+                if (sendAttrs && attrCfg.length >= 3) {
+                    const hasAttrs = Object.keys(attrs).length > 0;
+                    const viewMode = settings.rpgAttrViewMode || 'radar';
+                    barsHtml += '<div class="horae-rpg-attr-section">';
+                    barsHtml += `<div class="horae-rpg-attr-header"><span>Атрибуты</span><button class="horae-rpg-charattr-edit" data-char="${escapeHtml(name)}" title="Редактировать атрибуты"><i class="fa-solid fa-pen-to-square"></i></button></div>`;
+                    if (hasAttrs) {
+                        if (viewMode === 'radar') {
+                            barsHtml += `<canvas class="horae-rpg-radar" data-char="${escapeHtml(name)}" width="260" height="260"></canvas>`;
+                        } else {
+                            barsHtml += '<div class="horae-rpg-attr-text">';
+                            for (const a of attrCfg) {
+                                barsHtml += `<div class="horae-rpg-attr-row"><span>${escapeHtml(a.name)}</span><span>${attrs[a.key] ?? '?'}</span></div>`;
+                            }
+                            barsHtml += '</div>';
+                        }
+                    } else {
+                        barsHtml += '<div class="horae-rpg-skills-empty">Нет данных атрибутов, нажмите ✎ для ручного ввода</div>';
+                    }
+                    barsHtml += '</div>';
+                }
+
+                if (sendSkills && skills.length > 0) {
+                    barsHtml += '<div class="horae-rpg-card-skills">';
+                    for (const sk of skills) {
+                        barsHtml += `<details class="horae-rpg-skill-detail"><summary class="horae-rpg-skill-summary">${escapeHtml(sk.name)}`;
+                        if (sk.level) barsHtml += ` <span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>`;
+                        barsHtml += `<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Удалить"><i class="fa-solid fa-xmark"></i></button></summary>`;
+                        if (sk.desc) barsHtml += `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>`;
+                        barsHtml += '</details>';
+                    }
+                    barsHtml += '</div>';
+                }
+                barsHtml += '</div></details>';
             }
             barsHtml += '</div>';
         }
         barsSection.innerHTML = barsHtml;
         charCardsSection.innerHTML = '';
         charCardsSection.style.display = 'none';
-
-// Константы
-        barsSection.querySelectorAll('.horae-rpg-card-tab-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const tabs = this.closest('.horae-rpg-card-tabs');
-                const idx = this.dataset.idx;
-                tabs.querySelectorAll('.horae-rpg-card-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.idx === idx));
-                tabs.querySelectorAll('.horae-rpg-card-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.idx === idx));
-            });
-        });
     } else {
+        // Плоский режим (только одна функция)
         charCardsSection.innerHTML = '';
         charCardsSection.style.display = 'none';
         let barsHtml = '';
@@ -5565,7 +4990,7 @@ function updateRpgDisplay() {
         barsSection.innerHTML = barsHtml;
     }
 
-// Константы
+    // Плоский список навыков: скрывается в режиме карточки (навыки уже показаны свёрнуто в карточке)
     const skillsSection = document.getElementById('horae-rpg-skills-section');
     if (skillsSection) {
         if (useCardLayout && sendSkills) {
@@ -5580,7 +5005,7 @@ function updateRpgDisplay() {
                     for (const sk of skills) {
                         const lv = sk.level ? `<span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>` : '';
                         const desc = sk.desc ? `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>` : '';
-                        skillsHtml += `<div class="horae-rpg-skill-card"><div class="horae-rpg-skill-header"><span class="horae-rpg-skill-name">${escapeHtml(sk.name)}</span>${lv}<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button></div>${desc}</div>`;
+                        skillsHtml += `<div class="horae-rpg-skill-card"><div class="horae-rpg-skill-header"><span class="horae-rpg-skill-name">${escapeHtml(sk.name)}</span>${lv}<button class="horae-rpg-skill-del" data-owner="${escapeHtml(name)}" data-skill="${escapeHtml(sk.name)}" title="Удалить"><i class="fa-solid fa-xmark"></i></button></div>${desc}</div>`;
                     }
                     skillsHtml += '</div>';
                 }
@@ -5591,7 +5016,7 @@ function updateRpgDisplay() {
         }
     }
 
-// Константы
+    // Нарисовать радар-диаграмму
     document.querySelectorAll('.horae-rpg-radar').forEach(canvas => {
         const charName = canvas.dataset.char;
         const vals = rpg.attributes?.[charName] || {};
@@ -5601,7 +5026,7 @@ function updateRpgDisplay() {
     updateAllRpgHuds();
 }
 
-/** 渲染属性面板配置列表 */
+/** Рендеринг списка конфигурации панели атрибутов */
 function renderAttrConfig() {
     const list = document.getElementById('horae-rpg-attr-config-list');
     if (!list) return;
@@ -5611,1280 +5036,38 @@ function renderAttrConfig() {
             <input class="horae-rpg-config-key" value="${escapeHtml(a.key)}" maxlength="10" data-idx="${i}" data-type="attr" />
             <input class="horae-rpg-config-name" value="${escapeHtml(a.name)}" maxlength="8" data-idx="${i}" data-type="attr" />
             <input class="horae-rpg-attr-desc" value="${escapeHtml(a.desc || '')}" placeholder="Описание" data-idx="${i}" />
-            <button class="horae-rpg-attr-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button>
+            <button class="horae-rpg-attr-del" data-idx="${i}" title="Удалить"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-// ============================================
-// Константы
-// ============================================
-
-function _getRepConfig() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return { categories: [], _deletedCategories: [] };
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    if (!chat[0].horae_meta.rpg.reputationConfig) chat[0].horae_meta.rpg.reputationConfig = { categories: [], _deletedCategories: [] };
-    return chat[0].horae_meta.rpg.reputationConfig;
-}
-
-function _getRepValues() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return {};
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    if (!chat[0].horae_meta.rpg.reputation) chat[0].horae_meta.rpg.reputation = {};
-    return chat[0].horae_meta.rpg.reputation;
-}
-
-function _saveRepData() {
-    getContext().saveChat();
-}
-
-/** 渲染声望分类配置列表 */
-function renderReputationConfig() {
-    const list = document.getElementById('horae-rpg-rep-config-list');
-    if (!list) return;
-    const config = _getRepConfig();
-    if (!config.categories.length) {
-        list.innerHTML = '<div class="horae-rpg-skills-empty">Категорий репутации нет. Нажмите + для добавления</div>';
-        return;
-    }
-    list.innerHTML = config.categories.map((cat, i) => `
-        <div class="horae-rpg-config-row" data-idx="${i}">
-            <input class="horae-rpg-rep-name" value="${escapeHtml(cat.name)}" placeholder="Название репутации" data-idx="${i}" />
-            <input class="horae-rpg-rep-range" value="${cat.min}" type="number" style="width:48px" title="Минимум" data-idx="${i}" data-field="min" />
-            <span style="opacity:.5">~</span>
-            <input class="horae-rpg-rep-range" value="${cat.max}" type="number" style="width:48px" title="Максимум" data-idx="${i}" data-field="max" />
-            <button class="horae-rpg-btn-sm horae-rpg-rep-subitems" data-idx="${i}" title="Удалить"><i class="fa-solid fa-list-ul"></i></button>
-            <button class="horae-rpg-rep-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-    `).join('');
-}
-
-/** 渲染声望数值（每个角色的声望列表） */
-function renderReputationValues() {
-    const section = document.getElementById('horae-rpg-rep-values-section');
-    if (!section) return;
-    const config = _getRepConfig();
-    const repValues = _getRepValues();
-    if (!config.categories.length) { section.innerHTML = ''; return; }
-
-    const allOwners = new Set(Object.keys(repValues));
-    const rpg = horaeManager.getRpgStateAt(0);
-    for (const name of Object.keys(rpg.bars || {})) allOwners.add(name);
-
-    if (!allOwners.size) {
-        section.innerHTML = '<div class="horae-rpg-skills-empty">Данных о репутации нет (обновляется после ответа ИИ)</div>';
-        return;
-    }
-
-    let html = '';
-    for (const owner of allOwners) {
-        const ownerData = repValues[owner] || {};
-        html += `<div class="horae-tables-group-label"><i class="fa-solid fa-globe"></i> Глобальные таблицы</div>`;
-        for (const cat of config.categories) {
-            const data = ownerData[cat.name] || { value: cat.default ?? 0, subItems: {} };
-            const range = (cat.max ?? 100) - (cat.min ?? -100);
-            const offset = data.value - (cat.min ?? -100);
-            const pct = range > 0 ? Math.min(100, Math.round(offset / range * 100)) : 50;
-            const color = data.value >= 0 ? '#22c55e' : '#ef4444';
-            html += `<div class="horae-rpg-bar">
-                <span class="horae-rpg-bar-label">${escapeHtml(cat.name)}</span>
-                <div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:${color};"></div></div>
-                <span class="horae-rpg-bar-val horae-rpg-rep-val-edit" data-owner="${escapeHtml(owner)}" data-cat="${escapeHtml(cat.name)}" title="Нажмите для редактирования">${data.value}</span>
-            </div>`;
-            if (Object.keys(data.subItems || {}).length > 0) {
-                html += '<div style="padding-left:16px;opacity:.8;font-size:.85em;">';
-                for (const [subName, subVal] of Object.entries(data.subItems)) {
-                    html += `<div>${escapeHtml(subName)}: ${subVal}</div>`;
-                }
-                html += '</div>';
-            }
-        }
-        html += '</div></details>';
-    }
-    section.innerHTML = html;
-}
-
-/** 阻止弹窗事件冒泡到 document，避免新版导航「点击外部」误收合 Horae 顶部抽屉 */
-function _horaeModalStopDrawerCollapse(modalEl) {
-    if (!modalEl) return;
-    const block = (e) => { e.stopPropagation(); };
-    for (const t of ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup']) {
-        modalEl.addEventListener(t, block, false);
-    }
-}
-
-/** 弹出编辑声望分类细项的对话框 */
-function _openRepSubItemsDialog(catIndex) {
-    const config = _getRepConfig();
-    const cat = config.categories[catIndex];
-    if (!cat) return;
-    const subItems = (cat.subItems || []).slice();
-    const modal = document.createElement('div');
-    modal.className = 'horae-modal-overlay';
-    modal.innerHTML = `
-        <div class="horae-modal" style="max-width:400px;">
-            <div class="horae-modal-header"><h3>Подпункты: «${escapeHtml(cat.name)}»</h3></div>
-            <div class="horae-modal-body">
-                <p style="margin-bottom:8px;opacity:.7;font-size:.9em;">Название подпункта (пусто = ИИ сам придумает). Отображается в панели репутации для детализации.</p>
-                <div id="horae-rep-subitems-list"></div>
-                <button id="horae-rep-subitems-add" class="horae-icon-btn" style="margin-top:6px;"><i class="fa-solid fa-plus"></i> Добавить подпункт</button>
-            </div>
-            <div class="horae-modal-footer">
-                <button id="horae-rep-subitems-ok" class="horae-btn primary">ОК</button>
-                <button id="horae-rep-subitems-cancel" class="horae-btn">Отмена</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    _horaeModalStopDrawerCollapse(modal);
-
-    function renderList() {
-        const list = modal.querySelector('#horae-rep-subitems-list');
-        list.innerHTML = subItems.map((s, i) => `
-            <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
-                <input class="horae-rpg-rep-subitem-input" value="${escapeHtml(s)}" data-idx="${i}" style="flex:1;" placeholder="Название пункта" />
-                <button class="horae-rpg-rep-subitem-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-        `).join('');
-    }
-    renderList();
-
-    modal.querySelector('#horae-rep-subitems-add').onclick = () => { subItems.push(''); renderList(); };
-    modal.addEventListener('click', e => {
-        if (e.target.closest('.horae-rpg-rep-subitem-del')) {
-            const idx = parseInt(e.target.closest('.horae-rpg-rep-subitem-del').dataset.idx);
-            subItems.splice(idx, 1);
-            renderList();
-        }
-    });
-    modal.addEventListener('input', e => {
-        if (e.target.matches('.horae-rpg-rep-subitem-input')) {
-            subItems[parseInt(e.target.dataset.idx)] = e.target.value.trim();
-        }
-    });
-    modal.querySelector('#horae-rep-subitems-ok').onclick = () => {
-        cat.subItems = subItems.filter(s => s);
-        _saveRepData();
-        modal.remove();
-        renderReputationConfig();
-    };
-    modal.querySelector('#horae-rep-subitems-cancel').onclick = () => modal.remove();
-}
-
-/** 声望分类配置事件绑定 */
-function _bindReputationConfigEvents() {
-    const container = document.getElementById('horae-tab-rpg');
-    if (!container) return;
-
-// Константы
-    $('#horae-rpg-rep-add').off('click').on('click', () => {
-        const config = _getRepConfig();
-        config.categories.push({ name: 'Новая репутация', min: -100, max: 100, default: 0, subItems: [] });
-        _saveRepData();
-        renderReputationConfig();
-        renderReputationValues();
-    });
-
-// Константы
-    $(container).off('input.repconfig').on('input.repconfig', '.horae-rpg-rep-name, .horae-rpg-rep-range', function() {
-        const idx = parseInt(this.dataset.idx);
-        const config = _getRepConfig();
-        const cat = config.categories[idx];
-        if (!cat) return;
-        if (this.classList.contains('horae-rpg-rep-name')) {
-            cat.name = this.value.trim();
-        } else {
-            const field = this.dataset.field;
-            cat[field] = parseInt(this.value) || 0;
-        }
-        _saveRepData();
-    });
-
-// Константы
-    $(container).off('click.repsubitems').on('click.repsubitems', '.horae-rpg-rep-subitems', function() {
-        _openRepSubItemsDialog(parseInt(this.dataset.idx));
-    });
-
-// Константы
-    $(container).off('click.repdel').on('click.repdel', '.horae-rpg-rep-del', function() {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
-        const idx = parseInt(this.dataset.idx);
-        const config = _getRepConfig();
-        const deleted = config.categories.splice(idx, 1)[0];
-        if (deleted?.name) {
-            if (!config._deletedCategories) config._deletedCategories = [];
-            config._deletedCategories.push(deleted.name);
-// Константы
-            const repValues = _getRepValues();
-            for (const owner of Object.keys(repValues)) {
-                delete repValues[owner][deleted.name];
-                if (!Object.keys(repValues[owner]).length) delete repValues[owner];
-            }
-        }
-        _saveRepData();
-        renderReputationConfig();
-        renderReputationValues();
-    });
-
-// Константы
-    $(container).off('click.repvaledit').on('click.repvaledit', '.horae-rpg-rep-val-edit', function() {
-        const owner = this.dataset.owner;
-        const catName = this.dataset.cat;
-        const config = _getRepConfig();
-        const cat = config.categories.find(c => c.name === catName);
-        if (!cat) return;
-        const repValues = _getRepValues();
-        if (!repValues[owner]) repValues[owner] = {};
-        if (!repValues[owner][catName]) repValues[owner][catName] = { value: cat.default ?? 0, subItems: {} };
-        const current = repValues[owner][catName].value;
-        const newVal = prompt(`Установить значение ${catName} для ${owner} (${cat.min}~${cat.max}):`, current);
-        if (newVal === null) return;
-        const parsed = parseInt(newVal);
-        if (isNaN(parsed)) return;
-        repValues[owner][catName].value = Math.max(cat.min ?? -100, Math.min(cat.max ?? 100, parsed));
-        _saveRepData();
-        renderReputationValues();
-    });
-
-// Константы
-    $('#horae-rpg-rep-export').off('click').on('click', () => {
-        const config = _getRepConfig();
-        const data = { horae_reputation_config: { version: 1, categories: config.categories } };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'horae-reputation-config.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showToast('Таблица экспортирована', 'success');
-    });
-
-// Константы
-    $('#horae-rpg-rep-import').off('click').on('click', () => {
-        document.getElementById('horae-rpg-rep-import-file')?.click();
-    });
-    $('#horae-rpg-rep-import-file').off('change').on('change', function() {
-        const file = this.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                const imported = data?.horae_reputation_config;
-                if (!imported?.categories?.length) {
-                    showToast('Таблица экспортирована', 'error');
-                    return;
-                }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-                const config = _getRepConfig();
-                const existingNames = new Set(config.categories.map(c => c.name));
-                let added = 0;
-                for (const cat of imported.categories) {
-                    if (existingNames.has(cat.name)) continue;
-                    config.categories.push({
-                        name: cat.name,
-                        min: cat.min ?? -100,
-                        max: cat.max ?? 100,
-                        default: cat.default ?? 0,
-                        subItems: cat.subItems || [],
-                    });
-// Константы
-                    if (config._deletedCategories) {
-                        config._deletedCategories = config._deletedCategories.filter(n => n !== cat.name);
-                    }
-                    added++;
-                }
-                _saveRepData();
-                renderReputationConfig();
-                renderReputationValues();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-            } catch (err) {
-                showToast('Ошибка импорта: ' + err.message, 'error');
-            }
-        };
-        reader.readAsText(file);
-        this.value = '';
-    });
-}
-
-// ============================================
-// Константы
-// ============================================
-
-/** 获取装备配置根对象 { locked, perChar: { name: { slots, _deletedSlots } } } */
-function _getEqConfigMap() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return { locked: false, perChar: {} };
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    let cfg = chat[0].horae_meta.rpg.equipmentConfig;
-    if (!cfg) {
-        chat[0].horae_meta.rpg.equipmentConfig = { locked: false, perChar: {} };
-        return chat[0].horae_meta.rpg.equipmentConfig;
-    }
-// Константы
-    if (Array.isArray(cfg.slots)) {
-        const oldSlots = cfg.slots;
-        const locked = !!cfg.locked;
-        const oldDeleted = cfg._deletedSlots || [];
-        const eqValues = chat[0].horae_meta.rpg.equipment || {};
-        const perChar = {};
-        for (const owner of Object.keys(eqValues)) {
-            perChar[owner] = { slots: JSON.parse(JSON.stringify(oldSlots)), _deletedSlots: [...oldDeleted] };
-        }
-        chat[0].horae_meta.rpg.equipmentConfig = { locked, perChar };
-        return chat[0].horae_meta.rpg.equipmentConfig;
-    }
-    if (!cfg.perChar) cfg.perChar = {};
-    return cfg;
-}
-
-/** 获取某角色的装备格位配置 */
-function _getCharEqConfig(owner) {
-    const map = _getEqConfigMap();
-    if (!map.perChar[owner]) map.perChar[owner] = { slots: [], _deletedSlots: [] };
-    return map.perChar[owner];
-}
-
-function _getEqValues() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return {};
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    if (!chat[0].horae_meta.rpg.equipment) chat[0].horae_meta.rpg.equipment = {};
-    return chat[0].horae_meta.rpg.equipment;
-}
-
-function _saveEqData() {
-    getContext().saveChat();
-}
-
-/** renderEquipmentSlotConfig 已废弃，格位配置合并到角色装备面板 */
-function renderEquipmentSlotConfig() { /* noop - per-char config in renderEquipmentValues */ }
-
-/** 渲染统一装备面板（每角色独立格位 + 装备） */
-function renderEquipmentValues() {
-    const section = document.getElementById('horae-rpg-eq-values-section');
-    if (!section) return;
-    const eqValues = _getEqValues();
-    const cfgMap = _getEqConfigMap();
-    const lockBtn = document.getElementById('horae-rpg-eq-lock');
-    if (lockBtn) {
-        lockBtn.querySelector('i').className = cfgMap.locked ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open';
-        lockBtn.title = cfgMap.locked ? 'Заблокировано (ИИ не может предлагать новые слоты)' : 'Разблокировано (ИИ может предлагать новые слоты)';
-    }
-    const rpg = horaeManager.getRpgStateAt(0);
-    const allOwners = new Set([...Object.keys(eqValues), ...Object.keys(cfgMap.perChar), ...Object.keys(rpg.bars || {})]);
-
-    if (!allOwners.size) {
-        section.innerHTML = '<div class="horae-rpg-skills-empty">Данных о персонажах нет (обновляется после ответа ИИ или вручную)</div>';
-        return;
-    }
-
-    let html = '';
-    for (const owner of allOwners) {
-        const charCfg = _getCharEqConfig(owner);
-        const ownerSlots = eqValues[owner] || {};
-        const deletedSlots = new Set(charCfg._deletedSlots || []);
-        let hasItems = false;
-        let itemsHtml = '';
-        for (const slot of charCfg.slots) {
-            if (deletedSlots.has(slot.name)) continue;
-            const items = ownerSlots[slot.name] || [];
-            if (items.length > 0) hasItems = true;
-            itemsHtml += `<div class="horae-rpg-eq-slot-group"><span class="horae-rpg-eq-slot-label">${escapeHtml(slot.name)} (${items.length}/${slot.maxCount ?? 1})</span>`;
-            if (items.length > 0) {
-                for (const item of items) {
-                    const attrStr = Object.entries(item.attrs || {}).map(([k, v]) => `<span class="horae-rpg-eq-attr">${escapeHtml(k)} ${v >= 0 ? '+' : ''}${v}</span>`).join(' ');
-                    const meta = item._itemMeta || {};
-                    const iconHtml = meta.icon ? `<span class="horae-rpg-eq-item-icon">${meta.icon}</span>` : '';
-                    const descHtml = meta.description ? `<div class="horae-rpg-eq-item-desc">${escapeHtml(meta.description)}</div>` : '';
-                    itemsHtml += `<div class="horae-rpg-eq-item">
-                        <div class="horae-rpg-eq-item-header">
-                            ${iconHtml}<span class="horae-rpg-eq-item-name">${escapeHtml(item.name)}</span> ${attrStr}
-                            <button class="horae-rpg-eq-item-del" data-owner="${escapeHtml(owner)}" data-slot="${escapeHtml(slot.name)}" data-item="${escapeHtml(item.name)}" title="Снять и вернуть в инвентарь"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
-                        </div>
-                        ${descHtml}
-                    </div>`;
-                }
-            } else {
-                itemsHtml += '<div style="opacity:.4;font-size:.85em;padding:2px 0;">— Пусто —</div>';
-            }
-            itemsHtml += '</div>';
-        }
-        html += `<details class="horae-rpg-char-detail"${hasItems ? ' open' : ''}>
-            <summary class="horae-rpg-char-summary">
-                <span class="horae-rpg-char-detail-name">${escapeHtml(owner)} — снаряжение</span>
-                <span style="flex:1;"></span>
-                <button class="horae-rpg-btn-sm horae-rpg-eq-char-tpl" data-owner="${escapeHtml(owner)}" title="Загрузить шаблон для персонажа"><i class="fa-solid fa-shapes"></i></button>
-                <button class="horae-rpg-btn-sm horae-rpg-eq-char-add-slot" data-owner="${escapeHtml(owner)}" title="Добавить слот"><i class="fa-solid fa-plus"></i></button>
-                <button class="horae-rpg-btn-sm horae-rpg-eq-char-del-slot" data-owner="${escapeHtml(owner)}" title="Удалить слот"><i class="fa-solid fa-minus"></i></button>
-            </summary>
-            <div class="horae-rpg-char-detail-body">${itemsHtml}
-                <button class="horae-rpg-btn-sm horae-rpg-eq-add-item" data-owner="${escapeHtml(owner)}" style="margin-top:6px;width:100%;"><i class="fa-solid fa-plus"></i> Добавить снаряжение вручную</button>
-            </div>
-        </details>`;
-    }
-    section.innerHTML = html;
-// Константы
-    const oldList = document.getElementById('horae-rpg-eq-slot-list');
-    if (oldList) oldList.innerHTML = '';
-}
-
-/** 手动添加装备对话框 */
-function _openAddEquipDialog(owner) {
-    const charCfg = _getCharEqConfig(owner);
-    if (!charCfg.slots.length) { showToast(`У ${owner} нет слотов. Загрузите шаблон или добавьте слоты вручную`, 'warning'); return; }
-    const modal = document.createElement('div');
-    modal.className = 'horae-modal-overlay';
-    modal.innerHTML = `
-        <div class="horae-modal-content" style="max-width:420px;width:92vw;box-sizing:border-box;">
-            <div class="horae-modal-header"><h3>Добавить снаряжение для ${escapeHtml(owner)}</h3></div>
-            <div class="horae-modal-body">
-                <div class="horae-edit-field">
-                    <label>Слот</label>
-                    <select id="horae-eq-add-slot">
-                        ${charCfg.slots.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (макс. ${s.maxCount ?? 1})</option>`).join('')}
-                    </select>
-                </div>
-                <div class="horae-edit-field">
-                    <label>Название снаряжения</label>
-                    <input id="horae-eq-add-name" type="text" placeholder="Введите название снаряжения" />
-                </div>
-                <div class="horae-edit-field">
-                    <label>Атрибуты (по одному на строку, формат: атрибут=значение)</label>
-                    <textarea id="horae-eq-add-attrs" rows="4" placeholder="Опишите событие кратко..."></textarea>
-                </div>
-            </div>
-            <div class="horae-modal-footer">
-                <button id="horae-eq-add-ok" class="horae-btn primary">ОК</button>
-                <button id="horae-eq-add-cancel" class="horae-btn">Отмена</button>
-            </div>
-        </div>`;
-    document.body.appendChild(modal);
-    _horaeModalStopDrawerCollapse(modal);
-    modal.querySelector('#horae-eq-add-ok').onclick = () => {
-        const slotName = modal.querySelector('#horae-eq-add-slot').value;
-        const itemName = modal.querySelector('#horae-eq-add-name').value.trim();
-        if (!itemName) { showToast('Введите название снаряжения', 'warning'); return; }
-        const attrsText = modal.querySelector('#horae-eq-add-attrs').value;
-        const attrs = {};
-        for (const line of attrsText.split('\n')) {
-            const m = line.trim().match(/^(.+?)=(-?\d+)$/);
-            if (m) attrs[m[1].trim()] = parseInt(m[2]);
-        }
-        const eqValues = _getEqValues();
-        if (!eqValues[owner]) eqValues[owner] = {};
-        if (!eqValues[owner][slotName]) eqValues[owner][slotName] = [];
-        const slotCfg = charCfg.slots.find(s => s.name === slotName);
-        const maxCount = slotCfg?.maxCount ?? 1;
-        if (eqValues[owner][slotName].length >= maxCount) {
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-            const bumped = eqValues[owner][slotName].shift();
-            if (bumped) _unequipToItems(owner, slotName, bumped.name, true);
-        }
-        eqValues[owner][slotName].push({ name: itemName, attrs, _itemMeta: {} });
-        _saveEqData();
-        modal.remove();
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-    };
-    modal.querySelector('#horae-eq-add-cancel').onclick = () => modal.remove();
-}
-
-/** 装备栏事件绑定 */
-function _bindEquipmentEvents() {
-    const container = document.getElementById('horae-tab-rpg');
-    if (!container) return;
-
-// Константы
-    $(container).off('click.eqchartpl').on('click.eqchartpl', '.horae-rpg-eq-char-tpl', function(e) {
-        e.stopPropagation();
-        const owner = this.dataset.owner;
-        const tpls = settings.equipmentTemplates || [];
-        if (!tpls.length) { showToast('Нет доступных шаблонов', 'warning'); return; }
-        const modal = document.createElement('div');
-        modal.className = 'horae-modal-overlay';
-        let listHtml = tpls.map((t, i) => {
-            const slotsStr = t.slots.map(s => s.name).join('、');
-            return `<div class="horae-rpg-tpl-item" data-idx="${i}" style="cursor:pointer;">
-                <div class="horae-rpg-tpl-name">${escapeHtml(t.name)}</div>
-                <div class="horae-rpg-tpl-slots">${escapeHtml(slotsStr)}</div>
-            </div>`;
-        }).join('');
-        modal.innerHTML = `
-            <div class="horae-modal-content" style="max-width:400px;width:90vw;box-sizing:border-box;">
-                <div class="horae-modal-header"><h3>Выбрать шаблон для ${escapeHtml(owner)}</h3></div>
-                <div class="horae-modal-body" style="max-height:50vh;overflow-y:auto;">
-                    <div style="margin-bottom:8px;font-size:11px;color:var(--horae-text-muted);">
-                        После загрузки <b>заменит</b> конфигурацию слотов персонажа; после загрузки можно добавлять/удалять слоты.
-                    </div>
-                    ${listHtml}
-                </div>
-                <div class="horae-modal-footer">
-                    <button class="horae-btn primary" id="horae-eq-tpl-save"><i class="fa-solid fa-floppy-disk"></i> Сохранить как шаблон</button>
-                    <button class="horae-btn" id="horae-eq-tpl-close">Отмена</button>
-                </div>
-            </div>`;
-        document.body.appendChild(modal);
-        _horaeModalStopDrawerCollapse(modal);
-        modal.querySelector('#horae-eq-tpl-close').onclick = () => modal.remove();
-        modal.querySelector('#horae-eq-tpl-save').onclick = () => {
-            const charCfg = _getCharEqConfig(owner);
-            if (!charCfg.slots.length) { showToast(`У ${owner} нет слотов для сохранения`, 'warning'); return; }
-            const name = prompt('Название шаблона:', '');
-            if (!name?.trim()) return;
-            settings.equipmentTemplates.push({
-                name: name.trim(),
-                slots: JSON.parse(JSON.stringify(charCfg.slots.map(s => ({ name: s.name, maxCount: s.maxCount ?? 1 })))),
-            });
-            saveSettingsDebounced();
-            modal.remove();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-        };
-        modal.querySelectorAll('.horae-rpg-tpl-item').forEach(item => {
-            item.onclick = () => {
-                const idx = parseInt(item.dataset.idx);
-                const tpl = tpls[idx];
-                if (!tpl) return;
-                const charCfg = _getCharEqConfig(owner);
-                charCfg.slots = JSON.parse(JSON.stringify(tpl.slots));
-                charCfg._deletedSlots = [];
-                charCfg._template = tpl.name;
-                _saveEqData();
-                renderEquipmentValues();
-                _bindEquipmentEvents();
-                horaeManager.init(getContext(), settings);
-                _refreshSystemPromptDisplay();
-                updateTokenCounter();
-                modal.remove();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-            };
-        });
-    });
-
-// Константы
-    $(container).off('click.eqcharaddslot').on('click.eqcharaddslot', '.horae-rpg-eq-char-add-slot', function(e) {
-        e.stopPropagation();
-        const owner = this.dataset.owner;
-        const name = prompt('Название нового слота:', '');
-        if (!name?.trim()) return;
-        const maxStr = prompt('Лимит количества:', '1');
-        const maxCount = Math.max(1, parseInt(maxStr) || 1);
-        const charCfg = _getCharEqConfig(owner);
-        if (charCfg.slots.some(s => s.name === name.trim())) { showToast('Слот уже существует', 'warning'); return; }
-        charCfg.slots.push({ name: name.trim(), maxCount });
-        if (charCfg._deletedSlots) charCfg._deletedSlots = charCfg._deletedSlots.filter(n => n !== name.trim());
-        _saveEqData();
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-    });
-
-// Константы
-    $(container).off('click.eqchardelslot').on('click.eqchardelslot', '.horae-rpg-eq-char-del-slot', function(e) {
-        e.stopPropagation();
-        const owner = this.dataset.owner;
-        const charCfg = _getCharEqConfig(owner);
-        if (!charCfg.slots.length) { showToast('У персонажа нет слотов', 'warning'); return; }
-        const names = charCfg.slots.map(s => s.name);
-        const name = prompt(`Какой слот удалить?\nТекущие: ${names.join(', ')}`, '');
-        if (!name?.trim()) return;
-        const idx = charCfg.slots.findIndex(s => s.name === name.trim());
-        if (idx < 0) { showToast('Слот не найден', 'warning'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-        const deleted = charCfg.slots.splice(idx, 1)[0];
-        if (!charCfg._deletedSlots) charCfg._deletedSlots = [];
-        charCfg._deletedSlots.push(deleted.name);
-        const eqValues = _getEqValues();
-        if (eqValues[owner]) {
-            delete eqValues[owner][deleted.name];
-            if (!Object.keys(eqValues[owner]).length) delete eqValues[owner];
-        }
-        _saveEqData();
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-    });
-
-// Константы
-    $('#horae-rpg-eq-lock').off('click').on('click', () => {
-        const cfgMap = _getEqConfigMap();
-        cfgMap.locked = !cfgMap.locked;
-        _saveEqData();
-        const lockBtn = document.getElementById('horae-rpg-eq-lock');
-        if (lockBtn) {
-            lockBtn.querySelector('i').className = cfgMap.locked ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open';
-            lockBtn.title = cfgMap.locked ? 'Заблокировано' : 'Разблокировано';
-        }
-    });
-
-// Константы
-    $(container).off('click.eqitemdel').on('click.eqitemdel', '.horae-rpg-eq-item-del', function() {
-        const owner = this.dataset.owner;
-        const slotName = this.dataset.slot;
-        const itemName = this.dataset.item;
-        _unequipToItems(owner, slotName, itemName, false);
-        renderEquipmentValues();
-        _bindEquipmentEvents();
-        updateItemsDisplay();
-        updateAllRpgHuds();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    });
-
-// Константы
-    $(container).off('click.eqadditem').on('click.eqadditem', '.horae-rpg-eq-add-item', function() {
-        _openAddEquipDialog(this.dataset.owner);
-    });
-
-// Константы
-    $('#horae-rpg-eq-export').off('click').on('click', () => {
-        const cfgMap = _getEqConfigMap();
-        const blob = new Blob([JSON.stringify({ horae_equipment_config: { version: 2, perChar: cfgMap.perChar, locked: cfgMap.locked } }, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'horae-equipment-config.json'; a.click();
-        showToast('Таблица экспортирована', 'success');
-    });
-
-// Константы
-    $('#horae-rpg-eq-import').off('click').on('click', () => {
-        document.getElementById('horae-rpg-eq-import-file')?.click();
-    });
-    $('#horae-rpg-eq-import-file').off('change').on('change', function() {
-        const file = this.files?.[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                const imported = data?.horae_equipment_config;
-                if (!imported) { showToast('Недействительный файл', 'error'); return; }
-                if (imported.version === 2 && imported.perChar) {
-                    if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
-                    const cfgMap = _getEqConfigMap();
-                    for (const [owner, cfg] of Object.entries(imported.perChar)) {
-                        cfgMap.perChar[owner] = JSON.parse(JSON.stringify(cfg));
-                    }
-                    if (imported.locked !== undefined) cfgMap.locked = imported.locked;
-                } else if (imported.slots?.length) {
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-                    const cfgMap = _getEqConfigMap();
-                    const eqValues = _getEqValues();
-                    for (const owner of Object.keys(eqValues)) {
-                        const charCfg = _getCharEqConfig(owner);
-                        const existing = new Set(charCfg.slots.map(s => s.name));
-                        for (const slot of imported.slots) {
-                            if (!existing.has(slot.name)) charCfg.slots.push({ name: slot.name, maxCount: slot.maxCount ?? 1 });
-                        }
-                    }
-                } else { showToast('Недействительный файл', 'error'); return; }
-                _saveEqData();
-                renderEquipmentValues();
-                _bindEquipmentEvents();
-                horaeManager.init(getContext(), settings);
-                _refreshSystemPromptDisplay();
-                updateTokenCounter();
-                showToast('Таблица экспортирована', 'success');
-            } catch (err) { showToast('Ошибка импорта: ' + err.message, 'error'); }
-        };
-        reader.readAsText(file);
-        this.value = '';
-    });
-
-// Константы
-    $('#horae-rpg-eq-preset').off('click').on('click', () => {
-        _openEquipTemplateManageModal();
-    });
-}
-
-/** 全局模板管理（增删模板，不加载到角色） */
-function _openEquipTemplateManageModal() {
-    const modal = document.createElement('div');
-    modal.className = 'horae-modal-overlay';
-    function _render() {
-        const tpls = settings.equipmentTemplates || [];
-        let listHtml = tpls.map((t, i) => {
-            const slotsStr = t.slots.map(s => s.name).join('、');
-            return `<div class="horae-rpg-tpl-item"><div class="horae-rpg-tpl-name">${escapeHtml(t.name)}</div>
-                <div class="horae-rpg-tpl-slots">${escapeHtml(slotsStr)}</div>
-                <button class="horae-rpg-btn-sm horae-rpg-tpl-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-trash"></i></button>
-            </div>`;
-        }).join('');
-        if (!tpls.length) listHtml = '<div class="horae-rpg-skills-empty">Пользовательских шаблонов нет (встроенные нельзя удалить)</div>';
-        modal.innerHTML = `<div class="horae-modal-content" style="max-width:460px;width:90vw;box-sizing:border-box;">
-            <div class="horae-modal-header"><h3>Управление шаблонами снаряжения</h3></div>
-            <div class="horae-modal-body" style="max-height:55vh;overflow-y:auto;">
-                <div style="margin-bottom:6px;font-size:11px;color:var(--horae-text-muted);">Встроенные шаблоны (человек/орк/крылатый/кентавр/ламия/демон) не отображаются здесь. Ниже — сохранённые пользователем.</div>
-                ${listHtml}
-            </div>
-            <div class="horae-modal-footer"><button class="horae-btn" id="horae-tpl-mgmt-close">Закрыть</button></div>
-        </div>`;
-        modal.querySelector('#horae-tpl-mgmt-close').onclick = () => modal.remove();
-        modal.querySelectorAll('.horae-rpg-tpl-del').forEach(btn => {
-            btn.onclick = () => {
-                const idx = parseInt(btn.dataset.idx);
-                const tpl = settings.equipmentTemplates[idx];
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-                settings.equipmentTemplates.splice(idx, 1);
-                saveSettingsDebounced();
-                _render();
-            };
-        });
-    }
-    document.body.appendChild(modal);
-    _horaeModalStopDrawerCollapse(modal);
-    _render();
-}
-
-// Константы
-
-function _getCurConfig() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return { denominations: [] };
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    if (!chat[0].horae_meta.rpg.currencyConfig) chat[0].horae_meta.rpg.currencyConfig = { denominations: [] };
-    return chat[0].horae_meta.rpg.currencyConfig;
-}
-
-function _saveCurData() {
-    const ctx = getContext();
-    if (ctx?.saveChat) ctx.saveChat();
-}
-
-function renderCurrencyConfig() {
-    const list = document.getElementById('horae-rpg-cur-denom-list');
-    if (!list) return;
-    const config = _getCurConfig();
-    if (!config.denominations.length) {
-        list.innerHTML = '<div class="horae-rpg-skills-empty">Монет нет. Нажмите + для добавления</div>';
-        return;
-    }
-    list.innerHTML = config.denominations.map((d, i) => `
-        <div class="horae-rpg-config-row" data-idx="${i}">
-            <input class="horae-rpg-cur-emoji" value="${escapeHtml(d.emoji || '')}" placeholder="💰" maxlength="2" data-idx="${i}" title="Emoji для отображения" />
-            <input class="horae-rpg-cur-name" value="${escapeHtml(d.name)}" placeholder="Название монеты" data-idx="${i}" />
-            <span style="opacity:.5;font-size:11px">Курс обмена</span>
-            <input class="horae-rpg-cur-rate" value="${d.rate}" type="number" min="1" style="width:60px" title="Обменный курс (чем выше — тем меньше номинал, напр. Медь=1000)" data-idx="${i}" />
-            <button class="horae-rpg-cur-del" data-idx="${i}" title="Редактировать"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-    `).join('');
-    _renderCurrencyHint(config);
-}
-
-function _renderCurrencyHint(config) {
-    const section = document.getElementById('horae-rpg-cur-values-section');
-    if (!section) return;
-    const denoms = config.denominations;
-    if (denoms.length < 2) { section.innerHTML = ''; return; }
-    const sorted = [...denoms].sort((a, b) => a.rate - b.rate);
-    const base = sorted[0];
-    const parts = sorted.map(d => `${d.rate / base.rate}${d.name}`).join(' = ');
-    section.innerHTML = `<div class="horae-rpg-skills-empty" style="font-size:11px;opacity:.7">Курс: ${escapeHtml(parts)}</div>`;
-}
-
-function _bindCurrencyEvents() {
-// Константы
-    $('#horae-rpg-cur-add').off('click').on('click', () => {
-        const config = _getCurConfig();
-        config.denominations.push({ name: 'Новая монета', rate: 1, emoji: '💰' });
-        _saveCurData();
-        renderCurrencyConfig();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-    });
-
-// Константы
-    $(document).off('change', '.horae-rpg-cur-emoji').on('change', '.horae-rpg-cur-emoji', function() {
-        const config = _getCurConfig();
-        const idx = parseInt(this.dataset.idx);
-        config.denominations[idx].emoji = this.value.trim();
-        _saveCurData();
-    });
-
-// Константы
-    $(document).off('change', '.horae-rpg-cur-name').on('change', '.horae-rpg-cur-name', function() {
-        const config = _getCurConfig();
-        const idx = parseInt(this.dataset.idx);
-        const oldName = config.denominations[idx].name;
-        const newName = this.value.trim() || oldName;
-        if (newName !== oldName) {
-            config.denominations[idx].name = newName;
-            _saveCurData();
-            renderCurrencyConfig();
-            horaeManager.init(getContext(), settings);
-            _refreshSystemPromptDisplay();
-            updateTokenCounter();
-        }
-    });
-
-// Константы
-    $(document).off('change', '.horae-rpg-cur-rate').on('change', '.horae-rpg-cur-rate', function() {
-        const config = _getCurConfig();
-        const idx = parseInt(this.dataset.idx);
-        const val = Math.max(1, parseInt(this.value) || 1);
-        config.denominations[idx].rate = val;
-        _saveCurData();
-        renderCurrencyConfig();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-    });
-
-// Константы
-    $(document).off('click', '.horae-rpg-cur-del').on('click', '.horae-rpg-cur-del', function() {
-        const config = _getCurConfig();
-        const idx = parseInt(this.dataset.idx);
-        const name = config.denominations[idx].name;
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-        config.denominations.splice(idx, 1);
-// Константы
-        const chat = horaeManager.getChat();
-        const curData = chat?.[0]?.horae_meta?.rpg?.currency;
-        if (curData) {
-            for (const owner of Object.keys(curData)) {
-                delete curData[owner][name];
-                if (!Object.keys(curData[owner]).length) delete curData[owner];
-            }
-        }
-        _saveCurData();
-        renderCurrencyConfig();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-    });
-
-// Константы
-    $('#horae-rpg-cur-export').off('click').on('click', () => {
-        const config = _getCurConfig();
-        const blob = new Blob([JSON.stringify({ denominations: config.denominations }, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'horae_currency_config.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
-    });
-
-// Константы
-    $('#horae-rpg-cur-import').off('click').on('click', () => {
-        document.getElementById('horae-rpg-cur-import-file')?.click();
-    });
-    $('#horae-rpg-cur-import-file').off('change').on('change', function() {
-        const file = this.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const imported = JSON.parse(e.target.result);
-                if (!imported.denominations?.length) { showToast('Неверный формат файла', 'error'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-                const config = _getCurConfig();
-                const existingNames = new Set(config.denominations.map(d => d.name));
-                let added = 0;
-                for (const d of imported.denominations) {
-                    if (existingNames.has(d.name)) continue;
-                    config.denominations.push({ name: d.name, rate: d.rate ?? 1 });
-                    added++;
-                }
-                _saveCurData();
-                renderCurrencyConfig();
-                horaeManager.init(getContext(), settings);
-                _refreshSystemPromptDisplay();
-                updateTokenCounter();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-            } catch (err) {
-                showToast('Ошибка импорта: ' + err.message, 'error');
-            }
-        };
-        reader.readAsText(file);
-        this.value = '';
-    });
-}
-
-// Константы
-
-function _getStrongholdData() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return [];
-    if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
-    if (!chat[0].horae_meta.rpg) chat[0].horae_meta.rpg = {};
-    if (!chat[0].horae_meta.rpg.strongholds) chat[0].horae_meta.rpg.strongholds = [];
-    return chat[0].horae_meta.rpg.strongholds;
-}
-function _saveStrongholdData() { getContext().saveChat(); }
-
-function _genShId() { return 'sh_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
-
-/** 构建子节点树 */
-function _buildShTree(nodes, parentId) {
-    return nodes
-        .filter(n => (n.parent || null) === parentId)
-        .map(n => ({ ...n, children: _buildShTree(nodes, n.id) }));
-}
-
-/** 渲染据点树形 UI */
-function renderStrongholdTree() {
-    const container = document.getElementById('horae-rpg-sh-tree');
-    if (!container) return;
-    const nodes = _getStrongholdData();
-    if (!nodes.length) {
-        container.innerHTML = '<div class="horae-rpg-skills-empty">Укреплений нет (нажмите +, или ИИ создаст автоматически через тег base: в &lt;horae&gt;)</div>';
-        return;
-    }
-    const tree = _buildShTree(nodes, null);
-    container.innerHTML = _renderShNodes(tree, 0);
-}
-
-function _renderShNodes(nodes, depth) {
-    let html = '';
-    for (const n of nodes) {
-        const indent = depth * 16;
-        const hasChildren = n.children && n.children.length > 0;
-        const lvBadge = n.level != null ? `<span class="horae-rpg-hud-lv-badge" style="font-size:10px;">Lv.${n.level}</span>` : '';
-        html += `<div class="horae-rpg-sh-node" data-id="${escapeHtml(n.id)}" style="padding-left:${indent}px;">`;
-        html += `<div class="horae-rpg-sh-node-head">`;
-        html += `<span class="horae-rpg-sh-node-name">${hasChildren ? '▼ ' : '• '}${escapeHtml(n.name)}</span>`;
-        html += lvBadge;
-        html += `<div class="horae-rpg-sh-node-actions">`;
-        html += `<button class="horae-rpg-btn-sm horae-rpg-sh-add-child" data-id="${escapeHtml(n.id)}" title="Добавить дочерний узел"><i class="fa-solid fa-plus"></i></button>`;
-        html += `<button class="horae-rpg-btn-sm horae-rpg-sh-edit" data-id="${escapeHtml(n.id)}" title="Редактировать"><i class="fa-solid fa-pen"></i></button>`;
-        html += `<button class="horae-rpg-btn-sm horae-rpg-sh-del" data-id="${escapeHtml(n.id)}" title="Редактировать"><i class="fa-solid fa-trash"></i></button>`;
-        html += `</div></div>`;
-        if (n.desc) {
-            html += `<div class="horae-rpg-sh-node-desc" style="padding-left:${indent + 12}px;">${escapeHtml(n.desc)}</div>`;
-        }
-        if (hasChildren) html += _renderShNodes(n.children, depth + 1);
-        html += '</div>';
-    }
-    return html;
-}
-
-function _openShEditDialog(nodeId) {
-    const nodes = _getStrongholdData();
-    const node = nodeId ? nodes.find(n => n.id === nodeId) : null;
-    const isNew = !node;
-    const modal = document.createElement('div');
-    modal.className = 'horae-modal-overlay';
-    modal.innerHTML = `
-        <div class="horae-modal-content" style="max-width:400px;width:90vw;box-sizing:border-box;">
-            <div class="horae-modal-header"><h3>${isNew ? 'Добавить укрепление' : 'Редактировать укрепление'}</h3></div>
-            <div class="horae-modal-body">
-                <div class="horae-edit-field">
-                    <label>Название</label>
-                    <input id="horae-sh-name" type="text" value="${escapeHtml(node?.name || '')}" placeholder="Название базы" />
-                </div>
-                <div class="horae-edit-field">
-                    <label>Уровень (необязательно)</label>
-                    <input id="horae-sh-level" type="number" min="0" max="999" value="${node?.level ?? ''}" placeholder="Не заполнено = не отображается" />
-                </div>
-                <div class="horae-edit-field">
-                    <label>Описание</label>
-                    <textarea id="horae-sh-desc" rows="3" placeholder="Описание укрепления...">${escapeHtml(node?.desc || '')}</textarea>
-                </div>
-            </div>
-            <div class="horae-modal-footer">
-                <button class="horae-btn primary" id="horae-sh-ok">${isNew ? 'Добавить' : 'Сохранить'}</button>
-                <button class="horae-btn" id="horae-sh-cancel">Отмена</button>
-            </div>
-        </div>`;
-    document.body.appendChild(modal);
-    _horaeModalStopDrawerCollapse(modal);
-    modal.querySelector('#horae-sh-ok').onclick = () => {
-        const name = modal.querySelector('#horae-sh-name').value.trim();
-        if (!name) { showToast('Название места не может быть пустым', 'warning'); return; }
-        const lvRaw = modal.querySelector('#horae-sh-level').value;
-        const level = lvRaw !== '' ? parseInt(lvRaw) : null;
-        const desc = modal.querySelector('#horae-sh-desc').value.trim();
-        if (node) {
-            node.name = name;
-            node.level = level;
-            node.desc = desc;
-        }
-        _saveStrongholdData();
-        renderStrongholdTree();
-        _bindStrongholdEvents();
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-        modal.remove();
-    };
-    modal.querySelector('#horae-sh-cancel').onclick = () => modal.remove();
-    return modal;
-}
-
-function _bindStrongholdEvents() {
-    const container = document.getElementById('horae-rpg-sh-tree');
-    if (!container) return;
-
-// Константы
-    $('#horae-rpg-sh-add').off('click').on('click', () => {
-        const nodes = _getStrongholdData();
-        const modal = _openShEditDialog(null);
-        modal.querySelector('#horae-sh-ok').onclick = () => {
-            const name = modal.querySelector('#horae-sh-name').value.trim();
-            if (!name) { showToast('Название места не может быть пустым', 'warning'); return; }
-            const lvRaw = modal.querySelector('#horae-sh-level').value;
-            const level = lvRaw !== '' ? parseInt(lvRaw) : null;
-            const desc = modal.querySelector('#horae-sh-desc').value.trim();
-            nodes.push({ id: _genShId(), name, level, desc, parent: null });
-            _saveStrongholdData();
-            renderStrongholdTree();
-            _bindStrongholdEvents();
-            horaeManager.init(getContext(), settings);
-            _refreshSystemPromptDisplay();
-            updateTokenCounter();
-            modal.remove();
-        };
-    });
-
-// Константы
-    container.querySelectorAll('.horae-rpg-sh-add-child').forEach(btn => {
-        btn.onclick = () => {
-            const parentId = btn.dataset.id;
-            const nodes = _getStrongholdData();
-            const modal = _openShEditDialog(null);
-            modal.querySelector('#horae-sh-ok').onclick = () => {
-                const name = modal.querySelector('#horae-sh-name').value.trim();
-                if (!name) { showToast('Название места не может быть пустым', 'warning'); return; }
-                const lvRaw = modal.querySelector('#horae-sh-level').value;
-                const level = lvRaw !== '' ? parseInt(lvRaw) : null;
-                const desc = modal.querySelector('#horae-sh-desc').value.trim();
-                nodes.push({ id: _genShId(), name, level, desc, parent: parentId });
-                _saveStrongholdData();
-                renderStrongholdTree();
-                _bindStrongholdEvents();
-                horaeManager.init(getContext(), settings);
-                modal.remove();
-            };
-        };
-    });
-
-// Константы
-    container.querySelectorAll('.horae-rpg-sh-edit').forEach(btn => {
-        btn.onclick = () => { _openShEditDialog(btn.dataset.id); };
-    });
-
-// Константы
-    container.querySelectorAll('.horae-rpg-sh-del').forEach(btn => {
-        btn.onclick = () => {
-            const nodes = _getStrongholdData();
-            const id = btn.dataset.id;
-            const node = nodes.find(n => n.id === id);
-            if (!node) return;
-            function countDescendants(pid) {
-                const kids = nodes.filter(n => n.parent === pid);
-                return kids.length + kids.reduce((s, k) => s + countDescendants(k.id), 0);
-            }
-            const desc = countDescendants(id);
-            const msg = desc > 0
-            ? `| Индекс: ${vectorManager.vectors.size} записей`
-            : `Авто-сводка: сжатие ${batchIndices.length} сообщений...`;
-            if (!confirm(msg)) return;
-            function removeRecursive(pid) {
-                const kids = nodes.filter(n => n.parent === pid);
-                for (const k of kids) removeRecursive(k.id);
-                const idx = nodes.findIndex(n => n.id === pid);
-                if (idx >= 0) nodes.splice(idx, 1);
-            }
-            removeRecursive(id);
-            _saveStrongholdData();
-            renderStrongholdTree();
-            _bindStrongholdEvents();
-            horaeManager.init(getContext(), settings);
-            _refreshSystemPromptDisplay();
-            updateTokenCounter();
-        };
-    });
-
-// Константы
-    $('#horae-rpg-sh-export').off('click').on('click', () => {
-        const data = _getStrongholdData();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'horae_strongholds.json'; a.click();
-    });
-// Константы
-    $('#horae-rpg-sh-import').off('click').on('click', () => {
-        document.getElementById('horae-rpg-sh-import-file')?.click();
-    });
-    $('#horae-rpg-sh-import-file').off('change').on('change', function() {
-        const file = this.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const imported = JSON.parse(e.target.result);
-                if (!Array.isArray(imported)) throw new Error('Ошибка формата');
-                const nodes = _getStrongholdData();
-                const existingNames = new Set(nodes.map(n => n.name));
-                let added = 0;
-                for (const n of imported) {
-                    if (!n.name) continue;
-                    if (existingNames.has(n.name)) continue;
-                    nodes.push({ id: _genShId(), name: n.name, level: n.level ?? null, desc: n.desc || '', parent: n.parent || null });
-                    added++;
-                }
-                _saveStrongholdData();
-                renderStrongholdTree();
-                _bindStrongholdEvents();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-            } catch (err) { showToast('Ошибка импорта: ' + err.message, 'error'); }
-        };
-        reader.readAsText(file);
-        this.value = '';
-    });
-}
-
-/** 渲染等级/经验值数据（配置面板） */
-function renderLevelValues() {
-    const section = document.getElementById('horae-rpg-level-values-section');
-    if (!section) return;
-    const snapshot = horaeManager.getRpgStateAt(0);
-    const chat = horaeManager.getChat();
-    const baseRpg = chat?.[0]?.horae_meta?.rpg || {};
-    const mergedLevels = { ...(snapshot.levels || {}), ...(baseRpg.levels || {}) };
-    const mergedXp = { ...(snapshot.xp || {}), ...(baseRpg.xp || {}) };
-    const allNames = new Set([...Object.keys(mergedLevels), ...Object.keys(mergedXp), ...Object.keys(snapshot.bars || {})]);
-    let html = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="horae-rpg-btn-sm horae-rpg-lv-add" title="Добавить уровень персонажа вручную"><i class="fa-solid fa-plus"></i> Добавить персонажа</button></div>';
-    if (!allNames.size) {
-                html += '<div class="horae-npc-section-title"><i class="fa-solid fa-crown"></i> Главные персонажи</div>';
-    }
-    for (const name of allNames) {
-        const lv = mergedLevels[name];
-        const xp = mergedXp[name];
-        const xpCur = xp ? xp[0] : 0;
-        const xpMax = xp ? xp[1] : 0;
-        const pct = xpMax > 0 ? Math.min(100, Math.round(xpCur / xpMax * 100)) : 0;
-        html += `<div class="horae-rpg-lv-entry" data-char="${escapeHtml(name)}">`;
-        html += `<div class="horae-rpg-lv-entry-header">`;
-        html += `<span class="horae-rpg-lv-entry-name">${escapeHtml(name)}</span>`;
-        html += `<span class="horae-rpg-hud-lv-badge">${lv != null ? 'Lv.' + lv : '--'}</span>`;
-        html += `<button class="horae-rpg-btn-sm horae-rpg-lv-edit" data-char="${escapeHtml(name)}" title="Редактировать уровень/опыт вручную"><i class="fa-solid fa-pen-to-square"></i></button>`;
-        html += `</div>`;
-        if (xpMax > 0) {
-            html += `<div class="horae-rpg-lv-xp-row"><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:#a78bfa;"></div></div><span class="horae-rpg-lv-xp-label">${xpCur}/${xpMax} (${pct}%)</span></div>`;
-        }
-        html += '</div>';
-    }
-    section.innerHTML = html;
-
-    const _lvEditHandler = (charName) => {
-        const chat2 = horaeManager.getChat();
-        if (!chat2?.length) return;
-        if (!chat2[0].horae_meta) chat2[0].horae_meta = createEmptyMeta();
-        if (!chat2[0].horae_meta.rpg) chat2[0].horae_meta.rpg = {};
-        const rpgData = chat2[0].horae_meta.rpg;
-        const curLv = rpgData.levels?.[charName] ?? '';
-        const newLv = prompt(`Уровень ${charName}:`, curLv);
-        if (newLv === null) return;
-        const lvVal = parseInt(newLv);
-        if (isNaN(lvVal) || lvVal < 0) { showToast('Введите корректный номер уровня', 'warning'); return; }
-        if (!rpgData.levels) rpgData.levels = {};
-        if (!rpgData.xp) rpgData.xp = {};
-        rpgData.levels[charName] = lvVal;
-        const xpMax = Math.max(100, lvVal * 100);
-        const curXp = rpgData.xp[charName];
-        if (!curXp || curXp[1] <= 0) {
-            rpgData.xp[charName] = [0, xpMax];
-        } else {
-            rpgData.xp[charName] = [curXp[0], xpMax];
-        }
-        getContext().saveChat();
-        renderLevelValues();
-        updateAllRpgHuds();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    };
-
-    section.querySelectorAll('.horae-rpg-lv-edit').forEach(btn => {
-        btn.addEventListener('click', () => _lvEditHandler(btn.dataset.char));
-    });
-
-    const addBtn = section.querySelector('.horae-rpg-lv-add');
-    if (addBtn) {
-        addBtn.addEventListener('click', () => {
-            const charName = prompt('Введите имя персонажа:');
-            if (!charName?.trim()) return;
-            _lvEditHandler(charName.trim());
-        });
-    }
-}
-
-/**
- * 构建单个角色在 HUD 中的 HTML
- * 布局: 角色名(+状态图标) | Lv.X 💵999 | XP条 | 属性条
- */
-function _buildCharHudHtml(name, rpg) {
-    const bars = rpg.bars[name] || {};
-    const effects = rpg.status?.[name] || [];
-    const charLv = rpg.levels?.[name];
-    const charXp = rpg.xp?.[name];
-    const charCur = rpg.currency?.[name] || {};
-    const denomCfg = rpg.currencyConfig?.denominations || [];
-    const sendLvl = !!settings.sendRpgLevel;
-    const sendCur = !!settings.sendRpgCurrency;
-
-    let html = '<div class="horae-rpg-hud-row">';
-
-// Константы
-    html += '<div class="horae-rpg-hud-header">';
-    html += `<span class="horae-rpg-hud-name">${escapeHtml(name)}</span>`;
-    if (sendLvl && charLv != null) html += `<span class="horae-rpg-hud-lv-badge">Lv.${charLv}</span>`;
-    for (const e of effects) {
-        html += `<i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
-    }
-// Константы
-    if (sendCur && denomCfg.length > 0) {
-        let curHtml = '';
-        for (const d of denomCfg) {
-            const v = charCur[d.name];
-            if (v == null) continue;
-            curHtml += `<span class="horae-rpg-hud-cur-tag">${d.emoji || '💰'}${escapeHtml(String(v))}</span>`;
-        }
-        if (curHtml) html += `<span class="horae-rpg-hud-right">${curHtml}</span>`;
-    }
-    html += '</div>';
-
-// Константы
-    if (sendLvl && charXp && charXp[1] > 0) {
-        const pct = Math.min(100, Math.round(charXp[0] / charXp[1] * 100));
-        html += `<div class="horae-rpg-hud-bar horae-rpg-hud-xp"><span class="horae-rpg-hud-lbl">XP</span><div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:#a78bfa;"></div></div><span class="horae-rpg-hud-val">${charXp[0]}/${charXp[1]}</span></div>`;
-    }
-
-// Константы
-    for (const [type, val] of Object.entries(bars)) {
-        const label = getRpgBarName(type, val[2]);
-        const cur = val[0], max = val[1];
-        const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
-        const color = getRpgBarColor(type);
-        html += `<div class="horae-rpg-hud-bar"><span class="horae-rpg-hud-lbl">${escapeHtml(label)}</span><div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-hud-val">${cur}/${max}</span></div>`;
-    }
-
-    html += '</div>';
-    return html;
-}
-
-/**
- * 从 present 列表与 RPG 数据中匹配在场角色
- */
-function _matchPresentChars(present, rpg) {
+/** Рендеринг RPG HUD (простые полосы состояния) для одной панели сообщения */
+function renderRpgHud(messageEl, messageIndex) {
+    const old = messageEl.querySelector('.horae-rpg-hud');
+    if (old) old.remove();
+    if (!settings.rpgMode || settings.sendRpgBars === false) return;
+
+    // Построить снимок RPG по позиции сообщения (пропустить последующие)
+    const chatLen = horaeManager.getChat()?.length || 0;
+    const skip = Math.max(0, chatLen - messageIndex - 1);
+    const rpg = horaeManager.getRpgStateAt(skip);
+    if (Object.keys(rpg.bars).length === 0 && Object.keys(rpg.status || {}).length === 0) return;
+
+    const meta = horaeManager.getMessageMeta(messageIndex);
+    const present = meta?.scene?.characters_present || [];
+    if (present.length === 0) return;
+
+    const state = horaeManager.getLatestState();
+    const barCfg = settings.rpgBarConfig || [];
     const userName = getContext().name1 || '';
-    const allRpgNames = new Set([
-        ...Object.keys(rpg.bars || {}), ...Object.keys(rpg.status || {}),
-        ...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {}),
-        ...Object.keys(rpg.currency || {}),
-    ]);
+
+    // Отфильтровать присутствующих персонажей с данными RPG
     const chars = [];
+    const allRpgNames = new Set([...Object.keys(rpg.bars), ...Object.keys(rpg.status || {})]);
     for (const p of present) {
         const n = p.trim();
         if (!n) continue;
+        // Сопоставить имена в данных RPG (учитывая {{user}} / userName)
         let match = null;
         if (allRpgNames.has(n)) match = n;
         else if (n === userName && allRpgNames.has(userName)) match = userName;
@@ -6893,30 +5076,29 @@ function _matchPresentChars(present, rpg) {
                 if (rn.includes(n) || n.includes(rn)) { match = rn; break; }
             }
         }
-        if (match && !chars.includes(match)) chars.push(match);
+        if (match) chars.push(match);
     }
-    return chars;
-}
-
-/** 为单个消息面板渲染 RPG HUD（简易状态条） */
-function renderRpgHud(messageEl, messageIndex) {
-    const old = messageEl.querySelector('.horae-rpg-hud');
-    if (old) old.remove();
-    if (!settings.rpgMode || settings.sendRpgBars === false) return;
-
-    const chatLen = horaeManager.getChat()?.length || 0;
-    const skip = Math.max(0, chatLen - messageIndex - 1);
-    const rpg = horaeManager.getRpgStateAt(skip);
-
-    const meta = horaeManager.getMessageMeta(messageIndex);
-    const present = meta?.scene?.characters_present || [];
-    if (present.length === 0) return;
-
-    const chars = _matchPresentChars(present, rpg);
     if (chars.length === 0) return;
 
     let html = '<div class="horae-rpg-hud">';
-    for (const name of chars) html += _buildCharHudHtml(name, rpg);
+    for (const name of chars) {
+        const bars = rpg.bars[name] || {};
+        const effects = rpg.status?.[name] || [];
+        html += '<div class="horae-rpg-hud-row">';
+        html += `<div class="horae-rpg-hud-name">${escapeHtml(name)}`;
+        for (const e of effects) {
+            html += ` <i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
+        }
+        html += '</div><div class="horae-rpg-hud-bars">';
+        for (const [type, val] of Object.entries(bars)) {
+            const label = getRpgBarName(type, val[2]);
+            const cur = val[0], max = val[1];
+            const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
+            const color = getRpgBarColor(type);
+            html += `<div class="horae-rpg-hud-bar"><span class="horae-rpg-hud-lbl">${escapeHtml(label)}</span><div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-hud-val">${cur}/${max}</span></div>`;
+        }
+        html += '</div></div>';
+    }
     html += '</div>';
 
     const panel = messageEl.querySelector('.horae-message-panel');
@@ -6933,10 +5115,10 @@ function renderRpgHud(messageEl, messageIndex) {
     }
 }
 
-/** 刷新所有可见面板的 RPG HUD */
+/** Обновить RPG HUD всех видимых панелей */
 function updateAllRpgHuds() {
     if (!settings.rpgMode || settings.sendRpgBars === false) return;
-// Константы
+    // Единый прямой проход для построения накопительного снимка RPG каждого сообщения
     const chat = horaeManager.getChat();
     if (!chat?.length) return;
     const snapMap = _buildRpgSnapshotMap(chat);
@@ -6946,20 +5128,11 @@ function updateAllRpgHuds() {
     });
 }
 
-/** 单次遍历构建消息→RPG快照的映射 */
+/** Единый проход для построения маппинга сообщение→снимок RPG */
 function _buildRpgSnapshotMap(chat) {
     const map = new Map();
-    const baseRpg = chat[0]?.horae_meta?.rpg || {};
-    const acc = {
-        bars: {}, status: {}, skills: {}, attributes: {},
-        levels: { ...(baseRpg.levels || {}) },
-        xp: { ...(baseRpg.xp || {}) },
-        currency: JSON.parse(JSON.stringify(baseRpg.currency || {})),
-    };
+    const acc = { bars: {}, status: {}, skills: {}, attributes: {} };
     const resolve = (raw) => horaeManager._resolveRpgOwner(raw);
-    const curConfig = baseRpg.currencyConfig || { denominations: [] };
-    const validDenoms = new Set((curConfig.denominations || []).map(d => d.name));
-
     for (let i = 0; i < chat.length; i++) {
         const changes = chat[i]?.horae_meta?._rpgChanges;
         if (changes && i > 0) {
@@ -6986,45 +5159,59 @@ function _buildRpgSnapshotMap(chat) {
                 const o = resolve(raw);
                 acc.attributes[o] = { ...(acc.attributes[o] || {}), ...vals };
             }
-            for (const [raw, val] of Object.entries(changes.levels || {})) {
-                acc.levels[resolve(raw)] = val;
-            }
-            for (const [raw, val] of Object.entries(changes.xp || {})) {
-                acc.xp[resolve(raw)] = val;
-            }
-            for (const c of (changes.currency || [])) {
-                const o = resolve(c.owner);
-                if (!validDenoms.has(c.name)) continue;
-                if (!acc.currency[o]) acc.currency[o] = {};
-                if (c.isDelta) {
-                    acc.currency[o][c.name] = (acc.currency[o][c.name] || 0) + c.value;
-                } else {
-                    acc.currency[o][c.name] = c.value;
-                }
-            }
         }
-        const snap = JSON.parse(JSON.stringify(acc));
-        snap.currencyConfig = curConfig;
-        map.set(i, snap);
+        // Глубокое копирование текущего накопленного состояния как снимка
+        map.set(i, JSON.parse(JSON.stringify(acc)));
     }
     return map;
 }
 
-/** 用预构建的快照渲染单条消息的 RPG HUD */
+/** Рендеринг RPG HUD одного сообщения с использованием предварительно построенного снимка */
 function _renderRpgHudFromSnapshot(messageEl, messageIndex, rpg) {
     const old = messageEl.querySelector('.horae-rpg-hud');
     if (old) old.remove();
-    if (!rpg) return;
+    if (!rpg || (Object.keys(rpg.bars).length === 0 && Object.keys(rpg.status || {}).length === 0)) return;
 
     const meta = horaeManager.getMessageMeta(messageIndex);
     const present = meta?.scene?.characters_present || [];
     if (present.length === 0) return;
 
-    const chars = _matchPresentChars(present, rpg);
+    const state = horaeManager.getLatestState();
+    const barCfg = settings.rpgBarConfig || [];
+    const userName = getContext().name1 || '';
+    const allRpgNames = new Set([...Object.keys(rpg.bars), ...Object.keys(rpg.status || {})]);
+    const chars = [];
+    for (const p of present) {
+        const n = p.trim();
+        if (!n) continue;
+        let match = null;
+        if (allRpgNames.has(n)) match = n;
+        else if (n === userName && allRpgNames.has(userName)) match = userName;
+        else {
+            for (const rn of allRpgNames) {
+                if (rn.includes(n) || n.includes(rn)) { match = rn; break; }
+            }
+        }
+        if (match) chars.push(match);
+    }
     if (chars.length === 0) return;
 
     let html = '<div class="horae-rpg-hud">';
-    for (const name of chars) html += _buildCharHudHtml(name, rpg);
+    for (const name of chars) {
+        const bars = rpg.bars[name] || {};
+        const effects = rpg.status?.[name] || [];
+        const displayName = name;
+        html += `<div class="horae-rpg-hud-name">${escapeHtml(displayName)}`;
+        for (const e of effects) html += ` <i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
+        html += '</div>';
+        for (const [type, val] of Object.entries(bars)) {
+            const label = getRpgBarName(type, val[2]);
+            const cur = val[0], max = val[1];
+            const pct = max > 0 ? Math.min(100, Math.round(cur / max * 100)) : 0;
+            const color = getRpgBarColor(type);
+            html += `<div class="horae-rpg-hud-bar"><span class="horae-rpg-hud-label">${escapeHtml(label)}</span><div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:${color};"></div></div><span class="horae-rpg-hud-val">${cur}/${max}</span></div>`;
+        }
+    }
     html += '</div>';
 
     const panel = messageEl.querySelector('.horae-message-panel');
@@ -7042,10 +5229,9 @@ function _renderRpgHudFromSnapshot(messageEl, messageIndex, rpg) {
 }
 
 /**
- * 刷新所有显示
+ * Обновить все отображения
  */
 function refreshAllDisplays() {
-    buildPanelContent._affCache = null;
     updateStatusDisplay();
     updateAgendaDisplay();
     updateTimelineDisplay();
@@ -7057,33 +5243,9 @@ function refreshAllDisplays() {
     enforceHiddenState();
 }
 
-/** chat[0] 上的全局键——无法由 rebuild 系列函数重建，需在 meta 重置时保留 */
-const _GLOBAL_META_KEYS = [
-    'autoSummaries', '_deletedNpcs', '_deletedAgendaTexts',
-    'locationMemory', 'relationships', 'rpg',
-];
-
-function _saveGlobalMeta(meta) {
-    if (!meta) return null;
-    const saved = {};
-    for (const key of _GLOBAL_META_KEYS) {
-        if (meta[key] !== undefined) saved[key] = meta[key];
-    }
-    return Object.keys(saved).length ? saved : null;
-}
-
-function _restoreGlobalMeta(meta, saved) {
-    if (!saved || !meta) return;
-    for (const key of _GLOBAL_META_KEYS) {
-        if (saved[key] !== undefined && meta[key] === undefined) {
-            meta[key] = saved[key];
-        }
-    }
-}
-
 /**
- * 提取消息事件上的摘要压缩标记（_compressedBy / _summaryId），
- * 用于在 createEmptyMeta() 重置后恢复，防止摘要事件从时间线中逃逸
+ * Извлечь метки сжатия сводки из событий сообщения (_compressedBy / _summaryId),
+ * Используется для восстановления после сброса createEmptyMeta(), предотвращает утечку событий сводки из хронологии
  */
 function _saveCompressedFlags(meta) {
     if (!meta?.events?.length) return null;
@@ -7102,8 +5264,8 @@ function _saveCompressedFlags(meta) {
 }
 
 /**
- * 将保存的压缩标记恢复到重新解析后的事件上；
- * 若新事件数量少于保存的标记，则将多出的摘要事件追加回去
+ * Восстановить сохранённые метки сжатия в повторно разобранные события;
+ * Если новых событий меньше, чем сохранённых меток, лишние события сводки добавляются обратно
  */
 function _restoreCompressedFlags(meta, saved) {
     if (!saved?.length || !meta) return;
@@ -7117,7 +5279,7 @@ function _restoreCompressedFlags(meta, saved) {
             evt._compressedBy = nonSummaryFlags[i]._compressedBy;
         }
     }
-// Константы
+    // Если количество несводочных событий не совпадает, принудительное сопоставление по summaryId
     if (nonSummaryFlags.length > 0 && meta.events.length > 0) {
         const chat = horaeManager.getChat();
         const sums = chat?.[0]?.horae_meta?.autoSummaries || [];
@@ -7128,7 +5290,7 @@ function _restoreCompressedFlags(meta, saved) {
             if (matchFlag) evt._compressedBy = matchFlag._compressedBy;
         }
     }
-// Константы
+    // Добавить события карточек сводок обратно (processAIResponse не разбирает карточки сводок из оригинального текста)
     for (const sf of summaryFlags) {
         const alreadyExists = meta.events.some(e => e._summaryId === sf._summaryId);
         if (!alreadyExists && sf._summaryId) {
@@ -7136,17 +5298,17 @@ function _restoreCompressedFlags(meta, saved) {
                 summary: sf.summary,
                 isSummary: true,
                 _summaryId: sf._summaryId,
-                level: 'Сводка',
+                level: '摘要',
             });
         }
     }
 }
 
 /**
- * 校验并修复摘要范围内消息的 is_hidden 和 _compressedBy 状态，
- * 防止 SillyTavern 重渲染或 saveChat 竞态导致隐藏/压缩标记丢失
+ * Проверить и исправить состояния is_hidden и _compressedBy в сообщениях в диапазоне сводки,
+ * Предотвратить потерю меток скрытия/сжатия из-за перерендеринга SillyTavern или гонки saveChat
  */
-async function enforceHiddenState() {
+function enforceHiddenState() {
     const chat = horaeManager.getChat();
     if (!chat?.length) return;
     const sums = chat[0]?.horae_meta?.autoSummaries;
@@ -7158,12 +5320,14 @@ async function enforceHiddenState() {
         const summaryId = s.id;
         for (let i = s.range[0]; i <= s.range[1]; i++) {
             if (i === 0 || !chat[i]) continue;
+            // Исправить is_hidden
             if (!chat[i].is_hidden) {
                 chat[i].is_hidden = true;
                 fixed++;
                 const $el = $(`.mes[mesid="${i}"]`);
                 if ($el.length) $el.attr('is_hidden', 'true');
             }
+            // Исправить _compressedBy
             const events = chat[i].horae_meta?.events;
             if (events) {
                 for (const evt of events) {
@@ -7176,14 +5340,14 @@ async function enforceHiddenState() {
         }
     }
     if (fixed > 0) {
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
-        await getContext().saveChat();
+        console.log(`[Horae] enforceHiddenState: исправлено ${fixed} состояний сводок`);
+        getContext().saveChat();
     }
 }
 
 /**
- * 手动一键修复：遍历所有活跃摘要，强制恢复 is_hidden + _compressedBy，
- * 并同步 DOM 属性。返回修复的条目数。
+ * Ручное исправление одним нажатием: перебрать все активные сводки, принудительно восстановить is_hidden + _compressedBy,
+ * синхронизировать DOM атрибуты. Возвращает количество исправлений.
  */
 function repairAllSummaryStates() {
     const chat = horaeManager.getChat();
@@ -7197,14 +5361,14 @@ function repairAllSummaryStates() {
         const summaryId = s.id;
         for (let i = s.range[0]; i <= s.range[1]; i++) {
             if (i === 0 || !chat[i]) continue;
-// Константы
+            // Принудительное is_hidden
             if (!chat[i].is_hidden) {
                 chat[i].is_hidden = true;
                 fixed++;
             }
             const $el = $(`.mes[mesid="${i}"]`);
             if ($el.length) $el.attr('is_hidden', 'true');
-// Константы
+            // Принудительное _compressedBy
             const events = chat[i].horae_meta?.events;
             if (events) {
                 for (const evt of events) {
@@ -7217,13 +5381,13 @@ function repairAllSummaryStates() {
         }
     }
     if (fixed > 0) {
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] repairAllSummaryStates: исправлено ${fixed}`);
         getContext().saveChat();
     }
     return fixed;
 }
 
-/** 刷新所有已展开的底部面板 */
+/** Обновить все раскрытые нижние панели */
 function refreshVisiblePanels() {
     document.querySelectorAll('.horae-message-panel').forEach(panelEl => {
         const msgEl = panelEl.closest('.mes');
@@ -7242,7 +5406,7 @@ function refreshVisiblePanels() {
 }
 
 /**
- * 更新场景记忆列表显示
+ * Обновить отображение списка памяти о локациях
  */
 function updateLocationMemoryDisplay() {
     const listEl = document.getElementById('horae-location-list');
@@ -7256,13 +5420,13 @@ function updateLocationMemoryDisplay() {
         listEl.innerHTML = `
             <div class="horae-empty-state">
                 <i class="fa-solid fa-map-location-dot"></i>
-                <span>Нет записей о локациях</span>
-                <span style="font-size:11px;opacity:0.6;margin-top:4px;">После включения «Настройки → Память о локациях» ИИ будет автоматически записывать новые места</span>
+                <span>Нет памяти о локациях</span>
+                <span style="font-size:11px;opacity:0.6;margin-top:4px;">После включения «Настройки → Память о локациях» ИИ будет автоматически записывать информацию при первом посещении нового места</span>
             </div>`;
         return;
     }
     
-// Константы
+    // Группировка по родителям: «Таверна·Зал» → parent=Таверна, child=Зал
     const SEP = /[·・\-\/\|]/;
     const groups = {};   // { parentName: { info?, children: [{name,info}] } }
     const standalone = []; // Независимые записи без дочерних
@@ -7273,12 +5437,12 @@ function updateLocationMemoryDisplay() {
             const parent = name.substring(0, sepMatch.index).trim();
             if (!groups[parent]) groups[parent] = { children: [] };
             groups[parent].children.push({ name, info });
-// Константы
+            // Если существует родительская запись с таким же именем — связать
             if (locMem[parent]) groups[parent].info = locMem[parent];
         } else if (groups[name]) {
             groups[name].info = info;
         } else {
-// Константы
+            // Проверить, есть ли уже дочерние ссылки
             const hasChildren = entries.some(([n]) => n !== name && n.startsWith(name) && SEP.test(n.charAt(name.length)));
             if (hasChildren) {
                 if (!groups[name]) groups[name] = { children: [] };
@@ -7302,7 +5466,7 @@ function updateLocationMemoryDisplay() {
                     <div class="horae-loc-name"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(displayName)} ${currentBadge}</div>
                     <div class="horae-loc-actions">
                         <button class="horae-loc-edit" title="Редактировать"><i class="fa-solid fa-pen"></i></button>
-                        <button class="horae-loc-delete" title="Редактировать"><i class="fa-solid fa-trash"></i></button>
+                        <button class="horae-loc-delete" title="Удалить"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
                 <div class="horae-loc-desc">${info.desc || '<span class="horae-empty-hint">Нет описания</span>'}</div>
@@ -7311,7 +5475,7 @@ function updateLocationMemoryDisplay() {
     };
     
     let html = '';
-// Константы
+    // Рендеринг групп с дочерними
     for (const [parentName, group] of Object.entries(groups)) {
         const isParentCurrent = currentLoc.startsWith(parentName);
         html += `<div class="horae-loc-group${isParentCurrent ? ' horae-loc-group-active' : ''}">
@@ -7325,12 +5489,12 @@ function updateLocationMemoryDisplay() {
         for (const child of group.children) html += buildCard(child.name, child.info, true);
         html += '</div></div>';
     }
-// Константы
+    // Рендеринг независимых записей
     for (const { name, info } of standalone) html += buildCard(name, info, false);
     
     listEl.innerHTML = html;
     
-// Константы
+    // Переключение свернуть/развернуть
     listEl.querySelectorAll('.horae-loc-group-header').forEach(header => {
         header.addEventListener('click', () => {
             const body = header.nextElementSibling;
@@ -7351,24 +5515,24 @@ function updateLocationMemoryDisplay() {
     listEl.querySelectorAll('.horae-loc-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
             const name = btn.closest('.horae-location-card').dataset.locationName;
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+            if (!confirm(`Удалить память о локации «${name}»?`)) return;
             const chat = horaeManager.getChat();
             if (chat?.[0]?.horae_meta?.locationMemory) {
-// Константы
+                // Пометить как удалённое, а не удалять сразу, чтобы rebuildLocationMemory не восстановил из истории
                 chat[0].horae_meta.locationMemory[name] = {
                     ...chat[0].horae_meta.locationMemory[name],
                     _deleted: true
                 };
                 await getContext().saveChat();
                 updateLocationMemoryDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Локация «${name}» удалена`, 'info');
             }
         });
     });
 }
 
 /**
- * 打开场景记忆编辑弹窗
+ * Открыть диалог редактирования памяти о локации
  */
 function openLocationEditModal(locationName) {
     closeEditModal();
@@ -7380,15 +5544,15 @@ function openLocationEditModal(locationName) {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-map-location-dot"></i> ${isNew ? 'Добавить место' : 'Добавить место'}
+                    <i class="fa-solid fa-map-location-dot"></i> ${isNew ? 'Добавить место' : 'Редактировать память о локации'}
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-edit-field">
                         <label>Название места</label>
-                        <input type="text" id="insert-event-date" value="${currentDate}" placeholder="Например 2026/2/14">
+                        <input type="text" id="horae-loc-edit-name" value="${escapeHtml(locationName || '')}" placeholder="напр.: Безымянная таверна · Зал">
                     </div>
                     <div class="horae-edit-field">
-                        <label>Описание сцены</label>
+                        <label>Описание локации</label>
                         <textarea id="horae-loc-edit-desc" rows="5" placeholder="Опишите постоянные физические характеристики места...">${escapeHtml(existing.desc || '')}</textarea>
                     </div>
                 </div>
@@ -7426,14 +5590,14 @@ function openLocationEditModal(locationName) {
         if (isNew) {
             mem[name] = { desc, firstSeen: now, lastUpdated: now, _userEdited: true };
         } else if (locationName !== name) {
-// Константы
+            // Переименование: каскадное обновление дочерних + запись псевдонима
             const SEP = /[·・\-\/\|]/;
             const oldEntry = mem[locationName] || {};
             const aliases = oldEntry._aliases || [];
             if (!aliases.includes(locationName)) aliases.push(locationName);
             delete mem[locationName];
             mem[name] = { ...oldEntry, desc, lastUpdated: now, _userEdited: true, _aliases: aliases };
-// Константы
+            // Проверить переименование родителя, каскадно обновить всех потомков
             const childKeys = Object.keys(mem).filter(k => {
                 const sepMatch = k.match(SEP);
                 return sepMatch && k.substring(0, sepMatch.index).trim() === locationName;
@@ -7462,15 +5626,15 @@ function openLocationEditModal(locationName) {
 }
 
 /**
- * 合并两个地点的场景记忆
+ * Объединить память о двух локациях
  */
 function openLocationMergeModal() {
     closeEditModal();
     const locMem = horaeManager.getLocationMemory();
-    const entries = Object.entries(locMem).filter(([, info]) => !info._deleted);
+    const entries = Object.entries(locMem);
     
     if (entries.length < 2) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Для объединения нужно минимум 2 места', 'warning');
         return;
     }
     
@@ -7480,19 +5644,19 @@ function openLocationMergeModal() {
         <div id="horae-edit-modal" class="horae-modal">
             <div class="horae-modal-content">
                 <div class="horae-modal-header">
-                    <i class="fa-solid fa-code-merge"></i> Объединить локации
+                    <i class="fa-solid fa-code-merge"></i> Объединить места
                 </div>
                 <div class="horae-modal-body horae-edit-modal-body">
                     <div class="horae-setting-hint" style="margin-bottom: 12px;">
                         <i class="fa-solid fa-circle-info"></i>
-                        Выберите две локации для объединения. Описание источника будет добавлено к целевой локации.
+                        Выберите два места для объединения. Описание источника будет добавлено к целевому месту.
                     </div>
                     <div class="horae-edit-field">
                         <label>Источник (будет удалён)</label>
                         <select id="horae-merge-source">${options}</select>
                     </div>
                     <div class="horae-edit-field">
-                        <label>Целевая локация (сохранится)</label>
+                        <label>Цель (сохраняется)</label>
                         <select id="horae-merge-target">${options}</select>
                     </div>
                     <div id="horae-merge-preview" class="horae-merge-preview" style="display:none;">
@@ -7554,7 +5718,7 @@ function openLocationMergeModal() {
             return;
         }
         
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+        if (!confirm(`Объединить «${source}» с «${target}»?\n«${source}» будет удалено.`)) return;
         
         const chat = horaeManager.getChat();
         const mem = chat?.[0]?.horae_meta?.locationMemory;
@@ -7569,7 +5733,7 @@ function openLocationMergeModal() {
         await getContext().saveChat();
         closeEditModal();
         updateLocationMemoryDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`«${source}» объединено с «${target}»`, 'success');
     });
     
     document.getElementById('horae-merge-cancel').addEventListener('click', () => closeEditModal());
@@ -7584,14 +5748,13 @@ function updateTokenCounter() {
         const combined = `${dataPrompt}\n${rulesPrompt}`;
         const tokens = estimateTokens(combined);
         el.textContent = `≈ ${tokens.toLocaleString()}`;
-    } catch (err) {
-        console.warn('[Horae] Переход не удался:', err);
+    } catch {
         el.textContent = '--';
     }
 }
 
 /**
- * 滚动到指定消息（支持折叠/懒加载的消息展开跳转）
+ * Прокрутить к указанному сообщению (поддержка раскрытия свёрнутых/ленивозагруженных сообщений)
  */
 async function scrollToMessage(messageId) {
     let messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
@@ -7601,8 +5764,8 @@ async function scrollToMessage(messageId) {
         setTimeout(() => messageEl.classList.remove('horae-highlight'), 2000);
         return;
     }
-// Константы
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+    // Сообщение не в DOM (свёрнуто/лениво загружено), предложить раскрыть
+    if (!confirm(`Целевое сообщение #${messageId} далеко и свёрнуто, прямой переход невозможен.\nРазвернуть и перейти к нему?`)) return;
     try {
         const slashModule = await import('/scripts/slash-commands.js');
         const exec = slashModule.executeSlashCommandsWithOptions;
@@ -7614,33 +5777,33 @@ async function scrollToMessage(messageId) {
             messageEl.classList.add('horae-highlight');
             setTimeout(() => messageEl.classList.remove('horae-highlight'), 2000);
         } else {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+            showToast(`Не удалось развернуть сообщение #${messageId}, найдите вручную`, 'warning');
         }
     } catch (err) {
         console.warn('[Horae] Переход не удался:', err);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Переход не удался: ${err.message || 'неизвестная ошибка'}`, 'error');
     }
 }
 
-/** 应用顶部图标可见性 */
+/** Применить видимость верхней иконки */
 function applyTopIconVisibility() {
     const show = settings.showTopIcon !== false;
     if (show) {
         $('#horae_drawer').show();
     } else {
-// Константы
+        // Сначала закрыть панель, затем скрыть
         if ($('#horae_drawer_icon').hasClass('openIcon')) {
             $('#horae_drawer_icon').toggleClass('openIcon closedIcon');
             $('#horae_drawer_content').toggleClass('openDrawer closedDrawer').hide();
         }
         $('#horae_drawer').hide();
     }
-// Константы
+    // Синхронизировать оба переключателя
     $('#horae-setting-show-top-icon').prop('checked', show);
     $('#horae-ext-show-top-icon').prop('checked', show);
 }
 
-/** 应用消息面板宽度和偏移设置（底部栏 + RPG HUD 统一跟随） */
+/** Применить настройки ширины и смещения панели сообщений (нижняя панель + RPG HUD) */
 function applyPanelWidth() {
     const width = Math.max(50, Math.min(100, settings.panelWidth || 100));
     const offset = Math.max(0, settings.panelOffset || 0);
@@ -7652,7 +5815,7 @@ function applyPanelWidth() {
     });
 }
 
-/** 内置预设主题 */
+/** Встроенные предустановленные темы */
 const BUILTIN_THEMES = {
     'sakura': {
         name: 'Сакура',
@@ -7666,7 +5829,7 @@ const BUILTIN_THEMES = {
         }
     },
     'forest': {
-        name: 'Сакура',
+        name: 'Лесной',
         variables: {
             '--horae-primary': '#059669', '--horae-primary-light': '#34d399', '--horae-primary-dark': '#047857',
             '--horae-accent': '#fbbf24', '--horae-success': '#10b981', '--horae-warning': '#f59e0b',
@@ -7677,7 +5840,7 @@ const BUILTIN_THEMES = {
         }
     },
     'ocean': {
-        name: 'Сакура',
+        name: 'Океанский',
         variables: {
             '--horae-primary': '#3b82f6', '--horae-primary-light': '#60a5fa', '--horae-primary-dark': '#1d4ed8',
             '--horae-accent': '#f59e0b', '--horae-success': '#10b981', '--horae-warning': '#f59e0b',
@@ -7689,7 +5852,7 @@ const BUILTIN_THEMES = {
     }
 };
 
-/** 获取当前主题对象（内置或自定义） */
+/** Получить текущий объект темы (встроенный или пользовательский) */
 function resolveTheme(mode) {
     if (BUILTIN_THEMES[mode]) return BUILTIN_THEMES[mode];
     if (mode.startsWith('custom-')) {
@@ -7706,14 +5869,14 @@ function isLightMode() {
     return !!(theme && theme.isLight);
 }
 
-/** 应用主题模式（dark / light / 内置预设 / custom-{index}） */
+/** Применить режим темы (dark / light / встроенная / custom-{index}) */
 function applyThemeMode() {
     const mode = settings.themeMode || 'dark';
     const theme = resolveTheme(mode);
     const isLight = mode === 'light' || !!(theme && theme.isLight);
     const hasCustomVars = !!(theme && theme.variables);
 
-// Константы
+    // Переключить класс horae-light (нужен для дневного режима, активирует детали UI — рамки чекбоксов и т.д.)
     const targets = [
         document.getElementById('horae_drawer'),
         ...document.querySelectorAll('.horae-message-panel'),
@@ -7722,7 +5885,7 @@ function applyThemeMode() {
     ].filter(Boolean);
     targets.forEach(el => el.classList.toggle('horae-light', isLight));
 
-// Константы
+    // Инжектировать переменные темы
     let themeStyleEl = document.getElementById('horae-theme-vars');
     if (hasCustomVars) {
         if (!themeStyleEl) {
@@ -7733,7 +5896,7 @@ function applyThemeMode() {
         const vars = Object.entries(theme.variables)
             .map(([k, v]) => `  ${k}: ${v};`)
             .join('\n');
-// Константы
+        // Дневная пользовательская тема: добавить .horae-light для переопределения переменных класса в style.css
         const needsLightOverride = isLight && mode !== 'light';
         const selectors = needsLightOverride
             ? '#horae_drawer,\n#horae_drawer.horae-light,\n.horae-message-panel,\n.horae-message-panel.horae-light,\n.horae-modal,\n.horae-modal.horae-light,\n.horae-context-menu,\n.horae-context-menu.horae-light,\n.horae-rpg-hud,\n.horae-rpg-hud.horae-light,\n.horae-rpg-dice-panel,\n.horae-rpg-dice-panel.horae-light,\n.horae-progress-overlay,\n.horae-progress-overlay.horae-light'
@@ -7743,7 +5906,7 @@ function applyThemeMode() {
         if (themeStyleEl) themeStyleEl.remove();
     }
 
-// Константы
+    // Инжектировать прикреплённый CSS темы
     let themeCssEl = document.getElementById('horae-theme-css');
     if (theme && theme.css) {
         if (!themeCssEl) {
@@ -7757,7 +5920,7 @@ function applyThemeMode() {
     }
 }
 
-/** 注入用户自定义CSS */
+/** Инжектировать пользовательский CSS */
 function applyCustomCSS() {
     let styleEl = document.getElementById('horae-custom-style');
     const css = (settings.customCSS || '').trim();
@@ -7773,16 +5936,16 @@ function applyCustomCSS() {
     styleEl.textContent = css;
 }
 
-/** 导出当前美化为JSON文件 */
+/** Экспортировать текущую тему в JSON */
 function exportTheme() {
     const theme = {
-        name: 'Сакура',
+        name: 'Моя тема Horae',
         author: '',
         version: '1.0',
         variables: {},
         css: settings.customCSS || ''
     };
-// Константы
+    // Считать переменные текущей темы
     const root = document.getElementById('horae_drawer');
     if (root) {
         const style = getComputedStyle(root);
@@ -7805,10 +5968,10 @@ function exportTheme() {
     a.download = 'horae-theme.json';
     a.click();
     URL.revokeObjectURL(url);
-    showToast('Таблица экспортирована', 'info');
+    showToast('Тема экспортирована', 'info');
 }
 
-/** 导入美化JSON文件 */
+/** Импортировать тему из JSON */
 function importTheme() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -7820,7 +5983,7 @@ function importTheme() {
             const text = await file.text();
             const theme = JSON.parse(text);
             if (!theme.variables || typeof theme.variables !== 'object') {
-                showToast('Таблица экспортирована', 'error');
+                showToast('Неверный файл темы: отсутствует поле variables', 'error');
                 return;
             }
             theme.name = theme.name || file.name.replace('.json', '');
@@ -7828,29 +5991,29 @@ function importTheme() {
             settings.customThemes.push(theme);
             saveSettings();
             refreshThemeSelector();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+            showToast(`Тема «${theme.name}» импортирована`, 'success');
         } catch (err) {
-            showToast('Таблица экспортирована', 'error');
-            console.error('[Horae] Ошибка сжатия:', err);
+            showToast('Ошибка разбора файла темы', 'error');
+            console.error('[Horae] Ошибка импорта темы:', err);
         }
     });
     input.click();
 }
 
-/** 刷新主题选择器下拉选项 */
+/** Обновить выпадающий список тем */
 function refreshThemeSelector() {
     const sel = document.getElementById('horae-setting-theme-mode');
     if (!sel) return;
-// Константы
+    // Очистить динамические опции (встроенные + пользовательские)
     sel.querySelectorAll('option:not([value="dark"]):not([value="light"])').forEach(o => o.remove());
-// Константы
+    // Встроенные предустановленные темы
     for (const [key, t] of Object.entries(BUILTIN_THEMES)) {
         const opt = document.createElement('option');
         opt.value = key;
         opt.textContent = `🎨 ${t.name}`;
         sel.appendChild(opt);
     }
-// Константы
+    // Пользовательские импортированные темы
     const themes = settings.customThemes || [];
     themes.forEach((t, i) => {
         const opt = document.createElement('option');
@@ -7861,26 +6024,26 @@ function refreshThemeSelector() {
     sel.value = settings.themeMode || 'dark';
 }
 
-/** 删除已导入的自定义主题 */
+/** Удалить импортированную пользовательскую тему */
 function deleteCustomTheme(index) {
     const themes = settings.customThemes || [];
     if (!themes[index]) return;
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+    if (!confirm(`Удалить тему «${themes[index].name}»?`)) return;
     const currentMode = settings.themeMode || 'dark';
     themes.splice(index, 1);
     settings.customThemes = themes;
-// Константы
+    // Если удалённая тема — текущая, откатить на тёмную
     if (currentMode === `custom-${index}` || (currentMode.startsWith('custom-') && parseInt(currentMode.split('-')[1]) >= index)) {
         settings.themeMode = 'dark';
         applyThemeMode();
     }
     saveSettings();
     refreshThemeSelector();
-    showToast('Таблица экспортирована', 'info');
+    showToast('Тема удалена', 'info');
 }
 
 // ============================================
-// Константы
+// Инструмент настройки темы (Theme Designer)
 // ============================================
 
 function _tdHslToHex(h, s, l) {
@@ -7968,7 +6131,7 @@ function _tdGenerateVars(hue, sat, brightness, accentHex, colorLight) {
 
 function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
     const parts = [];
-// Константы
+    // Верхняя иконка (#horae_drawer)
     if (images.drawer && bgHex) {
         const c = _tdHexToRgb(drawerBg || bgHex);
         const a = (1 - (opacities.drawer || 30) / 100).toFixed(2);
@@ -7979,7 +6142,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
   background-repeat: no-repeat, no-repeat !important;
 }`);
     }
-// Константы
+    // Изображение шапки панели
     if (images.header) {
         parts.push(`#horae_drawer .drawer-header {
   background-image: url('${images.header}') !important;
@@ -7988,7 +6151,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
   background-repeat: no-repeat !important;
 }`);
     }
-// Константы
+    // Фоновое изображение панели
     const bodyBg = drawerBg || bgHex;
     if (images.body && bodyBg) {
         const c = _tdHexToRgb(bodyBg);
@@ -8002,7 +6165,7 @@ function _tdBuildImageCSS(images, opacities, bgHex, drawerBg) {
     } else if (drawerBg) {
         parts.push(`.horae-tab-contents { background-color: ${drawerBg} !important; }`);
     }
-// Константы
+    // Изображение нижней панели сообщений — только для свёрнутой полосы toggle, не применяется к раскрытому содержимому
     if (images.panel && bgHex) {
         const c = _tdHexToRgb(bgHex);
         const a = (1 - (opacities.panel || 30) / 100).toFixed(2);
@@ -8025,7 +6188,7 @@ function openThemeDesigner() {
     const accStr = cs?.getPropertyValue('--horae-accent').trim() || '#f59e0b';
     const initHsl = _tdParseColorHsl(priStr);
 
-// Константы
+    // Попробовать восстановить все настройки из текущей пользовательской темы
     let savedImages = { drawer: '', header: '', body: '', panel: '' };
     let savedImgOp = { drawer: 30, header: 50, body: 30, panel: 30 };
     let savedName = '', savedAuthor = '', savedDrawerBg = '';
@@ -8053,8 +6216,6 @@ function openThemeDesigner() {
         rpgOpacity: savedDesigner?.rpgOpacity ?? 85,
         diceColor: savedDesigner?.diceColor ?? '#1a1a2e',
         diceOpacity: savedDesigner?.diceOpacity ?? 15,
-        radarColor: savedDesigner?.radarColor ?? '',
-        radarLabel: savedDesigner?.radarLabel ?? '',
         overrides: {}
     };
 
@@ -8077,12 +6238,12 @@ function openThemeDesigner() {
     modal.className = 'horae-modal horae-theme-designer' + (isLightMode() ? ' horae-light' : '');
     modal.innerHTML = `
     <div class="horae-modal-content htd-content">
-        <div class="htd-header"><i class="fa-solid fa-paint-roller"></i> Инструмент оформления</div>
+        <div class="htd-header"><i class="fa-solid fa-paint-roller"></i> Инструмент настройки темы</div>
         <div class="htd-body">
             <div class="htd-section">
                 <div class="htd-section-title">Быстрая настройка цвета</div>
                 <div class="htd-field">
-                    <span class="htd-label">Цветовой тон темы</span>
+                    <span class="htd-label">Оттенок темы</span>
                     <div class="htd-hue-bar" id="htd-hue-bar"><div class="htd-hue-ind" id="htd-hue-ind"></div></div>
                 </div>
                 <div class="htd-field">
@@ -8094,7 +6255,7 @@ function openThemeDesigner() {
                     <input type="range" class="htd-slider htd-colorlight" id="htd-cl" min="15" max="85" value="${st.colorLight}">
                 </div>
                 <div class="htd-field">
-                    <span class="htd-label">День/Ночь <em id="htd-briv">${st.bright <= 50 ? 'Ночь' : 'Ночь'}</em></span>
+                    <span class="htd-label">Ночной/дневной <em id="htd-briv">${st.bright <= 50 ? 'Ночь' : 'День'}</em></span>
                     <input type="range" class="htd-slider htd-daynight" id="htd-bri" min="0" max="100" value="${st.bright}">
                 </div>
                 <div class="htd-field">
@@ -8122,8 +6283,8 @@ function openThemeDesigner() {
                 </div>
                 <div id="htd-imgs-section" style="display:none;">
                     ${imgHtml('drawer', 'Верхняя иконка')}
-                    ${imgHtml('header', 'Верхняя иконка')}
-                    ${imgHtml('body', 'Верхняя иконка')}
+                    ${imgHtml('header', 'Шапка панели')}
+                    ${imgHtml('body', 'Фон содержимого')}
                     <div class="htd-img-group">
                         <div class="htd-img-label">Цвет фона панели</div>
                         <div class="htd-field">
@@ -8134,13 +6295,13 @@ function openThemeDesigner() {
                             </div>
                         </div>
                     </div>
-                    ${imgHtml('panel', 'Верхняя иконка')}
+                    ${imgHtml('panel', 'Нижняя панель сообщений')}
                 </div>
             </div>
 
             <div class="htd-section">
                 <div class="htd-section-title htd-toggle" id="htd-rpg-t">
-                    <i class="fa-solid fa-shield-halved"></i> Полосы RPG
+                    <i class="fa-solid fa-shield-halved"></i> RPG Статус
                     <i class="fa-solid fa-chevron-down htd-arrow"></i>
                 </div>
                 <div id="htd-rpg-section" style="display:none;">
@@ -8178,34 +6339,9 @@ function openThemeDesigner() {
                 </div>
             </div>
 
-            <div class="htd-section">
-                <div class="htd-section-title htd-toggle" id="htd-radar-t">
-                    <i class="fa-solid fa-chart-simple"></i> Радар-диаграмма
-                    <i class="fa-solid fa-chevron-down htd-arrow"></i>
-                </div>
-                <div id="htd-radar-section" style="display:none;">
-                    <div class="htd-field">
-                        <span class="htd-label">Цвет данных <em style="opacity:.5">(пусто = цвет темы)</em></span>
-                        <div class="htd-color-row">
-                            <input type="color" id="htd-radar-color" value="${st.radarColor || priStr}" class="htd-cpick">
-                            <span class="htd-hex" id="htd-radar-color-hex">${st.radarColor || 'По теме'}</span>
-                            <button class="horae-btn" id="htd-radar-color-clear" style="font-size:10px;padding:2px 8px;">Очистить</button>
-                        </div>
-                    </div>
-                    <div class="htd-field">
-                        <span class="htd-label">Цвет подписей <em style="opacity:.5">(пусто = цвет текста)</em></span>
-                        <div class="htd-color-row">
-                            <input type="color" id="htd-radar-label" value="${st.radarLabel || '#e2e8f0'}" class="htd-cpick">
-                            <span class="htd-hex" id="htd-radar-label-hex">${st.radarLabel || 'По теме'}</span>
-                            <button class="horae-btn" id="htd-radar-label-clear" style="font-size:10px;padding:2px 8px;">Очистить</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div class="htd-section htd-save-sec">
-                <div class="htd-field"><span class="htd-label">Название</span><input type="text" id="htd-name" class="htd-input" placeholder="Моё оформление" value="${escapeHtml(savedName)}"></div>
-                <div class="htd-field"><span class="htd-label">Автор</span><input type="text" id="htd-author" class="htd-input" placeholder="Анонимно" value="${escapeHtml(savedAuthor)}"></div>
+                <div class="htd-field"><span class="htd-label">Название</span><input type="text" id="htd-name" class="htd-input" placeholder="Моя тема" value="${escapeHtml(savedName)}"></div>
+                <div class="htd-field"><span class="htd-label">Автор</span><input type="text" id="htd-author" class="htd-input" placeholder="Аноним" value="${escapeHtml(savedAuthor)}"></div>
                 <div class="htd-btn-row">
                     <button class="horae-btn primary" id="htd-save"><i class="fa-solid fa-floppy-disk"></i> Сохранить</button>
                     <button class="horae-btn" id="htd-export"><i class="fa-solid fa-file-export"></i> Экспорт</button>
@@ -8228,21 +6364,18 @@ function openThemeDesigner() {
         const base = _tdGenerateVars(st.hue, st.sat, st.bright, st.accent, st.colorLight);
         const vars = { ...base, ...st.overrides };
 
-// Константы
+        // Переменная фона RPG HUD (прозрачность: 100=полностью прозрачный, 0=непрозрачный)
         if (st.rpgColor) {
             const rc = _tdHexToRgb(st.rpgColor);
             const ra = (1 - (st.rpgOpacity ?? 85) / 100).toFixed(2);
             vars['--horae-rpg-bg'] = `rgba(${rc.r},${rc.g},${rc.b},${ra})`;
         }
-// Константы
+        // Переменная фона панели кубиков
         if (st.diceColor) {
             const dc = _tdHexToRgb(st.diceColor);
             const da = (1 - (st.diceOpacity ?? 15) / 100).toFixed(2);
             vars['--horae-dice-bg'] = `rgba(${dc.r},${dc.g},${dc.b},${da})`;
         }
-// Константы
-        if (st.radarColor) vars['--horae-radar-color'] = st.radarColor;
-        if (st.radarLabel) vars['--horae-radar-label'] = st.radarLabel;
 
         let previewEl = document.getElementById('horae-designer-preview');
         if (!previewEl) { previewEl = document.createElement('style'); previewEl.id = 'horae-designer-preview'; document.head.appendChild(previewEl); }
@@ -8316,7 +6449,7 @@ function openThemeDesigner() {
 
     modal.querySelector('#htd-bri').addEventListener('input', function () {
         st.bright = +this.value;
-        modal.querySelector('#htd-briv').textContent = st.bright <= 50 ? 'Ночь' : 'Ночь';
+        modal.querySelector('#htd-briv').textContent = st.bright <= 50 ? 'Ночь' : 'День';
         st.overrides = {};
         update();
     }, { signal: sig });
@@ -8341,11 +6474,11 @@ function openThemeDesigner() {
 
     // ---- Fine pickers ----
     const FINE_VARS = [
-        ['--horae-primary', 'Основной цвет'], ['--horae-primary-light', 'Основной цвет'], ['--horae-primary-dark', 'Основной цвет'],
-        ['--horae-accent', 'Основной цвет'], ['--horae-success', 'Основной цвет'], ['--horae-warning', 'Основной цвет'],
-        ['--horae-danger', 'Опасность'], ['--horae-info', 'Опасность'],
-        ['--horae-bg', 'Основной цвет'], ['--horae-bg-secondary', 'Основной цвет'], ['--horae-bg-hover', 'Основной цвет'],
-        ['--horae-text', 'Текст'], ['--horae-text-muted', 'Текст']
+        ['--horae-primary', 'Основной цвет'], ['--horae-primary-light', 'Основной светлый'], ['--horae-primary-dark', 'Основной тёмный'],
+        ['--horae-accent', 'Акцент'], ['--horae-success', 'Успех'], ['--horae-warning', 'Предупреждение'],
+        ['--horae-danger', 'Опасность'], ['--horae-info', 'Информация'],
+        ['--horae-bg', 'Фон'], ['--horae-bg-secondary', 'Вторичный фон'], ['--horae-bg-hover', 'Фон при наведении'],
+        ['--horae-text', 'Текст'], ['--horae-text-muted', 'Вторичный текст']
     ];
     function buildFine() {
         const c = modal.querySelector('#htd-fine-body');
@@ -8399,7 +6532,7 @@ function openThemeDesigner() {
         update();
     }, { signal: sig });
 
-// Константы
+    // ---- RPG Статус ----
     modal.querySelector('#htd-rpg-t').addEventListener('click', () => {
         const sec = modal.querySelector('#htd-rpg-section');
         sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
@@ -8415,7 +6548,7 @@ function openThemeDesigner() {
         update();
     }, { signal: sig });
 
-// Константы
+    // ---- Панель кубиков ----
     modal.querySelector('#htd-dice-t').addEventListener('click', () => {
         const sec = modal.querySelector('#htd-dice-section');
         sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
@@ -8428,32 +6561,6 @@ function openThemeDesigner() {
     modal.querySelector('#htd-dice-op').addEventListener('input', function () {
         st.diceOpacity = +this.value;
         modal.querySelector('#htd-dice-opv').textContent = this.value;
-        update();
-    }, { signal: sig });
-
-// Константы
-    modal.querySelector('#htd-radar-t').addEventListener('click', () => {
-        const sec = modal.querySelector('#htd-radar-section');
-        sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
-    }, { signal: sig });
-    modal.querySelector('#htd-radar-color').addEventListener('input', function () {
-        st.radarColor = this.value;
-        modal.querySelector('#htd-radar-color-hex').textContent = this.value;
-        update();
-    }, { signal: sig });
-    modal.querySelector('#htd-radar-color-clear').addEventListener('click', () => {
-        st.radarColor = '';
-        modal.querySelector('#htd-radar-color-hex').textContent = 'По теме';
-        update();
-    }, { signal: sig });
-    modal.querySelector('#htd-radar-label').addEventListener('input', function () {
-        st.radarLabel = this.value;
-        modal.querySelector('#htd-radar-label-hex').textContent = this.value;
-        update();
-    }, { signal: sig });
-    modal.querySelector('#htd-radar-label-clear').addEventListener('click', () => {
-        st.radarLabel = '';
-        modal.querySelector('#htd-radar-label-hex').textContent = 'По теме';
         update();
     }, { signal: sig });
 
@@ -8484,14 +6591,12 @@ function openThemeDesigner() {
             const da = (1 - (st.diceOpacity ?? 15) / 100).toFixed(2);
             vars['--horae-dice-bg'] = `rgba(${dc.r},${dc.g},${dc.b},${da})`;
         }
-        if (st.radarColor) vars['--horae-radar-color'] = st.radarColor;
-        if (st.radarLabel) vars['--horae-radar-label'] = st.radarLabel;
         const theme = {
             name, author, version: '1.0', variables: vars,
             images: { ...st.images }, imageOpacity: { ...st.imgOp },
             drawerBg: st.drawerBg,
             isLight: st.bright > 50,
-            _designerState: { hue: st.hue, sat: st.sat, colorLight: st.colorLight, bright: st.bright, accent: st.accent, rpgColor: st.rpgColor, rpgOpacity: st.rpgOpacity, diceColor: st.diceColor, diceOpacity: st.diceOpacity, radarColor: st.radarColor, radarLabel: st.radarLabel },
+            _designerState: { hue: st.hue, sat: st.sat, colorLight: st.colorLight, bright: st.bright, accent: st.accent, rpgColor: st.rpgColor, rpgOpacity: st.rpgOpacity, diceColor: st.diceColor, diceOpacity: st.diceOpacity },
             css: _tdBuildImageCSS(st.images, st.imgOp, vars['--horae-bg'], st.drawerBg)
         };
         if (!settings.customThemes) settings.customThemes = [];
@@ -8504,7 +6609,7 @@ function openThemeDesigner() {
         saveSettings();
         applyThemeMode();
         refreshThemeSelector();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Тема «${name}» сохранена и применена`, 'success');
     }, { signal: sig });
 
     // ---- Export ----
@@ -8523,21 +6628,19 @@ function openThemeDesigner() {
             const da = (1 - (st.diceOpacity ?? 15) / 100).toFixed(2);
             vars['--horae-dice-bg'] = `rgba(${dc.r},${dc.g},${dc.b},${da})`;
         }
-        if (st.radarColor) vars['--horae-radar-color'] = st.radarColor;
-        if (st.radarLabel) vars['--horae-radar-label'] = st.radarLabel;
         const theme = {
             name, author, version: '1.0', variables: vars,
             images: { ...st.images }, imageOpacity: { ...st.imgOp },
             drawerBg: st.drawerBg,
             isLight: st.bright > 50,
-            _designerState: { hue: st.hue, sat: st.sat, colorLight: st.colorLight, bright: st.bright, accent: st.accent, rpgColor: st.rpgColor, rpgOpacity: st.rpgOpacity, diceColor: st.diceColor, diceOpacity: st.diceOpacity, radarColor: st.radarColor, radarLabel: st.radarLabel },
+            _designerState: { hue: st.hue, sat: st.sat, colorLight: st.colorLight, bright: st.bright, accent: st.accent, rpgColor: st.rpgColor, rpgOpacity: st.rpgOpacity, diceColor: st.diceColor, diceOpacity: st.diceOpacity },
             css: _tdBuildImageCSS(st.images, st.imgOp, vars['--horae-bg'], st.drawerBg)
         };
         const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `horae-${name}.json`; a.click();
         URL.revokeObjectURL(url);
-        showToast('Таблица экспортирована', 'info');
+        showToast('Тема экспортирована в JSON', 'info');
     }, { signal: sig });
 
     // ---- Reset ----
@@ -8546,7 +6649,6 @@ function openThemeDesigner() {
         st.overrides = {}; st.drawerBg = '';
         st.rpgColor = '#000000'; st.rpgOpacity = 85;
         st.diceColor = '#1a1a2e'; st.diceOpacity = 15;
-        st.radarColor = ''; st.radarLabel = '';
         st.images = { drawer: '', header: '', body: '', panel: '' };
         st.imgOp = { drawer: 30, header: 50, body: 30, panel: 30 };
         hueInd.style.left = `${(265 / 360) * 100}%`;
@@ -8565,8 +6667,6 @@ function openThemeDesigner() {
         modal.querySelector('#htd-dice-color-hex').textContent = '#1a1a2e';
         modal.querySelector('#htd-dice-op').value = 15;
         modal.querySelector('#htd-dice-opv').textContent = '15';
-        modal.querySelector('#htd-radar-color-hex').textContent = 'По теме';
-        modal.querySelector('#htd-radar-label-hex').textContent = 'По теме';
         ['drawer', 'header', 'body', 'panel'].forEach(k => {
             const u = modal.querySelector(`#htd-img-${k}`); if (u) u.value = '';
             const defOp = k === 'header' ? 50 : 30;
@@ -8577,24 +6677,23 @@ function openThemeDesigner() {
         const fBody = modal.querySelector('#htd-fine-body');
         if (fBody.style.display !== 'none') buildFine();
         update();
-        showToast('Таблица экспортирована', 'info');
+        showToast('Сброшено до значений по умолчанию', 'info');
     }, { signal: sig });
 
     update();
 }
 
 /**
- * 为消息添加元数据面板
+ * Добавить панель метаданных к сообщению
  */
 function addMessagePanel(messageEl, messageIndex) {
-    try {
     const existingPanel = messageEl.querySelector('.horae-message-panel');
     if (existingPanel) return;
     
     const meta = horaeManager.getMessageMeta(messageIndex);
     if (!meta) return;
     
-// Константы
+    // Форматирование времени (добавить день недели в стандартный календарь)
     let time = '--';
     if (meta.timestamp?.story_date) {
         const parsed = parseStoryDate(meta.timestamp.story_date);
@@ -8607,7 +6706,7 @@ function addMessagePanel(messageEl, messageIndex) {
             time += ' ' + meta.timestamp.story_time;
         }
     }
-// Константы
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const eventSummary = eventsArr.length > 0 
         ? eventsArr.map(e => e.summary).join(' | ') 
@@ -8631,13 +6730,13 @@ function addMessagePanel(messageEl, messageIndex) {
                     <span class="horae-summary-chars">${isSkipped ? '' : charCount + ' в сцене'}</span>
                 </div>
                 <div class="horae-panel-actions">
-                    <button class="horae-btn-sideplay" title="${isSkipped ? 'Снять пометку побочной сцены' : 'Снять пометку побочной сцены'}" style="${sideplayBtnStyle}">
+                    <button class="horae-btn-sideplay" title="${isSkipped ? 'Снять пометку побочной сцены' : 'Пометить как побочную сцену (не отслеживать)'}" style="${sideplayBtnStyle}">
                         <i class="fa-solid ${isSkipped ? 'fa-eye' : 'fa-masks-theater'}"></i>
                     </button>
                     <button class="horae-btn-rescan" title="Повторно сканировать сообщение">
                         <i class="fa-solid fa-rotate"></i>
                     </button>
-                    <button class="horae-btn-expand" title="Повторно сканировать сообщение">
+                    <button class="horae-btn-expand" title="Развернуть/Свернуть">
                         <i class="fa-solid fa-chevron-down"></i>
                     </button>
                 </div>
@@ -8656,7 +6755,7 @@ function addMessagePanel(messageEl, messageIndex) {
         if (!settings.showMessagePanel && panelEl) {
             panelEl.style.display = 'none';
         }
-// Константы
+        // Применить пользовательские ширину и смещение
         const w = Math.max(50, Math.min(100, settings.panelWidth || 100));
         if (w < 100 && panelEl) {
             panelEl.style.maxWidth = `${w}%`;
@@ -8665,19 +6764,17 @@ function addMessagePanel(messageEl, messageIndex) {
         if (ofs > 0 && panelEl) {
             panelEl.style.marginLeft = `${ofs}px`;
         }
-// Константы
+        // Наследовать режим темы
         if (isLightMode() && panelEl) {
             panelEl.classList.add('horae-light');
         }
+        // RPG HUD
         renderRpgHud(messageEl, messageIndex);
-    }
-    } catch (err) {
-            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
     }
 }
 
 /**
- * 构建已删除物品显示
+ * Построить отображение удалённых предметов
  */
 function buildDeletedItemsDisplay(deletedItems) {
     if (!deletedItems || deletedItems.length === 0) {
@@ -8691,7 +6788,7 @@ function buildDeletedItemsDisplay(deletedItems) {
 }
 
 /**
- * 构建待办事项编辑行
+ * Построить строку редактирования задачи
  */
 function buildAgendaEditorRows(agenda) {
     if (!agenda || agenda.length === 0) {
@@ -8700,13 +6797,13 @@ function buildAgendaEditorRows(agenda) {
     return agenda.map(item => `
         <div class="horae-editor-row horae-agenda-edit-row">
             <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="дата">
-            <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="дата">
-            <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+            <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="${escapeHtml(item.text || '')}" placeholder="содержание задачи (для относительного времени укажите абсолютную дату)">
+            <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
 }
 
-/** 关系网络面板渲染 — 数据源为 chat[0].horae_meta，不消耗 AI 输出 */
+/** Рендеринг панели «Сеть отношений» — источник: chat[0].horae_meta, не расходует API */
 function buildPanelRelationships(meta) {
     if (!settings.sendRelationships) return '';
     const presentChars = meta.scene?.characters_present || [];
@@ -8732,7 +6829,7 @@ function buildPanelMoodEditable(meta) {
         <div class="horae-editor-row horae-mood-row">
             <span class="mood-char">${escapeHtml(char)}</span>
             <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="эмоциональное состояние">
-            <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+            <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
     return `
@@ -8746,58 +6843,49 @@ function buildPanelMoodEditable(meta) {
 function buildPanelContent(messageIndex, meta) {
     const costumeRows = Object.entries(meta.costumes || {}).map(([char, costume]) => `
         <div class="horae-editor-row">
-            <input type="text" class="char-input" value="${escapeHtml(char)}" placeholder="эмоциональное состояние">
+            <input type="text" class="char-input" value="${escapeHtml(char)}" placeholder="Имя персонажа">
             <input type="text" value="${escapeHtml(costume)}" placeholder="описание одежды">
-            <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+            <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     `).join('');
     
-// Константы
+    // Категории предметов управляются главной страницей, нижняя панель не показывает
     const itemRows = Object.entries(meta.items || {}).map(([name, info]) => {
         return `
             <div class="horae-editor-row horae-item-row">
-                <input type="text" class="horae-item-icon" value="${escapeHtml(info.icon || '')}" placeholder="📦" maxlength="2">
-                <input type="text" class="horae-item-name" value="${escapeHtml(name)}" placeholder="эмоциональное состояние">
-                <input type="text" class="horae-item-holder" value="${escapeHtml(info.holder || '')}" placeholder="Имя персонажа">
-                <input type="text" class="horae-item-location" value="${escapeHtml(info.location || '')}" placeholder="Имя персонажа">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <input type="text" class="item-icon" value="${escapeHtml(info.icon || '')}" placeholder="📦" maxlength="2">
+                <input type="text" class="item-name" value="${escapeHtml(name)}" placeholder="название предмета">
+                <input type="text" class="item-holder" value="${escapeHtml(info.holder || '')}" placeholder="владелец">
+                <input type="text" class="item-location" value="${escapeHtml(info.location || '')}" placeholder="местоположение">
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="horae-editor-row horae-item-desc-row">
-                <input type="text" class="horae-item-description" value="${escapeHtml(info.description || '')}" placeholder="Имя персонажа">
+                <input type="text" class="item-description" value="${escapeHtml(info.description || '')}" placeholder="описание предмета">
             </div>
         `;
     }).join('');
     
-// Константы
+    // Получить итоговое значение расположения из предыдущего сообщения
     const prevTotals = {};
     const chat = horaeManager.getChat();
-    if (!buildPanelContent._affCache || buildPanelContent._affCacheLen !== chat.length) {
-        buildPanelContent._affCache = [];
-        buildPanelContent._affCacheLen = chat.length;
-        const running = {};
-        for (let i = 0; i < chat.length; i++) {
-            const m = chat[i]?.horae_meta;
-            if (m?.affection) {
-                for (const [k, v] of Object.entries(m.affection)) {
+    for (let i = 0; i < messageIndex; i++) {
+        const m = chat[i]?.horae_meta;
+        if (m?.affection) {
+            for (const [k, v] of Object.entries(m.affection)) {
                     let val = 0;
                     if (typeof v === 'object' && v !== null) {
                         if (v.type === 'absolute') val = parseFloat(v.value) || 0;
-                        else if (v.type === 'relative') val = (running[k] || 0) + (parseFloat(v.value) || 0);
+                        else if (v.type === 'relative') val = (prevTotals[k] || 0) + (parseFloat(v.value) || 0);
                     } else {
-                        val = (running[k] || 0) + (parseFloat(v) || 0);
+                        val = (prevTotals[k] || 0) + (parseFloat(v) || 0);
                     }
-                    running[k] = val;
+                    prevTotals[k] = val;
                 }
-            }
-            buildPanelContent._affCache[i] = { ...running };
         }
-    }
-    if (messageIndex > 0 && buildPanelContent._affCache[messageIndex - 1]) {
-        Object.assign(prevTotals, buildPanelContent._affCache[messageIndex - 1]);
     }
     
     const affectionRows = Object.entries(meta.affection || {}).map(([key, value]) => {
-// Константы
+        // Разобрать значения текущего слоя
         let delta = 0, newTotal = 0;
         const prevVal = prevTotals[key] || 0;
         
@@ -8819,15 +6907,15 @@ function buildPanelContent(messageIndex, meta) {
         const deltaStr = roundedDelta >= 0 ? `+${roundedDelta}` : `${roundedDelta}`;
         return `
             <div class="horae-editor-row horae-affection-row" data-char="${escapeHtml(key)}" data-prev="${prevVal}">
-                <span class="horae-affection-char">${escapeHtml(key)}</span>
-                <input type="text" class="horae-affection-delta" value="${deltaStr}" placeholder="эмоциональное состояние">
-                <input type="number" class="horae-affection-total" value="${roundedTotal}" placeholder="итого" step="any">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <span class="affection-char">${escapeHtml(key)}</span>
+                <input type="text" class="affection-delta" value="${deltaStr}" placeholder="±изменение">
+                <input type="number" class="affection-total" value="${roundedTotal}" placeholder="итого" step="any">
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `;
     }).join('');
     
-// Константы
+    // Совместимость нового и старого формата событий
     const eventsArr = meta.events || (meta.event ? [meta.event] : []);
     const firstEvent = eventsArr[0] || {};
     const eventLevel = firstEvent.level || '';
@@ -8849,34 +6937,34 @@ function buildPanelContent(messageIndex, meta) {
             <div class="horae-panel-row">
                 <label><i class="fa-solid fa-location-dot"></i> Место</label>
                 <div class="horae-panel-value">
-            <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="эмоциональное состояние">
+                    <input type="text" class="horae-input-location" value="${escapeHtml(meta.scene?.location || '')}" placeholder="местоположение сцены">
                 </div>
             </div>
             <div class="horae-panel-row">
                 <label><i class="fa-solid fa-cloud"></i> Атмосфера</label>
                 <div class="horae-panel-value">
-            <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="эмоциональное состояние">
+                    <input type="text" class="horae-input-atmosphere" value="${escapeHtml(meta.scene?.atmosphere || '')}" placeholder="атмосфера сцены">
                 </div>
             </div>
             <div class="horae-panel-row">
-                <label><i class="fa-solid fa-users"></i> Присутствуют</label>
+                <label><i class="fa-solid fa-users"></i> В сцене</label>
                 <div class="horae-panel-value">
-            <input type="text" class="mood-emotion" value="${escapeHtml(emotion)}" placeholder="эмоциональное состояние">
+                    <input type="text" class="horae-input-characters" value="${escapeHtml((meta.scene?.characters_present || []).join(', '))}" placeholder="имена персонажей, через запятую">
                 </div>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-shirt"></i> Изменения одежды</label>
+                <label><i class="fa-solid fa-shirt"></i> Смена одежды</label>
                 <div class="horae-costume-editor">${costumeRows}</div>
                 <button class="horae-btn-add-costume"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             ${buildPanelMoodEditable(meta)}
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-box-open"></i> Получение/изменение предметов</label>
+                <label><i class="fa-solid fa-box-open"></i> Получение/смена предметов</label>
                 <div class="horae-items-editor">${itemRows}</div>
                 <button class="horae-btn-add-item"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-trash-can"></i> Использование/удаление предметов</label>
+                <label><i class="fa-solid fa-trash-can"></i> Расход/удаление предметов</label>
                 <div class="horae-deleted-items-display">${buildDeletedItemsDisplay(meta.deletedItems)}</div>
             </div>
             <div class="horae-panel-row full-width">
@@ -8884,32 +6972,32 @@ function buildPanelContent(messageIndex, meta) {
                 <div class="horae-event-editor">
                     <select class="horae-input-event-level">
                         <option value="">Нет</option>
-                        <option value="Обычное" ${eventLevel === 'Обычное' ? 'selected' : ''}>Обычное</option>
-                        <option value="Важное" ${eventLevel === 'Важное' ? 'selected' : ''}>Важное</option>
-                        <option value="Ключевое" ${eventLevel === 'Ключевое' ? 'selected' : ''}>Ключевое</option>
+                        <option value="一般" ${eventLevel === '一般' ? 'selected' : ''}>Обычное</option>
+                        <option value="重要" ${eventLevel === '重要' ? 'selected' : ''}>Важное</option>
+                        <option value="关键" ${eventLevel === '关键' ? 'selected' : ''}>Ключевое</option>
                     </select>
-                    <input type="text" class="horae-input-event-summary" value="${escapeHtml(eventSummary)}" placeholder="эмоциональное состояние">
+                    <input type="text" class="horae-input-event-summary" value="${escapeHtml(eventSummary)}" placeholder="краткое описание события">
                 </div>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-heart"></i> Привязанность</label>
+                <label><i class="fa-solid fa-heart"></i> Расположение</label>
                 <div class="horae-affection-editor">${affectionRows}</div>
                 <button class="horae-btn-add-affection"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             <div class="horae-panel-row full-width">
-                <label><i class="fa-solid fa-list-check"></i> Список дел</label>
+                <label><i class="fa-solid fa-list-check"></i> Задачи</label>
                 <div class="horae-agenda-editor">${buildAgendaEditorRows(meta.agenda)}</div>
                 <button class="horae-btn-add-agenda-row"><i class="fa-solid fa-plus"></i> Добавить</button>
             </div>
             ${buildPanelRelationships(meta)}
         </div>
         <div class="horae-panel-rescan">
-            <div class="horae-rescan-label"><i class="fa-solid fa-rotate"></i> Пересканировать сообщение</div>
+            <div class="horae-rescan-label"><i class="fa-solid fa-rotate"></i> Повторно сканировать сообщение</div>
             <div class="horae-rescan-buttons">
-                <button class="horae-btn-quick-scan horae-btn" title="Повторно сканировать сообщение">
-                    <i class="fa-solid fa-bolt"></i> Быстрый анализ
+                <button class="horae-btn-quick-scan horae-btn" title="Извлечь данные из существующего текста (без API)">
+                    <i class="fa-solid fa-bolt"></i> Быстрый разбор
                 </button>
-                <button class="horae-btn-ai-analyze horae-btn" title="Повторно сканировать сообщение">
+                <button class="horae-btn-ai-analyze horae-btn" title="Использовать ИИ для анализа (расходует API)">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> ИИ-анализ
                 </button>
             </div>
@@ -8917,13 +7005,13 @@ function buildPanelContent(messageIndex, meta) {
         <div class="horae-panel-footer">
             <button class="horae-btn-save horae-btn"><i class="fa-solid fa-check"></i> Сохранить</button>
             <button class="horae-btn-cancel horae-btn"><i class="fa-solid fa-xmark"></i> Отмена</button>
-            <button class="horae-btn-open-drawer horae-btn" title="Редактировать"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <button class="horae-btn-open-drawer horae-btn" title="Открыть панель Horae"><i class="fa-solid fa-clock-rotate-left"></i></button>
         </div>
     `;
 }
 
 /**
- * 绑定面板事件
+ * Привязать события панели
  */
 function bindPanelEvents(panelEl) {
     if (!panelEl) return;
@@ -8931,7 +7019,7 @@ function bindPanelEvents(panelEl) {
     const messageId = parseInt(panelEl.dataset.messageId);
     const contentEl = panelEl.querySelector('.horae-panel-content');
     
-// Константы
+    // Событие шапки привязывается один раз, чтобы избежать взаимной отмены toggle
     if (!panelEl._horaeBound) {
         panelEl._horaeBound = true;
         const toggleEl = panelEl.querySelector('.horae-panel-toggle');
@@ -8962,7 +7050,7 @@ function bindPanelEvents(panelEl) {
         });
     }
     
-// Константы
+    // Пометить панель как изменённую
     let panelDirty = false;
     contentEl?.addEventListener('input', () => { panelDirty = true; });
     contentEl?.addEventListener('change', () => { panelDirty = true; });
@@ -8986,7 +7074,7 @@ function bindPanelEvents(panelEl) {
             drawerIcon.removeClass('openIcon').addClass('closedIcon');
             drawerContent.removeClass('openDrawer').addClass('closedDrawer').css('display', 'none');
         } else {
-// Константы
+            // Закрыть другие ящики
             $('.openDrawer').not('#horae_drawer_content').not('.pinnedOpen').css('display', 'none')
                 .removeClass('openDrawer').addClass('closedDrawer');
             $('.openIcon').not('#horae_drawer_icon').not('.drawerPinnedOpen')
@@ -9003,9 +7091,9 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row">
-                <input type="text" class="char-input" placeholder="эмоциональное состояние">
+                <input type="text" class="char-input" placeholder="Имя персонажа">
                 <input type="text" placeholder="описание одежды">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
         bindDeleteButtons(editor);
@@ -9016,9 +7104,9 @@ function bindPanelEvents(panelEl) {
         if (!editor) return;
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-mood-row">
-                <input type="text" class="mood-char" placeholder="эмоциональное состояние">
+                <input type="text" class="mood-char" placeholder="Имя персонажа">
                 <input type="text" class="mood-emotion" placeholder="эмоциональное состояние">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
         bindDeleteButtons(editor);
@@ -9031,14 +7119,14 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-item-row">
-                <input type="text" class="horae-item-icon" placeholder="📦" maxlength="2">
-                <input type="text" class="horae-item-name" placeholder="эмоциональное состояние">
-                <input type="text" class="horae-item-holder" placeholder="Имя персонажа">
-                <input type="text" class="horae-item-location" placeholder="Имя персонажа">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <input type="text" class="item-icon" placeholder="📦" maxlength="2">
+                <input type="text" class="item-name" placeholder="название предмета">
+                <input type="text" class="item-holder" placeholder="владелец">
+                <input type="text" class="item-location" placeholder="местоположение">
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="horae-editor-row horae-item-desc-row">
-                <input type="text" class="horae-item-description" placeholder="Имя персонажа">
+                <input type="text" class="item-description" placeholder="описание предмета">
             </div>
         `);
         bindDeleteButtons(editor);
@@ -9051,17 +7139,17 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-affection-row" data-char="" data-prev="0">
-                <input type="text" class="horae-affection-char-input" placeholder="эмоциональное состояние">
-                <input type="text" class="horae-affection-delta" value="+0" placeholder="эмоциональное состояние">
-                <input type="number" class="horae-affection-total" value="0" placeholder="итого">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <input type="text" class="affection-char-input" placeholder="Имя персонажа">
+                <input type="text" class="affection-delta" value="+0" placeholder="±изменение">
+                <input type="number" class="affection-total" value="0" placeholder="итого">
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
         bindDeleteButtons(editor);
         bindAffectionInputs(editor);
     });
     
-// Константы
+    // Добавить строку задачи
     panelEl.querySelector('.horae-btn-add-agenda-row')?.addEventListener('click', () => {
         const editor = panelEl.querySelector('.horae-agenda-editor');
         const emptyHint = editor.querySelector('.horae-empty-hint');
@@ -9069,51 +7157,51 @@ function bindPanelEvents(panelEl) {
         
         editor.insertAdjacentHTML('beforeend', `
             <div class="horae-editor-row horae-agenda-edit-row">
-            <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="дата">
-            <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="${escapeHtml(item.date || '')}" placeholder="дата">
-                <button class="horae-delete-btn"><i class="fa-solid fa-xmark"></i></button>
+                <input type="text" class="agenda-date" style="flex:0 0 90px;max-width:90px;" value="" placeholder="дата">
+                <input type="text" class="agenda-text" style="flex:1 1 0;min-width:0;" value="" placeholder="содержание задачи (для относительного времени укажите абсолютную дату)">
+                <button class="delete-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `);
         bindDeleteButtons(editor);
     });
     
-// Константы
+    // Привязать взаимосвязь полей расположения
     bindAffectionInputs(panelEl.querySelector('.horae-affection-editor'));
     
-// Константы
+    // Привязать существующие кнопки удаления
     bindDeleteButtons(panelEl);
     
-// Константы
+    // Кнопка быстрого разбора (без расхода API)
     panelEl.querySelector('.horae-btn-quick-scan')?.addEventListener('click', async () => {
         const chat = horaeManager.getChat();
         const message = chat[messageId];
         if (!message) {
-            showToast('Таблица экспортирована', 'error');
+            showToast('Не удалось получить содержимое сообщения', 'error');
             return;
         }
         
-// Константы
+        // Сначала попробовать разобрать стандартные теги
         let parsed = horaeManager.parseHoraeTag(message.mes);
         
-// Константы
+        // Если нет тегов, попробовать нестрогий разбор
         if (!parsed) {
             parsed = horaeManager.parseLooseFormat(message.mes);
         }
         
         if (parsed) {
-// Константы
+            // Получить существующие метаданные и объединить
             const existingMeta = horaeManager.getMessageMeta(messageId) || createEmptyMeta();
             const newMeta = horaeManager.mergeParsedToMeta(existingMeta, parsed);
-// Константы
+            // Обработать обновление таблиц
             if (newMeta._tableUpdates) {
                 horaeManager.applyTableUpdates(newMeta._tableUpdates);
                 delete newMeta._tableUpdates;
             }
-// Константы
+            // Обработать выполненные задачи
             if (parsed.deletedAgenda && parsed.deletedAgenda.length > 0) {
                 horaeManager.removeCompletedAgenda(parsed.deletedAgenda);
             }
-// Константы
+            // Глобальная синхронизация
             if (parsed.relationships?.length > 0) {
                 horaeManager._mergeRelationships(parsed.relationships);
             }
@@ -9130,18 +7218,18 @@ function bindPanelEvents(panelEl) {
             
             getContext().saveChat();
             refreshAllDisplays();
-            showToast('Таблица экспортирована', 'success');
+            showToast('Быстрый разбор завершён!', 'success');
         } else {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Не удалось извлечь данные из текста, попробуйте ИИ-анализ', 'warning');
         }
     });
     
-// Константы
+    // Кнопка ИИ-анализа (расходует API)
     panelEl.querySelector('.horae-btn-ai-analyze')?.addEventListener('click', async () => {
         const chat = horaeManager.getChat();
         const message = chat[messageId];
         if (!message) {
-            showToast('Таблица экспортирована', 'error');
+            showToast('Не удалось получить содержимое сообщения', 'error');
             return;
         }
         
@@ -9151,7 +7239,7 @@ function bindPanelEvents(panelEl) {
         btn.disabled = true;
         
         try {
-// Константы
+            // Вызов ИИ-анализа
             const result = await analyzeMessageWithAI(message.mes);
             
             if (result) {
@@ -9161,11 +7249,11 @@ function bindPanelEvents(panelEl) {
                     horaeManager.applyTableUpdates(newMeta._tableUpdates);
                     delete newMeta._tableUpdates;
                 }
-// Константы
+                // Обработать выполненные задачи
                 if (result.deletedAgenda && result.deletedAgenda.length > 0) {
                     horaeManager.removeCompletedAgenda(result.deletedAgenda);
                 }
-// Константы
+                // Глобальная синхронизация
                 if (result.relationships?.length > 0) {
                     horaeManager._mergeRelationships(result.relationships);
                 }
@@ -9182,9 +7270,9 @@ function bindPanelEvents(panelEl) {
                 
                 getContext().saveChat();
                 refreshAllDisplays();
-                showToast('Таблица экспортирована', 'success');
+                showToast('ИИ-анализ завершён!', 'success');
             } else {
-                showToast('Таблица экспортирована', 'warning');
+                showToast('ИИ-анализ не вернул данных', 'warning');
             }
         } catch (error) {
             console.error('[Horae] Ошибка ИИ-анализа:', error);
@@ -9197,23 +7285,23 @@ function bindPanelEvents(panelEl) {
 }
 
 /**
- * 绑定删除按钮事件
+ * Привязать события кнопок удаления
  */
 function bindDeleteButtons(container) {
-    container.querySelectorAll('.horae-delete-btn').forEach(btn => {
+    container.querySelectorAll('.delete-btn').forEach(btn => {
         btn.onclick = () => btn.closest('.horae-editor-row')?.remove();
     });
 }
 
 /**
- * 绑定好感度输入框联动
+ * Привязать взаимосвязанные поля расположения
  */
 function bindAffectionInputs(container) {
     if (!container) return;
     
     container.querySelectorAll('.horae-affection-row').forEach(row => {
-        const deltaInput = row.querySelector('.horae-affection-delta');
-        const totalInput = row.querySelector('.horae-affection-total');
+        const deltaInput = row.querySelector('.affection-delta');
+        const totalInput = row.querySelector('.affection-total');
         const prevVal = parseFloat(row.dataset.prev) || 0;
         
         deltaInput?.addEventListener('input', () => {
@@ -9230,7 +7318,7 @@ function bindAffectionInputs(container) {
     });
 }
 
-/** 切换消息的番外/小剧场标记 */
+/** Переключить метку побочной сцены для сообщения */
 function toggleSideplay(messageId, panelEl) {
     const meta = horaeManager.getMessageMeta(messageId);
     if (!meta) return;
@@ -9239,27 +7327,27 @@ function toggleSideplay(messageId, panelEl) {
     horaeManager.setMessageMeta(messageId, meta);
     getContext().saveChat();
     
-// Константы
+    // Перестроить панель
     const messageEl = panelEl.closest('.mes');
     if (messageEl) {
         panelEl.remove();
         addMessagePanel(messageEl, messageId);
     }
     refreshAllDisplays();
-    showToast(meta._skipHorae ? 'Помечено как побочная сцена (не отслеживается)' : 'Помечено как побочная сцена (не отслеживается)', 'success');
+    showToast(meta._skipHorae ? 'Помечено как побочная сцена (не отслеживается)' : 'Метка побочной сцены снята', 'success');
 }
 
-/** 重新扫描消息并更新面板（完全替换） */
+/** Повторно сканировать сообщение и обновить панель (полная замена) */
 function rescanMessageMeta(messageId, panelEl) {
-// Константы
+    // Получить последнее содержимое сообщения из DOM (пользователь мог редактировать)
     const messageEl = panelEl.closest('.mes');
     if (!messageEl) {
-        showToast('Таблица экспортирована', 'error');
+        showToast('Элемент сообщения не найден', 'error');
         return;
     }
     
-// Константы
-// Константы
+    // Получить текстовое содержимое (включая скрытые теги horae)
+    // Сначала попытаться получить последнее содержимое из массива chat
     const context = window.SillyTavern?.getContext?.() || getContext?.();
     let messageContent = '';
     
@@ -9267,7 +7355,7 @@ function rescanMessageMeta(messageId, panelEl) {
         messageContent = context.chat[messageId].mes;
     }
     
-// Константы
+    // Если в chat нет или пусто, получить из DOM
     if (!messageContent) {
         const mesTextEl = messageEl.querySelector('.mes_text');
         if (mesTextEl) {
@@ -9276,7 +7364,7 @@ function rescanMessageMeta(messageId, panelEl) {
     }
     
     if (!messageContent) {
-        showToast('Таблица экспортирована', 'error');
+        showToast('Не удалось получить содержимое сообщения', 'error');
         return;
     }
     
@@ -9284,35 +7372,35 @@ function rescanMessageMeta(messageId, panelEl) {
     
     if (parsed) {
         const existingMeta = horaeManager.getMessageMeta(messageId);
-// Константы
+        // Использовать mergeParsedToMeta с пустым meta как основой для единообразной обработки всех полей
         const newMeta = horaeManager.mergeParsedToMeta(createEmptyMeta(), parsed);
         
-// Константы
+        // Сохранить только исходные данные NPC (если в новом разборе их нет)
         if ((!parsed.npcs || Object.keys(parsed.npcs).length === 0) && existingMeta?.npcs) {
             newMeta.npcs = existingMeta.npcs;
         }
         
-// Константы
+        // Если нет новых задач, сохранить старые данные
         if ((!newMeta.agenda || newMeta.agenda.length === 0) && existingMeta?.agenda?.length > 0) {
             newMeta.agenda = existingMeta.agenda;
         }
         
-// Константы
+        // Обработать обновление таблиц
         if (newMeta._tableUpdates) {
             horaeManager.applyTableUpdates(newMeta._tableUpdates);
             delete newMeta._tableUpdates;
         }
         
-// Константы
+        // Обработать выполненные задачи
         if (parsed.deletedAgenda && parsed.deletedAgenda.length > 0) {
             horaeManager.removeCompletedAgenda(parsed.deletedAgenda);
         }
         
-// Константы
+        // Глобальная синхронизация: слить сеть отношений в chat[0]
         if (parsed.relationships?.length > 0) {
             horaeManager._mergeRelationships(parsed.relationships);
         }
-// Константы
+        // Глобальная синхронизация: обновить память о локациях
         if (parsed.scene?.scene_desc && parsed.scene?.location) {
             horaeManager._updateLocationMemory(parsed.scene.location, parsed.scene.scene_desc);
         }
@@ -9323,12 +7411,12 @@ function rescanMessageMeta(messageId, panelEl) {
         panelEl.remove();
         addMessagePanel(messageEl, messageId);
         
-// Константы
+        // Одновременно обновить главное отображение
         refreshAllDisplays();
         
-        showToast('Таблица экспортирована', 'success');
+        showToast('Повторное сканирование выполнено и обновлено', 'success');
     } else {
-// Константы
+        // Нет тегов, очистить данные (сохранить NPC)
         const existingMeta = horaeManager.getMessageMeta(messageId);
         const newMeta = createEmptyMeta();
         if (existingMeta?.npcs) {
@@ -9340,19 +7428,19 @@ function rescanMessageMeta(messageId, panelEl) {
         addMessagePanel(messageEl, messageId);
         refreshAllDisplays();
         
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Теги Horae не найдены, данные очищены', 'warning');
     }
 }
 
 /**
- * 保存面板数据
+ * Сохранить данные панели
  */
 function savePanelData(panelEl, messageId) {
-// Константы
+    // Получить существующий meta, сохранить данные без редактируемых областей в панели (например, NPC)
     const existingMeta = horaeManager.getMessageMeta(messageId);
     const meta = createEmptyMeta();
     
-// Константы
+    // Сохранить данные без редактируемых областей в панели
     if (existingMeta?.npcs) {
         meta.npcs = JSON.parse(JSON.stringify(existingMeta.npcs));
     }
@@ -9366,7 +7454,7 @@ function savePanelData(panelEl, messageId) {
         meta.mood = JSON.parse(JSON.stringify(existingMeta.mood));
     }
     
-// Константы
+    // Разделить дату и время
     const datetimeVal = (panelEl.querySelector('.horae-input-datetime')?.value || '').trim();
     const clockMatch = datetimeVal.match(/\b(\d{1,2}:\d{2})\s*$/);
     if (clockMatch) {
@@ -9378,13 +7466,13 @@ function savePanelData(panelEl, messageId) {
     }
     meta.timestamp.absolute = new Date().toISOString();
     
-// Константы
+    // Сцена
     meta.scene.location = panelEl.querySelector('.horae-input-location')?.value || '';
     meta.scene.atmosphere = panelEl.querySelector('.horae-input-atmosphere')?.value || '';
     const charsInput = panelEl.querySelector('.horae-input-characters')?.value || '';
     meta.scene.characters_present = charsInput.split(/[,，]/).map(s => s.trim()).filter(Boolean);
     
-// Константы
+    // Одежда
     panelEl.querySelectorAll('.horae-costume-editor .horae-editor-row').forEach(row => {
         const inputs = row.querySelectorAll('input');
         if (inputs.length >= 2) {
@@ -9396,7 +7484,7 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-// Константы
+    // Эмоции
     panelEl.querySelectorAll('.horae-mood-editor .horae-mood-row').forEach(row => {
         const charEl = row.querySelector('.mood-char');
         const emotionInput = row.querySelector('.mood-emotion');
@@ -9405,24 +7493,24 @@ function savePanelData(panelEl, messageId) {
         if (char && emotion) meta.mood[char] = emotion;
     });
     
-// Константы
+    // Обработка пар предметов
     const itemMainRows = panelEl.querySelectorAll('.horae-items-editor .horae-item-row');
     const itemDescRows = panelEl.querySelectorAll('.horae-items-editor .horae-item-desc-row');
     const latestState = horaeManager.getLatestState();
     const existingItems = latestState.items || {};
     
     itemMainRows.forEach((row, idx) => {
-        const iconInput = row.querySelector('.horae-item-icon');
-        const nameInput = row.querySelector('.horae-item-name');
-        const holderInput = row.querySelector('.horae-item-holder');
-        const locationInput = row.querySelector('.horae-item-location');
+        const iconInput = row.querySelector('.item-icon');
+        const nameInput = row.querySelector('.item-name');
+        const holderInput = row.querySelector('.item-holder');
+        const locationInput = row.querySelector('.item-location');
         const descRow = itemDescRows[idx];
-        const descInput = descRow?.querySelector('.horae-item-description');
+        const descInput = descRow?.querySelector('.item-description');
         
         if (nameInput) {
             const name = nameInput.value.trim();
             if (name) {
-// Константы
+                // Получить сохранённую важность из инвентаря, нижняя панель больше не редактирует классификацию
                 const existingImportance = existingItems[name]?.importance || existingMeta?.items?.[name]?.importance || '';
                 meta.items[name] = {
                     icon: iconInput?.value.trim() || null,
@@ -9435,21 +7523,21 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-// Константы
+    // Событие
     const eventLevel = panelEl.querySelector('.horae-input-event-level')?.value;
     const eventSummary = panelEl.querySelector('.horae-input-event-summary')?.value;
     if (eventLevel && eventSummary) {
         meta.events = [{
-            is_important: eventLevel === 'Ключевое' || eventLevel === 'Важное',
+            is_important: eventLevel === '重要' || eventLevel === '关键',
             level: eventLevel,
             summary: eventSummary
         }];
     }
     
     panelEl.querySelectorAll('.horae-affection-editor .horae-affection-row').forEach(row => {
-        const charSpan = row.querySelector('.horae-affection-char');
-        const charInput = row.querySelector('.horae-affection-char-input');
-        const totalInput = row.querySelector('.horae-affection-total');
+        const charSpan = row.querySelector('.affection-char');
+        const charInput = row.querySelector('.affection-char-input');
+        const totalInput = row.querySelector('.affection-total');
         
         const key = charSpan?.textContent?.trim() || charInput?.value?.trim() || '';
         const total = parseFloat(totalInput?.value) || 0;
@@ -9459,7 +7547,7 @@ function savePanelData(panelEl, messageId) {
         }
     });
     
-// Константы
+    // Совместимость со старым форматом
     panelEl.querySelectorAll('.horae-affection-editor .horae-editor-row:not(.horae-affection-row)').forEach(row => {
         const inputs = row.querySelectorAll('input');
         if (inputs.length >= 2) {
@@ -9473,12 +7561,12 @@ function savePanelData(panelEl, messageId) {
     
     const agendaItems = [];
     panelEl.querySelectorAll('.horae-agenda-editor .horae-agenda-edit-row').forEach(row => {
-        const dateInput = row.querySelector('.horae-agenda-date');
-        const textInput = row.querySelector('.horae-agenda-text');
+        const dateInput = row.querySelector('.agenda-date');
+        const textInput = row.querySelector('.agenda-text');
         const date = dateInput?.value?.trim() || '';
         const text = textInput?.value?.trim() || '';
         if (text) {
-// Константы
+            // Сохранить исходный source
             const existingAgendaItem = existingMeta?.agenda?.find(a => a.text === text);
             const source = existingAgendaItem?.source || 'user';
             agendaItems.push({ date, text, source, done: false });
@@ -9487,13 +7575,13 @@ function savePanelData(panelEl, messageId) {
     if (agendaItems.length > 0) {
         meta.agenda = agendaItems;
     } else if (existingMeta?.agenda?.length > 0) {
-// Константы
+        // При отсутствии редактируемых строк сохранить исходные задачи
         meta.agenda = existingMeta.agenda;
     }
     
     horaeManager.setMessageMeta(messageId, meta);
     
-// Константы
+    // Глобальная синхронизация
     if (meta.relationships?.length > 0) {
         horaeManager._mergeRelationships(meta.relationships);
     }
@@ -9501,15 +7589,15 @@ function savePanelData(panelEl, messageId) {
         horaeManager._updateLocationMemory(meta.scene.location, meta.scene.scene_desc);
     }
     
-// Константы
+    // Синхронно записать теги в основной текст
     injectHoraeTagToMessage(messageId, meta);
     
     getContext().saveChat();
     
-    showToast('Таблица экспортирована', 'success');
+    showToast('Сохранено успешно!', 'success');
     refreshAllDisplays();
     
-// Константы
+    // Обновить краткое описание панели
     const summaryTime = panelEl.querySelector('.horae-summary-time');
     const summaryEvent = panelEl.querySelector('.horae-summary-event');
     const summaryChars = panelEl.querySelector('.horae-summary-chars');
@@ -9535,7 +7623,7 @@ function savePanelData(panelEl, messageId) {
     }
 }
 
-/** 构建 <horae> 标签字符串 */
+/** Построить строку тега <horae> */
 function buildHoraeTagFromMeta(meta) {
     const lines = [];
     
@@ -9599,7 +7687,7 @@ function buildHoraeTagFromMeta(meta) {
         }
     }
     
-// Константы
+    // NPC (новый формат: npc:имя|внешность=характер@отношения~доп.поля)
     if (meta.npcs) {
         for (const [name, info] of Object.entries(meta.npcs)) {
             if (!name) continue;
@@ -9613,12 +7701,11 @@ function buildHoraeTagFromMeta(meta) {
                 npcLine = `npc:${name}`;
             }
             const extras = [];
-            if (info.gender) extras.push(`пол:${info.gender}`);
-            if (info.age) extras.push(`возраст:${info.age}`);
-            if (info.race) extras.push(`раса:${info.race}`);
-            if (info.job) extras.push(`профессия:${info.job}`);
-            if (info.birthday) extras.push(`день рождения:${info.birthday}`);
-            if (info.note) extras.push(`доп. сведения:${info.note}`);
+            if (info.gender) extras.push(`性别:${info.gender}`);
+            if (info.age) extras.push(`年龄:${info.age}`);
+            if (info.race) extras.push(`种族:${info.race}`);
+            if (info.job) extras.push(`职业:${info.job}`);
+            if (info.note) extras.push(`补充:${info.note}`);
             if (extras.length > 0) npcLine += `~${extras.join('~')}`;
             lines.push(npcLine);
         }
@@ -9655,20 +7742,20 @@ function buildHoraeTagFromMeta(meta) {
     return `<horae>\n${lines.join('\n')}\n</horae>`;
 }
 
-/** 构建 <horaeevent> 标签字符串 */
+/** Построить строку тега <horaeevent> */
 function buildHoraeEventTagFromMeta(meta) {
     const events = meta.events || (meta.event ? [meta.event] : []);
     if (events.length === 0) return '';
     
     const lines = events
         .filter(e => e.summary)
-        .map(e => `event:${e.level || 'Обычное'}|${e.summary}`);
+        .map(e => `event:${e.level || '一般'}|${e.summary}`);
     
     if (lines.length === 0) return '';
     return `<horaeevent>\n${lines.join('\n')}\n</horaeevent>`;
 }
 
-/** 同步注入正文标签 */
+/** Синхронно внедрить теги в основной текст */
 function injectHoraeTagToMessage(messageId, meta) {
     try {
         const chat = horaeManager.getChat();
@@ -9677,7 +7764,7 @@ function injectHoraeTagToMessage(messageId, meta) {
         const message = chat[messageId];
         let mes = message.mes;
         
-// Константы
+        // === Обработка тега <horae> ===
         const newHoraeTag = buildHoraeTagFromMeta(meta);
         const hasHoraeTag = /<horae>[\s\S]*?<\/horae>/i.test(mes);
         
@@ -9689,7 +7776,7 @@ function injectHoraeTagToMessage(messageId, meta) {
             mes = mes.trimEnd() + '\n\n' + newHoraeTag;
         }
         
-// Константы
+        // === Обработка тега <horaeevent> ===
         const newEventTag = buildHoraeEventTagFromMeta(meta);
         const hasEventTag = /<horaeevent>[\s\S]*?<\/horaeevent>/i.test(mes);
         
@@ -9702,25 +7789,25 @@ function injectHoraeTagToMessage(messageId, meta) {
         }
         
         message.mes = mes;
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Теги синхронно записаны в сообщение #${messageId}`);
     } catch (error) {
         console.error(`[Horae] Ошибка записи тегов:`, error);
     }
 }
 
 // ============================================
-// Константы
+// Взаимодействие с панелью-ящиком
 // ============================================
 
 /**
- * 打开/关闭抽屉（旧版兼容模式）
+ * Открыть/закрыть ящик (режим совместимости со старой версией)
  */
 function openDrawerLegacy() {
     const drawerIcon = $('#horae_drawer_icon');
     const drawerContent = $('#horae_drawer_content');
     
     if (drawerIcon.hasClass('closedIcon')) {
-// Константы
+        // Закрыть другие ящики
         $('.openDrawer').not('#horae_drawer_content').not('.pinnedOpen').addClass('resizing').each((_, el) => {
             slideToggle(el, {
                 ...getSlideToggleOptions(),
@@ -9753,23 +7840,23 @@ function openDrawerLegacy() {
 }
 
 /**
- * 初始化抽屉
+ * Инициализировать ящик
  */
 async function initDrawer() {
     const toggle = $('#horae_drawer .drawer-toggle');
     
     if (isNewNavbarVersion()) {
         toggle.on('click', doNavbarIconClick);
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Используется новый режим навигационной панели`);
     } else {
         $('#horae_drawer_content').attr('data-slide-toggle', 'hidden').css('display', 'none');
         toggle.on('click', openDrawerLegacy);
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Используется устаревший режим ящика`);
     }
 }
 
 /**
- * 初始化标签页切换
+ * Инициализировать переключение вкладок
  */
 function initTabs() {
     $('.horae-tab').on('click', function() {
@@ -9800,11 +7887,11 @@ function initTabs() {
 }
 
 // ============================================
-// Константы
+// Функция очистки бесхозных предметов
 // ============================================
 
 /**
- * 初始化设置页事件
+ * Инициализировать события страницы настроек
  */
 function initSettingsEvents() {
     $('#horae-btn-restart-tutorial').on('click', () => startTutorial());
@@ -9859,9 +7946,9 @@ function initSettingsEvents() {
         const result = repairAllSummaryStates();
         if (result > 0) {
             updateTimelineDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+            showToast(`Исправлено ${result} состояний сводки`, 'success');
         } else {
-            showToast('Таблица экспортирована', 'info');
+            showToast('Все состояния сводок в норме, исправление не требуется', 'info');
         }
     });
     
@@ -9873,7 +7960,7 @@ function initSettingsEvents() {
     $('#horae-btn-add-location').on('click', () => openLocationEditModal(null));
     $('#horae-btn-merge-locations').on('click', openLocationMergeModal);
 
-// Константы
+    // Конфигурация полос атрибутов RPG
     $(document).on('input', '.horae-rpg-config-key', function() {
         const i = parseInt(this.dataset.idx);
         if (settings.rpgBarConfig?.[i]) {
@@ -9913,63 +8000,21 @@ function initSettingsEvents() {
             updateTokenCounter();
         }
     });
-// Константы
+    // Полосы атрибутов: сброс по умолчанию
     $('#horae-rpg-bar-reset').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить полосы атрибутов до конфигурации по умолчанию (HP/MP/SP)?')) return;
         settings.rpgBarConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgBarConfig));
         saveSettings(); renderBarConfig();
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Полосы атрибутов сброшены до значений по умолчанию', 'success');
     });
-// Константы
-    $('#horae-rpg-bar-clean').on('click', async () => {
-        const chat = horaeManager.getChat();
-        if (!chat?.length) { showToast('Нет данных чата', 'warning'); return; }
-        const validKeys = new Set((settings.rpgBarConfig || []).map(b => b.key));
-        validKeys.add('status');
-        const staleKeys = new Set();
-        for (let i = 0; i < chat.length; i++) {
-            const bars = chat[i]?.horae_meta?._rpgChanges?.bars;
-            if (bars) for (const key of Object.keys(bars)) { if (!validKeys.has(key)) staleKeys.add(key); }
-            const st = chat[i]?.horae_meta?._rpgChanges?.status;
-            if (st) for (const key of Object.keys(st)) { if (!validKeys.has(key)) staleKeys.add(key); }
-        }
-        const globalBars = chat[0]?.horae_meta?.rpg?.bars;
-        if (globalBars) for (const owner of Object.keys(globalBars)) {
-            for (const key of Object.keys(globalBars[owner] || {})) { if (!validKeys.has(key)) staleKeys.add(key); }
-        }
-        if (staleKeys.size === 0) { showToast('Нет устаревших данных атрибутов для очистки', 'success'); return; }
-        const keyList = [...staleKeys].join('、');
-        const ok = confirm(
-            `⚠ Обнаружены устаревшие данные, не входящие в текущую конфигурацию полос:\n\n` +
-            `【${keyList}】\n\n` +
-            `После очистки записи этих полос будут удалены из всех сообщений, панель RPG перестанет их отображать.\n` +
-            `Операция необратима!\n\nПодтвердить очистку?`
-        );
-        if (!ok) return;
-        let cleaned = 0;
-        for (let i = 0; i < chat.length; i++) {
-            const changes = chat[i]?.horae_meta?._rpgChanges;
-            if (!changes) continue;
-            for (const sub of ['bars', 'status']) {
-                if (!changes[sub]) continue;
-                for (const key of Object.keys(changes[sub])) {
-                    if (staleKeys.has(key)) { delete changes[sub][key]; cleaned++; }
-                }
-            }
-        }
-        horaeManager.rebuildRpgData();
-        await getContext().saveChat();
-        refreshAllDisplays();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    });
-// Константы
+    // Полосы атрибутов: экспорт
     $('#horae-rpg-bar-export').on('click', () => {
         const blob = new Blob([JSON.stringify(settings.rpgBarConfig, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'horae-rpg-bars.json'; a.click(); URL.revokeObjectURL(a.href);
     });
-// Константы
+    // Полосы атрибутов: импорт
     $('#horae-rpg-bar-import').on('click', () => document.getElementById('horae-rpg-bar-import-file')?.click());
     $('#horae-rpg-bar-import-file').on('change', function() {
         const file = this.files?.[0];
@@ -9982,27 +8027,27 @@ function initSettingsEvents() {
                 settings.rpgBarConfig = arr;
                 saveSettings(); renderBarConfig();
                 horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Импортировано ${arr.length} конфигураций полос атрибутов`, 'success');
             } catch (e) { showToast('Ошибка импорта: ' + e.message, 'error'); }
         };
         reader.readAsText(file);
         this.value = '';
     });
-// Константы
+    // Панель атрибутов: сброс по умолчанию
     $('#horae-rpg-attr-reset').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить панель атрибутов до конфигурации по умолчанию (шесть параметров DnD)?')) return;
         settings.rpgAttributeConfig = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.rpgAttributeConfig));
         saveSettings(); renderAttrConfig();
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Панель атрибутов сброшена до значений по умолчанию', 'success');
     });
-// Константы
+    // Панель атрибутов: экспорт
     $('#horae-rpg-attr-export').on('click', () => {
         const blob = new Blob([JSON.stringify(settings.rpgAttributeConfig, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'horae-rpg-attrs.json'; a.click(); URL.revokeObjectURL(a.href);
     });
-// Константы
+    // Панель атрибутов: импорт
     $('#horae-rpg-attr-import').on('click', () => document.getElementById('horae-rpg-attr-import-file')?.click());
     $('#horae-rpg-attr-import-file').on('change', function() {
         const file = this.files?.[0];
@@ -10015,7 +8060,7 @@ function initSettingsEvents() {
                 settings.rpgAttributeConfig = arr;
                 saveSettings(); renderAttrConfig();
                 horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Импортировано ${arr.length} конфигураций атрибутов`, 'success');
             } catch (e) { showToast('Ошибка импорта: ' + e.message, 'error'); }
         };
         reader.readAsText(file);
@@ -10035,7 +8080,7 @@ function initSettingsEvents() {
         updateTokenCounter();
     });
 
-// Константы
+    // Кнопка редактирования атрибутов в карточке персонажа
     $(document).on('click', '.horae-rpg-charattr-edit', function() {
         const charName = this.dataset.char;
         if (!charName) return;
@@ -10047,13 +8092,13 @@ function initSettingsEvents() {
             `<div class="horae-rpg-charattr-row"><label>${escapeHtml(a.name)}(${escapeHtml(a.key)})</label><input type="number" class="horae-rpg-charattr-val" data-key="${escapeHtml(a.key)}" min="0" max="100" placeholder="0-100" /></div>`
         ).join('');
         form.innerHTML = `
-            <div class="horae-rpg-form-title">Редактировать: ${escapeHtml(charName)}</div>
+            <div class="horae-rpg-form-title">Редактирование: ${escapeHtml(charName)}</div>
             ${attrInputs}
             <div class="horae-rpg-form-actions">
                 <button id="horae-rpg-charattr-save-inline" class="horae-rpg-btn-sm" data-char="${escapeHtml(charName)}">Сохранить</button>
                 <button id="horae-rpg-charattr-cancel-inline" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
-// Константы
+        // Заполнить существующими значениями
         const rpg = getContext().chat?.[0]?.horae_meta?.rpg;
         const existing = rpg?.attributes?.[charName] || {};
         form.querySelectorAll('.horae-rpg-charattr-val').forEach(inp => {
@@ -10078,7 +8123,7 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('Таблица экспортирована', 'success');
+            showToast('Атрибуты персонажа сохранены', 'success');
         });
         form.querySelector('#horae-rpg-charattr-cancel-inline').addEventListener('click', () => {
             form.style.display = 'none';
@@ -10086,7 +8131,7 @@ function initSettingsEvents() {
         form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
-// Константы
+    // Ручное добавление/редактирование атрибутов персонажа RPG
     $('#horae-rpg-add-charattr').on('click', () => {
         const form = document.getElementById('horae-rpg-charattr-form');
         if (!form) return;
@@ -10100,12 +8145,12 @@ function initSettingsEvents() {
             <select id="horae-rpg-charattr-owner">${buildCharacterOptions()}</select>
             ${attrInputs}
             <div class="horae-rpg-form-actions">
-                <button id="horae-rpg-charattr-load" class="horae-rpg-btn-sm horae-rpg-btn-muted">Загрузить существующий</button>
+                <button id="horae-rpg-charattr-load" class="horae-rpg-btn-sm horae-rpg-btn-muted">Загрузить существующие</button>
                 <button id="horae-rpg-charattr-save" class="horae-rpg-btn-sm">Сохранить</button>
                 <button id="horae-rpg-charattr-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
         form.style.display = '';
-// Константы
+        // Загрузить существующие данные
         form.querySelector('#horae-rpg-charattr-load').addEventListener('click', () => {
             const ownerVal = form.querySelector('#horae-rpg-charattr-owner').value;
             const owner = ownerVal === '__user__' ? (getContext().name1 || '{{user}}') : ownerVal;
@@ -10135,14 +8180,14 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('Таблица экспортирована', 'success');
+            showToast('Атрибуты персонажа сохранены', 'success');
         });
         form.querySelector('#horae-rpg-charattr-cancel').addEventListener('click', () => {
             form.style.display = 'none';
         });
     });
 
-// Константы
+    // Добавление/удаление навыков RPG
     $('#horae-rpg-add-skill').on('click', () => {
         const form = document.getElementById('horae-rpg-skill-form');
         if (!form) return;
@@ -10150,10 +8195,10 @@ function initSettingsEvents() {
         form.innerHTML = `
             <select id="horae-rpg-skill-owner">${buildCharacterOptions()}</select>
             <input id="horae-rpg-skill-name" placeholder="Название навыка" maxlength="30" />
-            <input id="horae-rpg-skill-level" placeholder="Название навыка" maxlength="10" />
-            <input id="horae-rpg-skill-desc" placeholder="Название навыка" maxlength="80" />
+            <input id="horae-rpg-skill-level" placeholder="Уровень (необязательно)" maxlength="10" />
+            <input id="horae-rpg-skill-desc" placeholder="Описание эффекта (необязательно)" maxlength="80" />
             <div class="horae-rpg-form-actions">
-                <button id="horae-rpg-skill-save" class="horae-rpg-btn-sm">ОК</button>
+                <button id="horae-rpg-skill-save" class="horae-rpg-btn-sm">Подтвердить</button>
                 <button id="horae-rpg-skill-cancel" class="horae-rpg-btn-sm horae-rpg-btn-muted">Отмена</button>
             </div>`;
         form.style.display = '';
@@ -10175,7 +8220,7 @@ function initSettingsEvents() {
             getContext().saveChat();
             form.style.display = 'none';
             updateRpgDisplay();
-            showToast('Таблица экспортирована', 'success');
+            showToast('Навык добавлен', 'success');
         });
         form.querySelector('#horae-rpg-skill-cancel').addEventListener('click', () => {
             form.style.display = 'none';
@@ -10198,7 +8243,7 @@ function initSettingsEvents() {
         }
     });
 
-// Константы
+    // Конфигурация панели атрибутов
     $(document).on('input', '.horae-rpg-config-key[data-type="attr"]', function() {
         const i = parseInt(this.dataset.idx);
         if (settings.rpgAttributeConfig?.[i]) {
@@ -10242,13 +8287,7 @@ function initSettingsEvents() {
         settings.rpgAttrViewMode = settings.rpgAttrViewMode === 'radar' ? 'text' : 'radar';
         saveSettings(); updateRpgDisplay();
     });
-// Константы
-    _bindReputationConfigEvents();
-// Константы
-    _bindEquipmentEvents();
-// Константы
-    _bindCurrencyEvents();
-// Константы
+    // Переключатель панели атрибутов
     $('#horae-setting-rpg-attrs').on('change', function() {
         settings.sendRpgAttributes = this.checked;
         saveSettings();
@@ -10256,7 +8295,7 @@ function initSettingsEvents() {
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
         updateRpgDisplay();
     });
-// Константы
+    // Пользовательский промпт RPG
     $('#horae-custom-rpg-prompt').on('input', function() {
         const val = this.value;
         settings.customRpgPrompt = (val.trim() === horaeManager.getDefaultRpgPrompt().trim()) ? '' : val;
@@ -10265,254 +8304,13 @@ function initSettingsEvents() {
         _refreshSystemPromptDisplay(); updateTokenCounter();
     });
     $('#horae-btn-reset-rpg-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт RPG до значения по умолчанию?')) return;
         settings.customRpgPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultRpgPrompt();
         $('#horae-custom-rpg-prompt').val(def);
         $('#horae-rpg-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings); _refreshSystemPromptDisplay(); updateTokenCounter();
-    });
-
-// Константы
-    const _PRESET_PROMPT_KEYS = [
-        'customSystemPrompt', 'customBatchPrompt', 'customAnalysisPrompt',
-        'customCompressPrompt', 'customAutoSummaryPrompt', 'customTablesPrompt',
-        'customLocationPrompt', 'customRelationshipPrompt', 'customMoodPrompt',
-        'customRpgPrompt'
-    ];
-    function _collectCurrentPrompts() {
-        const obj = {};
-        for (const k of _PRESET_PROMPT_KEYS) obj[k] = settings[k] || '';
-        return obj;
-    }
-    function _applyPresetPrompts(prompts) {
-        for (const k of _PRESET_PROMPT_KEYS) settings[k] = prompts[k] || '';
-        saveSettings();
-        const pairs = [
-            ['customSystemPrompt', 'horae-custom-system-prompt', 'horae-system-prompt-count', () => horaeManager.getDefaultSystemPrompt()],
-            ['customBatchPrompt', 'horae-custom-batch-prompt', 'horae-batch-prompt-count', () => getDefaultBatchPrompt()],
-            ['customAnalysisPrompt', 'horae-custom-analysis-prompt', 'horae-analysis-prompt-count', () => getDefaultAnalysisPrompt()],
-            ['customCompressPrompt', 'horae-custom-compress-prompt', 'horae-compress-prompt-count', () => getDefaultCompressPrompt()],
-            ['customAutoSummaryPrompt', 'horae-custom-auto-summary-prompt', 'horae-auto-summary-prompt-count', () => getDefaultAutoSummaryPrompt()],
-            ['customTablesPrompt', 'horae-custom-tables-prompt', 'horae-tables-prompt-count', () => horaeManager.getDefaultTablesPrompt()],
-            ['customLocationPrompt', 'horae-custom-location-prompt', 'horae-location-prompt-count', () => horaeManager.getDefaultLocationPrompt()],
-            ['customRelationshipPrompt', 'horae-custom-relationship-prompt', 'horae-relationship-prompt-count', () => horaeManager.getDefaultRelationshipPrompt()],
-            ['customMoodPrompt', 'horae-custom-mood-prompt', 'horae-mood-prompt-count', () => horaeManager.getDefaultMoodPrompt()],
-            ['customRpgPrompt', 'horae-custom-rpg-prompt', 'horae-rpg-prompt-count', () => horaeManager.getDefaultRpgPrompt()],
-        ];
-        for (const [key, textareaId, countId, getDefault] of pairs) {
-            const val = settings[key] || getDefault();
-            $(`#${textareaId}`).val(val);
-            $(`#${countId}`).text(val.length);
-        }
-        horaeManager.init(getContext(), settings);
-        updateTokenCounter();
-// Константы
-        const body = document.getElementById('horae-prompt-collapse-body');
-        if (body) body.style.display = '';
-    }
-    function _renderPresetSelect() {
-        const sel = $('#horae-prompt-preset-select');
-        sel.empty();
-        const presets = settings.promptPresets || [];
-        if (presets.length === 0) {
-            sel.append('<option value="-1">（без шаблона）</option>');
-        } else {
-            for (let i = 0; i < presets.length; i++) {
-                sel.append(`<option value="${i}">${presets[i].name}</option>`);
-            }
-        }
-    }
-    _renderPresetSelect();
-
-    $('#horae-prompt-preset-load').on('click', () => {
-        const idx = parseInt($('#horae-prompt-preset-select').val());
-        const presets = settings.promptPresets || [];
-        if (idx < 0 || idx >= presets.length) { showToast('Сначала выберите пресет', 'warning'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-        _applyPresetPrompts(presets[idx].prompts);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    });
-
-    $('#horae-prompt-preset-save').on('click', () => {
-        const idx = parseInt($('#horae-prompt-preset-select').val());
-        const presets = settings.promptPresets || [];
-        if (idx < 0 || idx >= presets.length) { showToast('Сначала выберите пресет', 'warning'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-        presets[idx].prompts = _collectCurrentPrompts();
-        saveSettings();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    });
-
-    $('#horae-prompt-preset-new').on('click', () => {
-        const name = prompt('Введите название нового пресета:');
-        if (!name?.trim()) return;
-        if (!settings.promptPresets) settings.promptPresets = [];
-        settings.promptPresets.push({ name: name.trim(), prompts: _collectCurrentPrompts() });
-        saveSettings();
-        _renderPresetSelect();
-        $('#horae-prompt-preset-select').val(settings.promptPresets.length - 1);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    });
-
-    $('#horae-prompt-preset-delete').on('click', () => {
-        const idx = parseInt($('#horae-prompt-preset-select').val());
-        const presets = settings.promptPresets || [];
-        if (idx < 0 || idx >= presets.length) { showToast('Сначала выберите пресет', 'warning'); return; }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-        presets.splice(idx, 1);
-        saveSettings();
-        _renderPresetSelect();
-        showToast('Таблица экспортирована', 'success');
-    });
-
-    $('#horae-prompt-preset-export').on('click', () => {
-        const data = { type: 'horae-prompts', version: VERSION, prompts: _collectCurrentPrompts() };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `horae-prompts_${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showToast('Таблица экспортирована', 'success');
-    });
-
-    $('#horae-prompt-preset-import').on('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            try {
-                const text = await file.text();
-                const data = JSON.parse(text);
-                if (!data.prompts || data.type !== 'horae-prompts') throw new Error('Неверный формат файла промптов');
-                if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
-                _applyPresetPrompts(data.prompts);
-                const body = document.getElementById('horae-prompt-collapse-body');
-                if (body) body.style.display = '';
-                showToast('Таблица экспортирована', 'success');
-            } catch (err) {
-                showToast('Ошибка импорта: ' + err.message, 'error');
-            }
-        };
-        input.click();
-    });
-
-// Константы
-    $('#horae-prompt-reset-all').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
-        for (const k of _PRESET_PROMPT_KEYS) settings[k] = '';
-        saveSettings();
-        const pairs = [
-            ['customSystemPrompt', 'horae-custom-system-prompt', 'horae-system-prompt-count', () => horaeManager.getDefaultSystemPrompt()],
-            ['customBatchPrompt', 'horae-custom-batch-prompt', 'horae-batch-prompt-count', () => getDefaultBatchPrompt()],
-            ['customAnalysisPrompt', 'horae-custom-analysis-prompt', 'horae-analysis-prompt-count', () => getDefaultAnalysisPrompt()],
-            ['customCompressPrompt', 'horae-custom-compress-prompt', 'horae-compress-prompt-count', () => getDefaultCompressPrompt()],
-            ['customAutoSummaryPrompt', 'horae-custom-auto-summary-prompt', 'horae-auto-summary-prompt-count', () => getDefaultAutoSummaryPrompt()],
-            ['customTablesPrompt', 'horae-custom-tables-prompt', 'horae-tables-prompt-count', () => horaeManager.getDefaultTablesPrompt()],
-            ['customLocationPrompt', 'horae-custom-location-prompt', 'horae-location-prompt-count', () => horaeManager.getDefaultLocationPrompt()],
-            ['customRelationshipPrompt', 'horae-custom-relationship-prompt', 'horae-relationship-prompt-count', () => horaeManager.getDefaultRelationshipPrompt()],
-            ['customMoodPrompt', 'horae-custom-mood-prompt', 'horae-mood-prompt-count', () => horaeManager.getDefaultMoodPrompt()],
-            ['customRpgPrompt', 'horae-custom-rpg-prompt', 'horae-rpg-prompt-count', () => horaeManager.getDefaultRpgPrompt()],
-        ];
-        for (const [, textareaId, countId, getDefault] of pairs) {
-            const val = getDefault();
-            $(`#${textareaId}`).val(val);
-            $(`#${countId}`).text(val.length);
-        }
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
-    });
-
-// Константы
-    const _SETTINGS_EXPORT_KEYS = [
-        'enabled','autoParse','injectContext','showMessagePanel','showTopIcon',
-        'contextDepth','injectionPosition',
-        'sendTimeline','sendCharacters','sendItems',
-        'sendLocationMemory','sendRelationships','sendMood',
-        'antiParaphraseMode','sideplayMode',
-        'aiScanIncludeNpc','aiScanIncludeAffection','aiScanIncludeScene','aiScanIncludeRelationship',
-        'rpgMode','sendRpgBars','sendRpgSkills','sendRpgAttributes','sendRpgReputation',
-        'sendRpgEquipment','sendRpgLevel','sendRpgCurrency','sendRpgStronghold','rpgDiceEnabled',
-        'rpgBarsUserOnly','rpgSkillsUserOnly','rpgAttrsUserOnly','rpgReputationUserOnly',
-        'rpgEquipmentUserOnly','rpgLevelUserOnly','rpgCurrencyUserOnly','rpgUserOnly',
-        'rpgBarConfig','rpgAttributeConfig','rpgAttrViewMode','equipmentTemplates',
-        ..._PRESET_PROMPT_KEYS,
-    ];
-
-    $('#horae-settings-export').on('click', () => {
-        const payload = {};
-        for (const k of _SETTINGS_EXPORT_KEYS) {
-            if (settings[k] !== undefined) payload[k] = JSON.parse(JSON.stringify(settings[k]));
-        }
-        const data = { type: 'horae-settings', version: VERSION, settings: payload };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `horae-settings_${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showToast('Таблица экспортирована', 'success');
-    });
-
-    $('#horae-settings-import').on('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = async (e) => {
-            try {
-                const file = e.target.files[0];
-                if (!file) return;
-                const text = await file.text();
-                const data = JSON.parse(text);
-                if (data.type !== 'horae-settings' || !data.settings) {
-                    showToast('Таблица экспортирована', 'error');
-                    return;
-                }
-                const imported = data.settings;
-                const keys = Object.keys(imported).filter(k => _SETTINGS_EXPORT_KEYS.includes(k));
-                if (keys.length === 0) {
-                    showToast('Таблица экспортирована', 'warning');
-                    return;
-                }
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
-                for (const k of keys) {
-                    settings[k] = JSON.parse(JSON.stringify(imported[k]));
-                }
-                saveSettings();
-                syncSettingsToUI();
-                try { renderBarConfig(); } catch (_) {}
-                try { renderAttrConfig(); } catch (_) {}
-                horaeManager.init(getContext(), settings);
-                _refreshSystemPromptDisplay();
-                updateTokenCounter();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-            } catch (err) {
-                console.error('[Horae] Ошибка сжатия:', err);
-                showToast('Ошибка импорта: ' + err.message, 'error');
-            }
-        };
-        input.click();
-    });
-
-    $('#horae-settings-reset').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
-        for (const k of _SETTINGS_EXPORT_KEYS) {
-            settings[k] = JSON.parse(JSON.stringify(DEFAULT_SETTINGS[k]));
-        }
-        saveSettings();
-        syncSettingsToUI();
-        try { renderBarConfig(); } catch (_) {}
-        try { renderAttrConfig(); } catch (_) {}
-        horaeManager.init(getContext(), settings);
-        _refreshSystemPromptDisplay();
-        updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
     });
 
     $('#horae-btn-agenda-select-all').on('click', selectAllAgenda);
@@ -10555,7 +8353,7 @@ function initSettingsEvents() {
     
     $('#horae-btn-items-refresh').on('click', () => {
         updateItemsDisplay();
-        showToast('Таблица экспортирована', 'info');
+        showToast('Список предметов обновлён', 'info');
     });
     
     $('#horae-setting-send-timeline').on('change', function() {
@@ -10626,7 +8424,7 @@ function initSettingsEvents() {
         });
     });
 
-// Константы
+    // RPG-режим
     $('#horae-setting-rpg-mode').on('change', function() {
         settings.rpgMode = this.checked;
         saveSettings();
@@ -10638,60 +8436,17 @@ function initSettingsEvents() {
         updateTokenCounter();
         if (this.checked) updateRpgDisplay();
     });
-// Константы
-    const _rpgUoKeys = ['rpgBarsUserOnly','rpgSkillsUserOnly','rpgAttrsUserOnly','rpgReputationUserOnly','rpgEquipmentUserOnly','rpgLevelUserOnly','rpgCurrencyUserOnly'];
-    const _rpgUoIds = ['bars','skills','attrs','reputation','equipment','level','currency'];
-    function _syncRpgUserOnlyMaster() {
-        const allOn = _rpgUoKeys.every(k => !!settings[k]);
-        settings.rpgUserOnly = allOn;
-        $('#horae-setting-rpg-user-only').prop('checked', allOn);
-    }
-    function _rpgUoRefresh() {
+    $('#horae-setting-rpg-bars').on('change', function() {
+        settings.sendRpgBars = this.checked;
         saveSettings();
+        _syncRpgTabVisibility();
         horaeManager.init(getContext(), settings);
         _refreshSystemPromptDisplay();
         updateTokenCounter();
         updateRpgDisplay();
-    }
-    $('#horae-setting-rpg-user-only').on('change', function() {
-        const val = this.checked;
-        settings.rpgUserOnly = val;
-        for (const k of _rpgUoKeys) settings[k] = val;
-        for (const id of _rpgUoIds) $(`#horae-setting-rpg-${id}-uo`).prop('checked', val);
-        _rpgUoRefresh();
     });
-    for (let i = 0; i < _rpgUoIds.length; i++) {
-        const id = _rpgUoIds[i], key = _rpgUoKeys[i];
-        $(`#horae-setting-rpg-${id}-uo`).on('change', function() {
-            settings[key] = this.checked;
-            _syncRpgUserOnlyMaster();
-            _rpgUoRefresh();
-        });
-    }
-// Константы
-    const _rpgModulePairs = [
-        { checkId: 'horae-setting-rpg-bars', settingKey: 'sendRpgBars', uoId: 'horae-setting-rpg-bars-uo' },
-        { checkId: 'horae-setting-rpg-skills', settingKey: 'sendRpgSkills', uoId: 'horae-setting-rpg-skills-uo' },
-        { checkId: 'horae-setting-rpg-attrs', settingKey: 'sendRpgAttributes', uoId: 'horae-setting-rpg-attrs-uo' },
-        { checkId: 'horae-setting-rpg-reputation', settingKey: 'sendRpgReputation', uoId: 'horae-setting-rpg-reputation-uo' },
-        { checkId: 'horae-setting-rpg-equipment', settingKey: 'sendRpgEquipment', uoId: 'horae-setting-rpg-equipment-uo' },
-        { checkId: 'horae-setting-rpg-level', settingKey: 'sendRpgLevel', uoId: 'horae-setting-rpg-level-uo' },
-        { checkId: 'horae-setting-rpg-currency', settingKey: 'sendRpgCurrency', uoId: 'horae-setting-rpg-currency-uo' },
-    ];
-    for (const m of _rpgModulePairs) {
-        $(`#${m.checkId}`).on('change', function() {
-            settings[m.settingKey] = this.checked;
-            $(`#${m.uoId}`).closest('label').toggle(this.checked);
-            saveSettings();
-            _syncRpgTabVisibility();
-            horaeManager.init(getContext(), settings);
-            _refreshSystemPromptDisplay();
-            updateTokenCounter();
-            updateRpgDisplay();
-        });
-    }
-    $('#horae-setting-rpg-stronghold').on('change', function() {
-        settings.sendRpgStronghold = this.checked;
+    $('#horae-setting-rpg-skills').on('change', function() {
+        settings.sendRpgSkills = this.checked;
         saveSettings();
         _syncRpgTabVisibility();
         horaeManager.init(getContext(), settings);
@@ -10709,10 +8464,10 @@ function initSettingsEvents() {
         settings.dicePosY = null;
         saveSettings();
         renderDicePanel();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Положение панели кубиков сброшено', 'success');
     });
 
-// Константы
+    // Авто-сводка: свёртывание панели
     $('#horae-autosummary-collapse-toggle').on('click', function() {
         const body = $('#horae-autosummary-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -10720,7 +8475,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-// Константы
+    // Авто-сводка: настройки
     $('#horae-setting-auto-summary').on('change', function() {
         settings.autoSummaryEnabled = this.checked;
         saveSettings();
@@ -10764,12 +8519,11 @@ function initSettingsEvents() {
         settings.autoSummaryApiKey = this.value;
         saveSettings();
     });
-    $('#horae-setting-auto-summary-model').on('change', function() {
+    $('#horae-setting-auto-summary-model').on('input change', function() {
         settings.autoSummaryModel = this.value;
         saveSettings();
     });
 
-    $('#horae-btn-fetch-models').on('click', fetchAndPopulateModels);
     $('#horae-btn-test-sub-api').on('click', testSubApiConnection);
     
     $('#horae-setting-panel-width').on('change', function() {
@@ -10788,27 +8542,27 @@ function initSettingsEvents() {
         applyPanelWidth();
     });
 
-// Константы
+    // Переключение режима темы
     $('#horae-setting-theme-mode').on('change', function() {
         settings.themeMode = this.value;
         saveSettings();
         applyThemeMode();
     });
 
-// Константы
+    // Импорт/экспорт/удаление темы / инструмент настройки темы
     $('#horae-btn-theme-export').on('click', exportTheme);
     $('#horae-btn-theme-import').on('click', importTheme);
     $('#horae-btn-theme-designer').on('click', openThemeDesigner);
     $('#horae-btn-theme-delete').on('click', function() {
         const mode = settings.themeMode || 'dark';
         if (!mode.startsWith('custom-')) {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Можно удалить только импортированные пользовательские темы', 'warning');
             return;
         }
         deleteCustomTheme(parseInt(mode.split('-')[1]));
     });
 
-// Константы
+    // Пользовательский CSS
     $('#horae-custom-css').on('change', function() {
         settings.customCSS = this.value;
         saveSettings();
@@ -10835,7 +8589,7 @@ function initSettingsEvents() {
     $('#horae-btn-import').on('click', importData);
     $('#horae-btn-clear').on('click', clearAllData);
     
-// Константы
+    // Показать/скрыть расположение (нельзя использовать класс hidden, в SillyTavern глобально есть правило display:none)
     $('#horae-affection-toggle').on('click', function() {
         const list = $('#horae-affection-list');
         const icon = $(this).find('i');
@@ -10850,10 +8604,10 @@ function initSettingsEvents() {
         }
     });
     
-// Константы
+    // Пользовательские промпты
     $('#horae-custom-system-prompt').on('input', function() {
         const val = this.value;
-// Константы
+        // Если совпадает с по умолчанию, считается ненастроенным
         settings.customSystemPrompt = (val.trim() === horaeManager.getDefaultSystemPrompt().trim()) ? '' : val;
         $('#horae-system-prompt-count').text(val.length);
         saveSettings();
@@ -10869,7 +8623,7 @@ function initSettingsEvents() {
     });
     
     $('#horae-btn-reset-system-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить системный промпт до значения по умолчанию?')) return;
         settings.customSystemPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultSystemPrompt();
@@ -10877,20 +8631,20 @@ function initSettingsEvents() {
         $('#horae-system-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
     
     $('#horae-btn-reset-batch-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт ИИ-сводки до значения по умолчанию?')) return;
         settings.customBatchPrompt = '';
         saveSettings();
         const def = getDefaultBatchPrompt();
         $('#horae-custom-batch-prompt').val(def);
         $('#horae-batch-prompt-count').text(def.length);
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Промпт для ИИ-анализа
     $('#horae-custom-analysis-prompt').on('input', function() {
         const val = this.value;
         settings.customAnalysisPrompt = (val.trim() === getDefaultAnalysisPrompt().trim()) ? '' : val;
@@ -10899,16 +8653,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-analysis-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт ИИ-анализа до значения по умолчанию?')) return;
         settings.customAnalysisPrompt = '';
         saveSettings();
         const def = getDefaultAnalysisPrompt();
         $('#horae-custom-analysis-prompt').val(def);
         $('#horae-analysis-prompt-count').text(def.length);
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Промпт для сжатия сюжета
     $('#horae-custom-compress-prompt').on('input', function() {
         const val = this.value;
         settings.customCompressPrompt = (val.trim() === getDefaultCompressPrompt().trim()) ? '' : val;
@@ -10917,16 +8671,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-compress-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт сжатия сюжета до значения по умолчанию?')) return;
         settings.customCompressPrompt = '';
         saveSettings();
         const def = getDefaultCompressPrompt();
         $('#horae-custom-compress-prompt').val(def);
         $('#horae-compress-prompt-count').text(def.length);
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Авто-сводка: промпт
     $('#horae-custom-auto-summary-prompt').on('input', function() {
         const val = this.value;
         settings.customAutoSummaryPrompt = (val.trim() === getDefaultAutoSummaryPrompt().trim()) ? '' : val;
@@ -10935,16 +8689,16 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-auto-summary-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт авто-сводки до значения по умолчанию?')) return;
         settings.customAutoSummaryPrompt = '';
         saveSettings();
         const def = getDefaultAutoSummaryPrompt();
         $('#horae-custom-auto-summary-prompt').val(def);
         $('#horae-auto-summary-prompt-count').text(def.length);
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Промпт для правил заполнения таблиц
     $('#horae-custom-tables-prompt').on('input', function() {
         const val = this.value;
         settings.customTablesPrompt = (val.trim() === horaeManager.getDefaultTablesPrompt().trim()) ? '' : val;
@@ -10955,7 +8709,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-tables-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт правил заполнения таблиц до значения по умолчанию?')) return;
         settings.customTablesPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultTablesPrompt();
@@ -10963,10 +8717,10 @@ function initSettingsEvents() {
         $('#horae-tables-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Память о локациях: промпт
     $('#horae-custom-location-prompt').on('input', function() {
         const val = this.value;
         settings.customLocationPrompt = (val.trim() === horaeManager.getDefaultLocationPrompt().trim()) ? '' : val;
@@ -10977,7 +8731,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-location-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт памяти о локациях до значения по умолчанию?')) return;
         settings.customLocationPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultLocationPrompt();
@@ -10985,10 +8739,10 @@ function initSettingsEvents() {
         $('#horae-location-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Промпт для сети отношений
     $('#horae-custom-relationship-prompt').on('input', function() {
         const val = this.value;
         settings.customRelationshipPrompt = (val.trim() === horaeManager.getDefaultRelationshipPrompt().trim()) ? '' : val;
@@ -10999,7 +8753,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-relationship-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт сети отношений до значения по умолчанию?')) return;
         settings.customRelationshipPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultRelationshipPrompt();
@@ -11007,10 +8761,10 @@ function initSettingsEvents() {
         $('#horae-relationship-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Отслеживание эмоций: промпт
     $('#horae-custom-mood-prompt').on('input', function() {
         const val = this.value;
         settings.customMoodPrompt = (val.trim() === horaeManager.getDefaultMoodPrompt().trim()) ? '' : val;
@@ -11021,7 +8775,7 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-reset-mood-prompt').on('click', () => {
-        if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+        if (!confirm('Сбросить промпт отслеживания эмоций до значения по умолчанию?')) return;
         settings.customMoodPrompt = '';
         saveSettings();
         const def = horaeManager.getDefaultMoodPrompt();
@@ -11029,10 +8783,10 @@ function initSettingsEvents() {
         $('#horae-mood-prompt-count').text(def.length);
         horaeManager.init(getContext(), settings);
         updateTokenCounter();
-        showToast('Таблица экспортирована', 'success');
+        showToast('Промпт сброшен до значения по умолчанию', 'success');
     });
 
-// Константы
+    // Переключение сворачивания области промптов
     $('#horae-prompt-collapse-toggle').on('click', function() {
         const body = $('#horae-prompt-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -11040,7 +8794,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-// Константы
+    // Пользовательский CSS: переключение свёртывания
     $('#horae-css-collapse-toggle').on('click', function() {
         const body = $('#horae-css-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -11048,7 +8802,7 @@ function initSettingsEvents() {
         icon.toggleClass('collapsed');
     });
 
-// Константы
+    // Векторная память: переключение свёртывания
     $('#horae-vector-collapse-toggle').on('click', function() {
         const body = $('#horae-vector-collapse-body');
         const icon = $(this).find('.horae-collapse-icon');
@@ -11074,7 +8828,7 @@ function initSettingsEvents() {
         _syncVectorSourceUI();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('Таблица экспортирована', 'info');
+                showToast('Источник векторов изменён, индекс очищен, идёт загрузка...', 'info');
                 _initVectorModel();
             });
         }
@@ -11085,7 +8839,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('Таблица экспортирована', 'info');
+                showToast('Модель изменена, индекс очищен, идёт загрузка новой модели...', 'info');
                 _initVectorModel();
             });
         }
@@ -11096,7 +8850,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled) {
             vectorManager.clearIndex().then(() => {
-                showToast('Таблица экспортирована', 'info');
+                showToast('Точность квантования изменена, индекс очищен, идёт перезагрузка...', 'info');
                 _initVectorModel();
             });
         }
@@ -11117,7 +8871,7 @@ function initSettingsEvents() {
         saveSettings();
         if (settings.vectorEnabled && settings.vectorSource === 'api') {
             vectorManager.clearIndex().then(() => {
-                showToast('Таблица экспортирована', 'info');
+                showToast('Модель API изменена, индекс очищен, идёт повторное подключение...', 'info');
                 _initVectorModel();
             });
         }
@@ -11143,9 +8897,6 @@ function initSettingsEvents() {
         settings.vectorRerankModel = this.value.trim();
         saveSettings();
     });
-
-    $('#horae-btn-fetch-embed-models').on('click', fetchEmbeddingModels);
-    $('#horae-btn-fetch-rerank-models').on('click', fetchRerankModels);
 
     $('#horae-setting-vector-rerank-url').on('change', function() {
         settings.vectorRerankUrl = this.value.trim();
@@ -11177,17 +8928,12 @@ function initSettingsEvents() {
         saveSettings();
     });
 
-    $('#horae-setting-vector-strip-tags').on('change', function() {
-        settings.vectorStripTags = this.value.trim();
-        saveSettings();
-    });
-
     $('#horae-btn-vector-build').on('click', _buildVectorIndex);
     $('#horae-btn-vector-clear').on('click', _clearVectorIndex);
 }
 
 /**
- * 同步设置到UI
+ * Синхронизировать настройки с UI
  */
 function _refreshSystemPromptDisplay() {
     if (settings.customSystemPrompt) return;
@@ -11217,56 +8963,36 @@ function syncSettingsToUI() {
     
     applyTopIconVisibility();
     
-// Константы
+    // Память о локациях
     $('#horae-setting-send-location-memory').prop('checked', !!settings.sendLocationMemory);
     $('#horae-location-prompt-group').toggle(!!settings.sendLocationMemory);
     $('.horae-tab[data-tab="locations"]').toggle(!!settings.sendLocationMemory);
     
-// Константы
+    // Сеть отношений
     $('#horae-setting-send-relationships').prop('checked', !!settings.sendRelationships);
     $('#horae-relationship-section').toggle(!!settings.sendRelationships);
     $('#horae-relationship-prompt-group').toggle(!!settings.sendRelationships);
     
-// Константы
+    // Отслеживание эмоций
     $('#horae-setting-send-mood').prop('checked', !!settings.sendMood);
     $('#horae-mood-prompt-group').toggle(!!settings.sendMood);
     
-// Константы
+    // Режим без пересказа
     $('#horae-setting-anti-paraphrase').prop('checked', !!settings.antiParaphraseMode);
-// Константы
+    // Режим побочной сцены
     $('#horae-setting-sideplay-mode').prop('checked', !!settings.sideplayMode);
 
-// Константы
+    // RPG-режим
     $('#horae-setting-rpg-mode').prop('checked', !!settings.rpgMode);
     $('#horae-rpg-sub-options').toggle(!!settings.rpgMode);
     $('#horae-setting-rpg-bars').prop('checked', settings.sendRpgBars !== false);
     $('#horae-setting-rpg-attrs').prop('checked', settings.sendRpgAttributes !== false);
     $('#horae-setting-rpg-skills').prop('checked', settings.sendRpgSkills !== false);
-    $('#horae-setting-rpg-user-only').prop('checked', !!settings.rpgUserOnly);
-    $('#horae-setting-rpg-bars-uo').prop('checked', !!settings.rpgBarsUserOnly);
-    $('#horae-setting-rpg-bars-uo').closest('label').toggle(settings.sendRpgBars !== false);
-    $('#horae-setting-rpg-attrs-uo').prop('checked', !!settings.rpgAttrsUserOnly);
-    $('#horae-setting-rpg-attrs-uo').closest('label').toggle(settings.sendRpgAttributes !== false);
-    $('#horae-setting-rpg-skills-uo').prop('checked', !!settings.rpgSkillsUserOnly);
-    $('#horae-setting-rpg-skills-uo').closest('label').toggle(settings.sendRpgSkills !== false);
-    $('#horae-setting-rpg-reputation').prop('checked', !!settings.sendRpgReputation);
-    $('#horae-setting-rpg-reputation-uo').prop('checked', !!settings.rpgReputationUserOnly);
-    $('#horae-setting-rpg-reputation-uo').closest('label').toggle(!!settings.sendRpgReputation);
-    $('#horae-setting-rpg-equipment').prop('checked', !!settings.sendRpgEquipment);
-    $('#horae-setting-rpg-equipment-uo').prop('checked', !!settings.rpgEquipmentUserOnly);
-    $('#horae-setting-rpg-equipment-uo').closest('label').toggle(!!settings.sendRpgEquipment);
-    $('#horae-setting-rpg-level').prop('checked', !!settings.sendRpgLevel);
-    $('#horae-setting-rpg-level-uo').prop('checked', !!settings.rpgLevelUserOnly);
-    $('#horae-setting-rpg-level-uo').closest('label').toggle(!!settings.sendRpgLevel);
-    $('#horae-setting-rpg-currency').prop('checked', !!settings.sendRpgCurrency);
-    $('#horae-setting-rpg-currency-uo').prop('checked', !!settings.rpgCurrencyUserOnly);
-    $('#horae-setting-rpg-currency-uo').closest('label').toggle(!!settings.sendRpgCurrency);
-    $('#horae-setting-rpg-stronghold').prop('checked', !!settings.sendRpgStronghold);
     $('#horae-setting-rpg-dice').prop('checked', !!settings.rpgDiceEnabled);
     $('#horae-rpg-prompt-group').toggle(!!settings.rpgMode);
     _syncRpgTabVisibility();
 
-// Константы
+    // Авто-сводка
     $('#horae-setting-auto-summary').prop('checked', !!settings.autoSummaryEnabled);
     $('#horae-auto-summary-options').toggle(!!settings.autoSummaryEnabled);
     $('#horae-setting-auto-summary-keep').val(settings.autoSummaryKeepRecent || 10);
@@ -11278,17 +9004,7 @@ function syncSettingsToUI() {
     $('#horae-auto-summary-api-options').toggle(!!settings.autoSummaryUseCustomApi);
     $('#horae-setting-auto-summary-api-url').val(settings.autoSummaryApiUrl || '');
     $('#horae-setting-auto-summary-api-key').val(settings.autoSummaryApiKey || '');
-// Константы
-    const _savedModel = settings.autoSummaryModel || '';
-    const _modelSel = document.getElementById('horae-setting-auto-summary-model');
-    if (_savedModel && _modelSel) {
-        _modelSel.innerHTML = '';
-        const opt = document.createElement('option');
-        opt.value = _savedModel;
-        opt.textContent = _savedModel;
-        opt.selected = true;
-        _modelSel.appendChild(opt);
-    }
+    $('#horae-setting-auto-summary-model').val(settings.autoSummaryModel || '');
     updateAutoSummaryHint();
 
     const sysPrompt = settings.customSystemPrompt || horaeManager.getDefaultSystemPrompt();
@@ -11322,22 +9038,22 @@ function syncSettingsToUI() {
     $('#horae-mood-prompt-count').text(moodPromptVal.length);
     $('#horae-rpg-prompt-count').text(rpgPromptVal.length);
     
-// Константы
+    // Ширина и смещение панели
     $('#horae-setting-panel-width').val(settings.panelWidth || 100);
     const ofs = settings.panelOffset || 0;
     $('#horae-setting-panel-offset').val(ofs);
     $('#horae-panel-offset-value').text(`${ofs}px`);
     applyPanelWidth();
 
-// Константы
+    // Режим темы
     refreshThemeSelector();
     applyThemeMode();
 
-// Константы
+    // Пользовательский CSS
     $('#horae-custom-css').val(settings.customCSS || '');
     applyCustomCSS();
 
-// Константы
+    // Векторная память
     $('#horae-setting-vector-enabled').prop('checked', !!settings.vectorEnabled);
     $('#horae-vector-options').toggle(!!settings.vectorEnabled);
     $('#horae-setting-vector-source').val(settings.vectorSource || 'local');
@@ -11345,47 +9061,24 @@ function syncSettingsToUI() {
     $('#horae-setting-vector-dtype').val(settings.vectorDtype || 'q8');
     $('#horae-setting-vector-api-url').val(settings.vectorApiUrl || '');
     $('#horae-setting-vector-api-key').val(settings.vectorApiKey || '');
-// Константы
-    if (settings.vectorApiModel) {
-        const _embSel = document.getElementById('horae-setting-vector-api-model');
-        if (_embSel) {
-            _embSel.innerHTML = '';
-            const opt = document.createElement('option');
-            opt.value = settings.vectorApiModel;
-            opt.textContent = settings.vectorApiModel;
-            opt.selected = true;
-            _embSel.appendChild(opt);
-        }
-    }
+    $('#horae-setting-vector-api-model').val(settings.vectorApiModel || '');
     $('#horae-setting-vector-pure-mode').prop('checked', !!settings.vectorPureMode);
     $('#horae-setting-vector-rerank-enabled').prop('checked', !!settings.vectorRerankEnabled);
     $('#horae-vector-rerank-options').toggle(!!settings.vectorRerankEnabled);
     $('#horae-setting-vector-rerank-fulltext').prop('checked', !!settings.vectorRerankFullText);
-// Константы
-    if (settings.vectorRerankModel) {
-        const _rrSel = document.getElementById('horae-setting-vector-rerank-model');
-        if (_rrSel) {
-            _rrSel.innerHTML = '';
-            const opt = document.createElement('option');
-            opt.value = settings.vectorRerankModel;
-            opt.textContent = settings.vectorRerankModel;
-            opt.selected = true;
-            _rrSel.appendChild(opt);
-        }
-    }
+    $('#horae-setting-vector-rerank-model').val(settings.vectorRerankModel || '');
     $('#horae-setting-vector-rerank-url').val(settings.vectorRerankUrl || '');
     $('#horae-setting-vector-rerank-key').val(settings.vectorRerankKey || '');
     $('#horae-setting-vector-topk').val(settings.vectorTopK || 5);
     $('#horae-setting-vector-threshold').val(settings.vectorThreshold || 0.72);
     $('#horae-setting-vector-fulltext-count').val(settings.vectorFullTextCount ?? 3);
     $('#horae-setting-vector-fulltext-threshold').val(settings.vectorFullTextThreshold ?? 0.9);
-    $('#horae-setting-vector-strip-tags').val(settings.vectorStripTags || '');
     _syncVectorSourceUI();
     _updateVectorStatus();
 }
 
 // ============================================
-// Константы
+// Векторная память
 // ============================================
 
 function _deriveChatId(ctx) {
@@ -11402,13 +9095,13 @@ function _updateVectorStatus() {
     if (vectorManager.isLoading) {
         statusEl.textContent = 'Загрузка модели...';
     } else if (vectorManager.isReady) {
-        const dimText = vectorManager.dimensions ? ` (${vectorManager.dimensions} измерений)` : '';
+        const dimText = vectorManager.dimensions ? ` (${vectorManager.dimensions}D)` : '';
         const nameText = vectorManager.isApiMode
             ? `API: ${vectorManager.modelName}`
             : vectorManager.modelName.split('/').pop();
         statusEl.textContent = `✓ ${nameText}${dimText}`;
     } else {
-        statusEl.textContent = settings.vectorEnabled ? 'Модель не загружена' : 'Модель не загружена';
+        statusEl.textContent = settings.vectorEnabled ? 'Модель не загружена' : 'Отключено';
     }
     if (countEl) {
         countEl.textContent = vectorManager.vectors.size > 0
@@ -11417,7 +9110,7 @@ function _updateVectorStatus() {
     }
 }
 
-/** 检测是否为移动端（iOS/Android/小屏设备） */
+/** Определить, является ли устройство мобильным (iOS/Android/маленький экран) */
 function _isMobileDevice() {
     const ua = navigator.userAgent || '';
     if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
@@ -11425,8 +9118,8 @@ function _isMobileDevice() {
 }
 
 /**
- * 移动端本地向量安全检查：弹窗确认后才加载，防 OOM 闪退。
- * 返回 true = 允许继续加载，false = 用户拒绝或被拦截
+ * Проверка безопасности локальных векторов на мобильном устройстве: загрузка только после подтверждения в окне, чтобы предотвратить OOM-краш.
+ * Возвращает true = разрешить загрузку, false = пользователь отказался или заблокировано
  */
 function _mobileLocalVectorGuard() {
     if (!_isMobileDevice()) return Promise.resolve(true);
@@ -11437,11 +9130,11 @@ function _mobileLocalVectorGuard() {
         modal.className = 'horae-modal';
         modal.innerHTML = `
         <div class="horae-modal-content" style="max-width:360px;">
-            <div class="horae-modal-header"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Предупреждение: локальная векторная модель</div>
+            <div class="horae-modal-header"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Предупреждение о локальной векторной модели</div>
             <div class="horae-modal-body" style="font-size:13px;line-height:1.6;">
                 <p>Обнаружено использование <b>локальной векторной модели</b> на <b>мобильном устройстве</b>.</p>
-                <p>Локальная модель загружает около 30-60 МБ WASM в браузер, что <b>очень легко вызывает переполнение памяти и вылет</b>.</p>
-                <p style="color:var(--horae-accent,#6366f1);font-weight:600;">Настоятельно рекомендуется переключиться на «Режим API» (напр. бесплатная модель SiliconFlow) — без нагрузки на память.</p>
+                <p>Локальная модель требует загрузки ~30–60 МБ WASM-модели в браузер, что <b>может легко вызвать переполнение памяти и аварийный выход</b>.</p>
+                <p style="color:var(--horae-accent,#6366f1);font-weight:600;">Настоятельно рекомендуется переключиться на «Режим API» (например, бесплатные векторные модели SiliconFlow) — нулевая нагрузка на память.</p>
             </div>
             <div class="horae-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:10px 16px;">
                 <button id="horae-vec-guard-cancel" class="horae-btn" style="flex:1;">Не загружать</button>
@@ -11467,10 +9160,10 @@ function _mobileLocalVectorGuard() {
 async function _initVectorModel() {
     if (vectorManager.isLoading) return;
 
-// Константы
+    // Мобильное устройство + локальная модель: подтверждение в окне, по умолчанию не загружать
     const allowed = await _mobileLocalVectorGuard();
     if (!allowed) {
-        showToast('Таблица экспортирована', 'info');
+        showToast('Загрузка локальной векторной модели пропущена. Рекомендуется переключиться на режим API', 'info');
         return;
     }
 
@@ -11485,7 +9178,7 @@ async function _initVectorModel() {
             const apiKey = settings.vectorApiKey;
             const apiModel = settings.vectorApiModel;
             if (!apiUrl || !apiKey || !apiModel) {
-                throw new Error('Недействительные данные таблицы');
+                throw new Error('Заполните адрес API, ключ и название модели полностью');
             }
             await vectorManager.initApi(apiUrl, apiKey, apiModel);
         } else {
@@ -11496,7 +9189,7 @@ async function _initVectorModel() {
                     if (info.status === 'progress' && fillEl && textEl) {
                         const pct = info.progress?.toFixed(0) || 0;
                         fillEl.style.width = `${pct}%`;
-        textEl.textContent = `«${source}» → «${target}»\nОписание после объединения: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
+                        textEl.textContent = `Загрузка модели... ${pct}%`;
                     } else if (info.status === 'done' && textEl) {
                         textEl.textContent = 'Загрузка модели...';
                     }
@@ -11512,10 +9205,10 @@ async function _initVectorModel() {
         const displayName = settings.vectorSource === 'api'
             ? `API: ${settings.vectorApiModel}`
             : vectorManager.modelName.split('/').pop();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Векторная модель загружена: ${displayName}`, 'success');
     } catch (err) {
-        console.error('[Horae] Ошибка сжатия:', err);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        console.error('[Horae] Ошибка загрузки векторной модели:', err);
+        showToast(`Ошибка загрузки векторной модели: ${err.message}`, 'error');
     } finally {
         if (progressEl) progressEl.style.display = 'none';
         _updateVectorStatus();
@@ -11524,13 +9217,13 @@ async function _initVectorModel() {
 
 async function _buildVectorIndex() {
     if (!vectorManager.isReady) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Дождитесь завершения загрузки модели', 'warning');
         return;
     }
 
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Нет истории чата', 'warning');
         return;
     }
 
@@ -11547,10 +9240,10 @@ async function _buildVectorIndex() {
             if (textEl) textEl.textContent = `Построение индекса: ${current}/${total}`;
         });
 
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Индекс построен: ${result.indexed} добавлено, ${result.skipped} пропущено`, 'success');
     } catch (err) {
-        console.error('[Horae] Ошибка сжатия:', err);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        console.error('[Horae] Ошибка построения индекса:', err);
+        showToast(`Ошибка построения индекса: ${err.message}`, 'error');
     } finally {
         if (progressEl) progressEl.style.display = 'none';
         _updateVectorStatus();
@@ -11558,18 +9251,18 @@ async function _buildVectorIndex() {
 }
 
 async function _clearVectorIndex() {
-    if (!confirm('Удалить эту сводку? Исходные события будут восстановлены в обычную хронологию.')) return;
+    if (!confirm('Очистить все векторные индексы текущего диалога?')) return;
     await vectorManager.clearIndex();
-    showToast('Таблица экспортирована', 'success');
+    showToast('Векторный индекс очищен', 'success');
     _updateVectorStatus();
 }
 
 // ============================================
-// Константы
+// Основные функции
 // ============================================
 
 /**
- * 带进度显示的历史扫描
+ * Сканирование истории с индикатором прогресса
  */
 async function scanHistoryWithProgress() {
     const overlay = document.createElement('div');
@@ -11592,7 +9285,7 @@ async function scanHistoryWithProgress() {
         const result = await horaeManager.scanAndInjectHistory(
             (percent, current, total) => {
                 fillEl.style.width = `${percent}%`;
-        textEl.textContent = `«${source}» → «${target}»\nОписание после объединения: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
+                textEl.textContent = `Обработка... ${current}/${total}`;
             },
             null // Не использовать ИИ-анализ, только разбирать имеющиеся теги
         );
@@ -11601,97 +9294,96 @@ async function scanHistoryWithProgress() {
         
         await getContext().saveChat();
         
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Сканирование завершено! Обработано: ${result.processed}, пропущено: ${result.skipped}`, 'success');
         refreshAllDisplays();
         renderCustomTablesList();
     } catch (error) {
-        console.error('[Horae] Ошибка ИИ-анализа:', error);
-        showToast('Ошибка ИИ-анализа: ' + error.message, 'error');
+        console.error('[Horae] Ошибка сканирования:', error);
+        showToast('Ошибка сканирования: ' + error.message, 'error');
     } finally {
         overlay.remove();
     }
 }
 
-/** 默认的批量摘要提示词模板 */
+/** Шаблон промпта для пакетного суммирования по умолчанию */
 function getDefaultBatchPrompt() {
-    return `You are a plot analysis assistant. Analyze the following conversation log message by message, extracting [Time], [Plot Events], and [Item Changes] for each message.
+    return `Ты — помощник по анализу сюжета. Проанализируй каждое сообщение в диалоге и извлеки [Время], [Событие сюжета] и [Изменение предметов].
 
-Core principles:
-- Extract only information explicitly present in the text; fabrication is forbidden
-- Analyze each message independently, separated by ===Message#Number===
+Основные принципы:
+- Извлекай только явно указанную информацию, не выдумывай
+- Анализируй каждое сообщение отдельно, разделяй через ===Сообщение#номер===
 
 {{messages}}
 
-[Output Format] Output each message as:
+[Формат вывода] Для каждого сообщения:
 
-===Message#Number===
+===Сообщение#номер===
 <horae>
-time:date time (extracted from text, e.g. 2026/2/4 15:00 or Frost Month Third Day Dusk)
-item:emoji item name(quantity)|description=owner@location (newly obtained; description optional for ordinary items)
-item!:emoji item name(quantity)|description=owner@location (important; description required)
-item-:item name (consumed/lost/used up)
+time:дата время (из текста, напр. 2026/2/4 15:00 или Третий день месяца Заморозков, сумерки)
+item:emoji название_предмета(кол-во)|описание=владелец@местоположение (новые предметы, описание необязательно для обычных)
+item!:emoji название_предмета(кол-во)|описание=владелец@местоположение (важный предмет, описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)
 </horae>
 <horaeevent>
-event:importance level|summary 30-50 words (minor/important/critical)
+event:уровень|краткое описание события (30-50 символов, уровень: обычное/важное/ключевое — но значения тегов: 一般/重要/关键)
 </horaeevent>
 
-[Rules]
-· time: extract from text; infer from context if absent; required
-· event: key plot events in this message; at least one per message
-· Items only when obtained, consumed, or state changes; no item line if nothing changed
-· item format: emoji prefix e.g. 🔑🍞; no (1) for singles; precise location (❌ floor ✅ tavern hall table)
-· Importance: everyday dialogue=minor, plot-advancing=important, turning point=critical
-· {{user}} is the protagonist`;
+[Правила]
+· time: извлеки дату и время текущей сцены, обязательно (если нет явного времени — используй контекст)
+· event: ключевые события в данном сообщении, минимум одно event на сообщение
+· Предметы записывай только при получении, расходе или смене состояния; если нет изменений — пропускай строку item
+· Формат item: emoji-префикс напр. 🔑🍞, для одной единицы не пиши (1), местоположение точное (❌ на полу ✅ на столе в зале таверны)
+· Уровень важности: повседневный диалог=一般 (обычное), движение сюжета=重要 (важное), ключевой поворот=关键 (ключевое)
+· {{user}} — имя главного героя`;
 }
 
-/** 默认的AI分析提示词模板 */
+/** Шаблон промпта ИИ-анализа по умолчанию */
 function getDefaultAnalysisPrompt() {
-    return `Analyze the following text, extract key information, and output in the specified format.
-Core principle: extract only information explicitly stated in the text; omit absent fields; fabrication is forbidden.
+    return `Проанализируй следующий текст, извлеки ключевую информацию и выведи в указанном формате. Основные принципы: извлекай только явно упомянутую информацию, не заполняй отсутствующие поля, не выдумывай.
 
-[Text Content]
+[Текст]
 {{content}}
 
-[Output Format]
+[Формат вывода]
 <horae>
-time:date time (required, e.g. 2026/2/4 15:00 or Frost Month First Day 19:50)
-location:current location (required)
-atmosphere:mood/tone
-characters:all present, comma-separated (required)
-costume:name=full outfit, one line per person (required)
-item:emoji name(qty)|description=owner@exact location (new/changed only)
-item!:emoji name(qty)|description=owner@exact location (important; description required)
-item!!:emoji name(qty)|description=owner@exact location (critical; detailed description required)
-item-:name (consumed/lost)
-affection:name=value (NPC→{{user}} only; no annotations)
-npc:name|appearance=personality@relationship with {{user}}~gender:~age:~race:~occupation:
-agenda:date|content (new appointment/plan/plot hook; absolute date in parentheses)
-agenda-:keyword (completed/expired/cancelled to-do)
+time:дата время (обязательно, напр. 2026/2/4 15:00 или Первый день месяца Заморозков 19:50)
+location:текущее место (обязательно)
+atmosphere:атмосфера
+characters:присутствующие персонажи, через запятую (обязательно)
+costume:имя_персонажа=полное описание одежды (обязательно, отдельная строка для каждого, не объединять через точку с запятой)
+item:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (только новые или изменившиеся предметы)
+item!:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (важный предмет, описание обязательно)
+item!!:emoji название_предмета(кол-во)|описание=владелец@точное_местоположение (ключевой предмет, подробное описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)
+affection:имя_персонажа=значение_расположения (только расположение NPC к {{user}}, не записывать самого {{user}}, без примечаний после числа)
+npc:имя_персонажа|внешность=характер@отношения_с_{{user}}~性别:мужской_или_женский~年龄:число~种族:название_расы~职业:название_профессии
+agenda:дата|содержание_задачи (только новые договорённости/планы/крючки, для относительного времени указывай абсолютную дату в скобках)
+agenda-:ключевые_слова (когда задача выполнена/устарела/отменена; система автоматически удалит совпадающие задачи)
 </horae>
 <horaeevent>
-event:minor/important/critical|summary 30-50 words
+event:уровень|краткое описание события (30-50 символов, 一般/重要/关键)
 </horaeevent>
 
-[Trigger Conditions]
-· item: write on obtain/change/consume only. No (1) for singles. emoji prefix. Precise location.
-· npc: first appearance = full format with all ~ fields. Afterward write only changed fields.
-  Separators: | name / = appearance·personality / @ relationship / ~ extended fields
-· affection: first appearance → stranger 0-20 / acquaintance 30-50 / friend 50-70. Update on change only.
-· agenda: new entries only. Use agenda-: to remove completed/cancelled ones.
-  New: agenda:2026/02/10|Alan invited {{user}} to a Valentine's Day dinner (2026/02/14 18:00)
-  Done: agenda-:Alan invited {{user}} to a Valentine's Day dinner
-· event: inside <horaeevent> only, never inside <horae>.`;
+[Условия] Выводи поле только при выполнении условия:
+· Предметы: только при новом получении, смене количества/владельца/местоположения, расходе/потере. Без изменений — не писать. Для одной единицы (1) не указывать. Emoji-префикс напр. 🔑🍞.
+· NPC: при первом появлении — полная запись (включая ~пол/возраст/раса/профессия). Затем писать только изменившиеся поля.
+  Разделители: | для имени, = для внешности и характера, @ для отношений, ~ для доп. полей
+· Расположение: первый раз определяется по отношениям (незнакомец 0-20/знакомый 30-50/друг 50-70), затем писать только при изменении.
+· Задачи: только при новых договорённостях/планах/крючках. Выполненные/устаревшие удаляй через agenda-.
+  Добавить: agenda:2026/02/10|Элен пригласила {{user}} на свидание в День святого Валентина(2026/02/14 18:00)
+  Удалить: agenda-:Элен пригласила {{user}} на свидание в День святого Валентина
+· event: помещай в <horaeevent>, не в <horae>.`;
 }
 
 let _autoSummaryRanThisTurn = false;
 
 /**
- * 自动摘要生成入口
- * useProfile=true 时允许切换连接配置（仅在AI回复后的顺序模式使用）
- * useProfile=false 时直接调用 generateRaw（并行安全）
+ * Точка запуска авто-сводки
+ * useProfile=true: разрешить смену профиля соединения (только в последовательном режиме после ответа ИИ)
+ * useProfile=false: напрямую вызвать generateRaw (безопасно для параллелизма)
  */
 async function generateForSummary(prompt) {
-// Константы
+    // Перечитать настройки дополнительного API из DOM, чтобы автозаполнение браузера не привело к пустым значениям
     _syncSubApiSettingsFromDom();
     const useCustom = settings.autoSummaryUseCustomApi;
     const hasUrl = !!(settings.autoSummaryApiUrl && settings.autoSummaryApiUrl.trim());
@@ -11702,11 +9394,11 @@ async function generateForSummary(prompt) {
         return await generateWithDirectApi(prompt);
     }
     if (useCustom && (!hasUrl || !hasKey || !hasModel)) {
-        const missing = [!hasUrl && 'Адрес API', !hasKey && 'Адрес API', !hasModel && 'Адрес API'].filter(Boolean).join('、');
-        console.warn(`[Horae] doNavbarIconClick недоступен, используется устаревший режим ящика`);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        const missing = [!hasUrl && 'Адрес API', !hasKey && 'Ключ API', !hasModel && 'Название модели'].filter(Boolean).join(', ');
+        console.warn(`[Horae] Дополнительный API включён, но отсутствует: ${missing}, используется основной API`);
+        showToast(`Дополнительный API: не указано ${missing}, используется основной`, 'warning');
     } else if (!useCustom) {
-        console.log('[Horae] Конфигурация панели атрибутов автоматически перенесена на шесть параметров DnD');
+        console.log('[Horae] Дополнительный API не активен, используется основной API (generateRaw)');
     }
     return await getContext().generateRaw(prompt, null, false, false);
 }
@@ -11738,246 +9430,94 @@ function _syncSubApiSettingsFromDom() {
     } catch (_) {}
 }
 
-/** 通用：从 OpenAI 兼容端点拉取模型列表 */
-async function _fetchModelList(rawUrl, apiKey) {
-    if (!rawUrl || !apiKey) throw new Error('Таблица экспортирована');
-    let base = rawUrl.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '').replace(/\/embeddings$/i, '');
-    if (!base.endsWith('/v1')) base = base.replace(/\/+$/, '') + '/v1';
-    const testUrl = `${base}/models`;
-    const resp = await fetch(testUrl, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${apiKey.trim()}` },
-        signal: AbortSignal.timeout(15000)
-    });
-    if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        throw new Error(`${resp.status}: ${errText.slice(0, 150)}`);
-    }
-    const data = await resp.json();
-    return (data.data || data || []).map(m => m.id || m.name).filter(Boolean);
-}
-
-/** 拉取 Embedding 模型列表并填充 <select> */
-async function fetchEmbeddingModels() {
-    const btn = document.getElementById('horae-btn-fetch-embed-models');
-    const sel = document.getElementById('horae-setting-vector-api-model');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
-    try {
-        const url = ($('#horae-setting-vector-api-url').val() || settings.vectorApiUrl || '').trim();
-        const key = ($('#horae-setting-vector-api-key').val() || settings.vectorApiKey || '').trim();
-        const models = await _fetchModelList(url, key);
-        if (!models.length) { showToast('Список моделей не получен', 'warning'); return; }
-        const prev = settings.vectorApiModel || '';
-        sel.innerHTML = '';
-        for (const m of models.sort()) {
-            const opt = document.createElement('option');
-            opt.value = m; opt.textContent = m;
-            if (m === prev) opt.selected = true;
-            sel.appendChild(opt);
-        }
-        if (prev && !models.includes(prev)) {
-            const opt = document.createElement('option');
-            opt.value = prev; opt.textContent = `${prev} (вручную)`;
-            opt.selected = true; sel.prepend(opt);
-        }
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } catch (err) {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i>'; }
-    }
-}
-
-/** 拉取 Rerank 模型列表并填充 <select> */
-async function fetchRerankModels() {
-    const btn = document.getElementById('horae-btn-fetch-rerank-models');
-    const sel = document.getElementById('horae-setting-vector-rerank-model');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
-    try {
-        const rerankUrl = ($('#horae-setting-vector-rerank-url').val() || settings.vectorRerankUrl || '').trim();
-        const rerankKey = ($('#horae-setting-vector-rerank-key').val() || settings.vectorRerankKey || '').trim();
-        const embedUrl = ($('#horae-setting-vector-api-url').val() || settings.vectorApiUrl || '').trim();
-        const embedKey = ($('#horae-setting-vector-api-key').val() || settings.vectorApiKey || '').trim();
-        const url = rerankUrl || embedUrl;
-        const key = rerankKey || embedKey;
-        const models = await _fetchModelList(url, key);
-        if (!models.length) { showToast('Список моделей не получен', 'warning'); return; }
-        const prev = settings.vectorRerankModel || '';
-        sel.innerHTML = '';
-        for (const m of models.sort()) {
-            const opt = document.createElement('option');
-            opt.value = m; opt.textContent = m;
-            if (m === prev) opt.selected = true;
-            sel.appendChild(opt);
-        }
-        if (prev && !models.includes(prev)) {
-            const opt = document.createElement('option');
-            opt.value = prev; opt.textContent = `${prev} (вручную)`;
-            opt.selected = true; sel.prepend(opt);
-        }
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } catch (err) {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i>'; }
-    }
-}
-
-/** 从副API拉取模型列表并填充下拉选单 */
-async function _fetchSubApiModels() {
+/** Тест подключения к дополнительному API (только запрос списка моделей, без расхода генераций) */
+async function testSubApiConnection() {
     _syncSubApiSettingsFromDom();
     const rawUrl = (settings.autoSummaryApiUrl || '').trim();
     const apiKey = (settings.autoSummaryApiKey || '').trim();
+    const model = (settings.autoSummaryModel || '').trim();
     if (!rawUrl || !apiKey) {
-        showToast('Таблица экспортирована', 'warning');
-        return [];
+        showToast('Сначала укажите адрес API и ключ', 'warning');
+        return;
     }
-    const isGemini = /gemini/i.test(rawUrl) || /googleapis|generativelanguage/i.test(rawUrl);
-    let testUrl, headers;
-    if (isGemini) {
-        let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '').replace(/\/v\d+(beta\d*|alpha\d*)?(?:\/.*)?$/i, '');
-        const isGoogle = /googleapis\.com|generativelanguage/i.test(base);
-        testUrl = `${base}/v1beta/models` + (isGoogle ? `?key=${apiKey}` : '');
-        headers = { 'Content-Type': 'application/json' };
-        if (!isGoogle) headers['Authorization'] = `Bearer ${apiKey}`;
-    } else {
-        let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
-        if (!base.endsWith('/v1')) base = base.replace(/\/+$/, '') + '/v1';
-        testUrl = `${base}/models`;
-        headers = { 'Authorization': `Bearer ${apiKey}` };
-    }
-    const resp = await fetch(testUrl, { method: 'GET', headers, signal: AbortSignal.timeout(15000) });
-    if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        throw new Error(`${resp.status}: ${errText.slice(0, 150)}`);
-    }
-    const data = await resp.json();
-    return isGemini
-        ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName).filter(Boolean)
-        : (data.data || data || []).map(m => m.id || m.name).filter(Boolean);
-}
-
-/** 拉取模型列表并填充 <select> */
-async function fetchAndPopulateModels() {
-    const btn = document.getElementById('horae-btn-fetch-models');
-    const sel = document.getElementById('horae-setting-auto-summary-model');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
-    try {
-        const models = await _fetchSubApiModels();
-        if (!models.length) { showToast('Список моделей не получен. Проверьте адрес и ключ', 'warning'); return; }
-        const prev = settings.autoSummaryModel || '';
-        sel.innerHTML = '';
-        for (const m of models.sort()) {
-            const opt = document.createElement('option');
-            opt.value = m;
-            opt.textContent = m;
-            if (m === prev) opt.selected = true;
-            sel.appendChild(opt);
-        }
-        if (prev && !models.includes(prev)) {
-            const opt = document.createElement('option');
-            opt.value = prev;
-            opt.textContent = `${prev} (вручную)`;
-            opt.selected = true;
-            sel.prepend(opt);
-        }
-        if (!prev && models.length) {
-            sel.value = models[0];
-            settings.autoSummaryModel = models[0];
-            saveSettings();
-        }
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } catch (err) {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i>'; }
-    }
-}
-
-/** 测试副API连接 */
-async function testSubApiConnection() {
     const btn = document.getElementById('horae-btn-test-sub-api');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Проверка...'; }
     try {
-        const models = await _fetchSubApiModels();
-        const model = (settings.autoSummaryModel || '').trim();
+        const isGemini = /gemini/i.test(model);
+        let testUrl, headers;
+        if (isGemini) {
+            let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '').replace(/\/v\d+(beta\d*|alpha\d*)?(?:\/.*)?$/i, '');
+            const isGoogle = /googleapis\.com|generativelanguage/i.test(base);
+            testUrl = `${base}/v1beta/models` + (isGoogle ? `?key=${apiKey}` : '');
+            headers = { 'Content-Type': 'application/json' };
+            if (!isGoogle) headers['Authorization'] = `Bearer ${apiKey}`;
+        } else {
+            let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
+            if (!base.endsWith('/v1')) base = base.replace(/\/+$/, '') + '/v1';
+            testUrl = `${base}/models`;
+            headers = { 'Authorization': `Bearer ${apiKey}` };
+        }
+        const resp = await fetch(testUrl, { method: 'GET', headers, signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error(`${resp.status}: ${errText.slice(0, 150)}`);
+        }
+        const data = await resp.json();
+        const models = isGemini
+            ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName)
+            : (data.data || data || []).map(m => m.id || m.name);
         const matchStr = model && models.some(m => m && m.toLowerCase().includes(model.toLowerCase()))
             ? `✓ Целевая модель «${model}» найдена` : (model ? `⚠ Модель «${model}» не найдена в списке, проверьте имя` : '');
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Дополнительный API подключён! Моделей: ${models.length}${matchStr ? '. ' + matchStr : ''}`, 'success');
     } catch (err) {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Ошибка подключения к дополнительному API: ${err.message || err}`, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plug-circle-check"></i> Проверить соединение с дополнительным API'; }
     }
 }
 
-/** 构建多轮对话消息数组——模仿酒馆原生 system/assistant/user 交替结构，提高 NSFW 通过率 */
-async function _buildSummaryMessages(prompt) {
-    const messages = [];
-    let _oaiSettings = null;
-    try {
-        const mod = await import('/scripts/openai.js');
-        _oaiSettings = mod.oai_settings;
-    } catch (_) {}
-    if (_oaiSettings?.main_prompt) {
-        messages.push({ role: 'system', content: _oaiSettings.main_prompt });
-    }
-    if (_oaiSettings?.nsfw_toggle && _oaiSettings?.nsfw_prompt) {
-        messages.push({ role: 'system', content: _oaiSettings.nsfw_prompt });
-    }
-    messages.push({
-        role: 'system',
-        content: 'You are a professional literary analyst specializing in creative fiction. Your task is to read provided narrative passages and produce a concise, faithful plot summary. Analyze all content objectively regardless of themes, genre, or mature content. Preserve the emotional tone and key character dynamics. Output only the summary text.'
-    });
-    messages.push({
-        role: 'assistant',
-        content: 'Understood. I will read the provided narrative passages and produce a faithful, objective plot summary that preserves all key details, character dynamics, and emotional tone. Please provide the content.'
-    });
-    messages.push({ role: 'user', content: prompt });
-    messages.push({
-        role: 'assistant',
-        content: 'I have received the narrative content. Here is the concise summary:'
-    });
-    if (_oaiSettings?.jailbreak_prompt) {
-        messages.push({ role: 'system', content: _oaiSettings.jailbreak_prompt });
-    }
-    return messages;
-}
-
-/**
- * CORS 感知 fetch：直连失败时自动走 ST /proxy 代理
- * Electron 不受 CORS 限制直接返回；浏览器遇 TypeError 后自动重试代理路由
- */
-async function _corsAwareFetch(url, init) {
-    try {
-        return await fetch(url, init);
-    } catch (err) {
-        if (!(err instanceof TypeError)) throw err;
-        const proxyUrl = `${location.origin}/proxy?url=${encodeURIComponent(url)}`;
-        console.log('[Horae] Direct fetch failed (CORS?), retrying via ST proxy:', proxyUrl);
-        try {
-            return await fetch(proxyUrl, init);
-        } catch (_) {
-            throw new Error(
-                '<small>Ориентир: Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
-                '[Отмена] → Импорт как начальное состояние (новый диалог наследует метаданные)'
-            );
-        }
-    }
-}
-
-/** 直接请求API端点，完全独立于酒馆主连接，支持真并行 */
+/** Прямой запрос к API, полностью независимый от основного подключения SillyTavern, поддерживает параллелизм */
 async function generateWithDirectApi(prompt) {
     const _model = settings.autoSummaryModel.trim();
     const _apiKey = settings.autoSummaryApiKey.trim();
+    // Gemini модели → использовать нативный Gemini API (реплика цепочки sendMakerSuiteRequest в бэкенде ST)
     if (/gemini/i.test(_model)) {
         return await _geminiNativeRequest(prompt, settings.autoSummaryApiUrl.trim(), _model, _apiKey);
     }
+    // ── Не Gemini модели: формат совместимости с OpenAI ──
     let url = settings.autoSummaryApiUrl.trim();
     if (!url.endsWith('/chat/completions')) {
         url = url.replace(/\/+$/, '') + '/chat/completions';
     }
-    const messages = await _buildSummaryMessages(prompt);
+    const messages = [];
+    try {
+        const { oai_settings } = await import('/scripts/openai.js');
+        // ① Основной системный промпт из пресета (задаёт базовое поведение ИИ)
+        if (oai_settings?.main_prompt) {
+            messages.push({ role: 'system', content: oai_settings.main_prompt });
+        }
+        // ② Промпт разрешения NSFW (если включено в пресете)
+        if (oai_settings?.nsfw_toggle && oai_settings?.nsfw_prompt) {
+            messages.push({ role: 'system', content: oai_settings.nsfw_prompt });
+        }
+        // ③ Инструкция задачи сводки
+        messages.push({
+            role: 'system',
+            content: 'You are also a professional literary analyst. Read the following creative fiction passages and produce a concise plot summary. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.'
+        });
+        // ④ Содержимое для сводки
+        messages.push({ role: 'user', content: prompt });
+        // ⑤ Промпт обхода ограничений (последний, наивысший приоритет)
+        if (oai_settings?.jailbreak_prompt) {
+            messages.push({ role: 'system', content: oai_settings.jailbreak_prompt });
+        }
+    } catch (_) {
+        // Обработка ошибок: при невозможности прочитать пресет ST — переход в базовый режим
+        messages.push(
+            { role: 'system', content: 'You are a professional literary analyst. Your task is to read creative fiction passages and produce concise plot summaries. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.' },
+            { role: 'user', content: prompt }
+        );
+    }
     const body = {
         model: settings.autoSummaryModel.trim(),
         messages,
@@ -11985,45 +9525,52 @@ async function generateWithDirectApi(prompt) {
         max_tokens: 4096,
         stream: false
     };
-// Константы
-    if (/gemini|google|generativelanguage/i.test(url) || /gemini/i.test(body.model)) {
-        const blockNone = [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
-        ];
-        body.safety_settings = blockNone;
-        body.safetySettings = blockNone;
-    }
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
-    const resp = await _corsAwareFetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.autoSummaryApiKey.trim()}`
-        },
-        body: JSON.stringify(body)
-    });
-    if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
+    // Принудительно добавить safetySettings = BLOCK_NONE (отключить проверку безопасности)
+    // Бэкенд SillyTavern добавляет это автоматически для Gemini; при прямом подключении к промежуточному провайдеру нужно добавлять вручную
+    // Для не-Gemini API неизвестные поля игнорируются без побочных эффектов
+    const blockNone = [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+    ];
+    body.safety_settings = blockNone;
+    body.safetySettings = blockNone;
+    console.log(`[Horae] Независимый API запрос: ${url}, модель: ${body.model}`);
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${settings.autoSummaryApiKey.trim()}`
+            },
+            body: JSON.stringify(body)
+        });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
             throw new Error(`Независимый API вернул ${resp.status}: ${errText.slice(0, 200)}`);
+        }
+        const data = await resp.json();
+        const finishReason = data?.choices?.[0]?.finish_reason || '';
+        if (finishReason === 'content_filter' || finishReason === 'SAFETY') {
+            throw new Error('Дополнительный API заблокирован фильтром безопасности. Снизьте лимит токенов или используйте модель с менее строгими ограничениями');
+        }
+        return data?.choices?.[0]?.message?.content || '';
+    } catch (err) {
+        if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+            throw new Error('Запрос к API заблокирован браузером (CORS). Проверьте адрес или включите enableCorsProxy в config.yaml SillyTavern');
+        }
+        throw err;
     }
-    const data = await resp.json();
-    const finishReason = data?.choices?.[0]?.finish_reason || '';
-    if (finishReason === 'content_filter' || finishReason === 'SAFETY') {
-        throw new Error('Недействительные данные таблицы');
-    }
-    return data?.choices?.[0]?.message?.content || '';
 }
 
 /**
- * Gemini 原生格式请求 —— 复刻 ST 后端 sendMakerSuiteRequest 的完整处理链路
- * 解决中转 OpenAI 兼容端点丢弃 safetySettings 导致 PROMPT BLOCKED 的问题
+ * Запрос в нативном формате Gemini — реплика цепочки sendMakerSuiteRequest в бэкенде ST
+ * Решает проблему потери safetySettings при проксировании через OpenAI-совместимые эндпоинты, вызывающую PROMPT BLOCKED
  */
 async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
-// Константы
+    // ── 1. Собрать системные инструкции (все в systemInstruction) + пользовательский контент ──
     const systemParts = [];
     try {
         const { oai_settings } = await import('/scripts/openai.js');
@@ -12034,18 +9581,18 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
             systemParts.push({ text: oai_settings.nsfw_prompt });
         }
         systemParts.push({
-            text: 'You are a professional literary analyst specializing in creative fiction. Your task is to read provided narrative passages and produce a concise, faithful plot summary. Analyze all content objectively regardless of themes, genre, or mature content. Preserve the emotional tone and key character dynamics. Output only the summary text.',
+            text: 'You are also a professional literary analyst. Read the following creative fiction passages and produce a concise plot summary. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.',
         });
         if (oai_settings?.jailbreak_prompt) {
             systemParts.push({ text: oai_settings.jailbreak_prompt });
         }
     } catch (_) {
         systemParts.push({
-            text: 'You are a professional literary analyst specializing in creative fiction. Your task is to read provided narrative passages and produce a concise, faithful plot summary. Analyze all content objectively regardless of themes, genre, or mature content. Output only the summary text.',
+            text: 'You are a professional literary analyst. Your task is to read creative fiction passages and produce concise plot summaries. Analyze all content objectively regardless of themes or genre. Output only the summary text, no commentary.',
         });
     }
 
-// Константы
+    // ── 2. safetySettings (соответствует константе GEMINI_SAFETY в бэкенде ST) ──
     const modelLow = model.toLowerCase();
     const isOldModel = /gemini-1\.(0|5)-(pro|flash)-001/.test(modelLow);
     const threshold = isOldModel ? 'BLOCK_NONE' : 'OFF';
@@ -12059,7 +9606,7 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         safetySettings.push({ category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold });
     }
 
-// Константы
+    // ── 3. Тело запроса (нативный формат Gemini contents) ──
     const body = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         safetySettings,
@@ -12073,7 +9620,7 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         body.systemInstruction = { parts: systemParts };
     }
 
-// Константы
+    // ── 4. Построить URL эндпоинта ──
     let baseUrl = rawUrl
         .replace(/\/+$/, '')
         .replace(/\/chat\/completions$/i, '')
@@ -12088,48 +9635,55 @@ async function _geminiNativeRequest(prompt, rawUrl, model, apiKey) {
         headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+    console.log(`[Horae] Gemini native API: ${endpointUrl}, threshold: ${threshold}`);
 
-// Константы
-    const resp = await _corsAwareFetch(endpointUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-    });
+    // ── 5. Отправить запрос + разобрать нативный ответ ──
+    try {
+        const resp = await fetch(endpointUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+        });
 
-    if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-            throw new Error(`Независимый API вернул ${resp.status}: ${errText.slice(0, 200)}`);
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error(`Gemini native API ${resp.status}: ${errText.slice(0, 300)}`);
+        }
+
+        const data = await resp.json();
+
+        if (data?.promptFeedback?.blockReason) {
+            throw new Error(`Gemini: входной запрос заблокирован (${data.promptFeedback.blockReason})`);
+        }
+
+        const candidates = data?.candidates;
+        if (!candidates?.length) {
+            throw new Error('Gemini API не вернул ни одного варианта');
+        }
+
+        if (candidates[0]?.finishReason === 'SAFETY') {
+            throw new Error('Gemini: выходной ответ заблокирован фильтром. Используйте модель с менее строгими ограничениями');
+        }
+
+        const text = candidates[0]?.content?.parts
+            ?.filter(p => !p.thought)
+            ?.map(p => p.text)
+            ?.join('\n\n') || '';
+
+        if (!text) {
+            throw new Error(`Gemini вернул пустой ответ (finishReason: ${candidates[0]?.finishReason || '?'})`);
+        }
+
+        return text;
+    } catch (err) {
+        if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+            throw new Error('Gemini native API заблокирован браузером (CORS). Проверьте адрес или включите enableCorsProxy в config.yaml SillyTavern');
+        }
+        throw err;
     }
-
-    const data = await resp.json();
-
-    if (data?.promptFeedback?.blockReason) {
-            throw new Error(`Независимый API вернул ${resp.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const candidates = data?.candidates;
-    if (!candidates?.length) {
-        throw new Error('Недействительные данные таблицы');
-    }
-
-    if (candidates[0]?.finishReason === 'SAFETY') {
-        throw new Error('Недействительные данные таблицы');
-    }
-
-    const text = candidates[0]?.content?.parts
-        ?.filter(p => !p.thought)
-        ?.map(p => p.text)
-        ?.join('\n\n') || '';
-
-    if (!text) {
-            throw new Error(`Независимый API вернул ${resp.status}: ${errText.slice(0, 200)}`);
-    }
-
-    return text;
 }
 
-/** 自动摘要：检查是否需要触发 */
+/** Авто-сводка: проверить, нужно ли запускать */
 async function checkAutoSummary() {
     if (!settings.autoSummaryEnabled || !settings.sendTimeline) return;
     if (_summaryInProgress) return;
@@ -12146,7 +9700,7 @@ async function checkAutoSummary() {
         const totalMsgs = chat.length;
         const cutoff = Math.max(1, totalMsgs - keepRecent);
         
-// Константы
+        // Собрать индексы сообщений, покрытых активными сводками (исключить независимо от is_hidden)
         const summarizedIndices = new Set();
         const existingSums = chat[0]?.horae_meta?.autoSummaries || [];
         for (const s of existingSums) {
@@ -12175,11 +9729,11 @@ async function checkAutoSummary() {
             shouldTrigger = bufferMsgIndices.length > bufferLimit;
         }
         
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Авто-сводка: проверка ${bufferMsgIndices.length} буферных сообщений (${bufferMode === 'tokens' ? bufferTokens + 'tok' : bufferMsgIndices.length + ' записей'}), порог ${bufferLimit}, ${shouldTrigger ? 'запуск' : 'порог не достигнут'}`);
         
         if (!shouldTrigger || bufferMsgIndices.length === 0) return;
         
-// Константы
+        // Лимит пакета за один раз: предотвратить взрыв токенов при первом включении на старых архивах
         const MAX_BATCH_MSGS = settings.autoSummaryBatchMaxMsgs || 50;
         const MAX_BATCH_TOKENS = settings.autoSummaryBatchMaxTokens || 80000;
         let batchIndices = [];
@@ -12208,48 +9762,23 @@ async function checkAutoSummary() {
                     msgIdx: i, evtIdx: j,
                     date: meta.timestamp?.story_date || '?',
                     time: meta.timestamp?.story_time || '',
-                    level: evt.level || 'Обычное',
+                    level: evt.level || '一般',
                     summary: evt.summary
                 });
             }
         }
         
-// Константы
-        const _missingTimestamp = [];
-        const _missingEvents = [];
-        for (const i of batchIndices) {
-            if (chat[i]?.is_user) continue;
-            const meta = chat[i]?.horae_meta;
-            if (!meta?.timestamp?.story_date) _missingTimestamp.push(i);
-            const hasEvt = meta?.events?.some(e => e?.summary && !e._compressedBy && !e.isSummary);
-            if (!hasEvt && !meta?.event?.summary) _missingEvents.push(i);
-        }
-        if (bufferEvents.length === 0 && _missingTimestamp.length === batchIndices.length) {
-            showToast('Таблица экспортирована', 'warning');
-            return;
-        }
-        if (_missingTimestamp.length > 0 || _missingEvents.length > 0) {
-            const parts = [];
-            if (_missingTimestamp.length > 0) {
-                const floors = _missingTimestamp.length <= 8
-                    ? _missingTimestamp.map(i => `#${i}`).join(', ')
-                    : _missingTimestamp.slice(0, 6).map(i => `#${i}`).join(', ') + ` и ещё ${_missingTimestamp.length} сообщений`;
-                parts.push(`Нет временной метки: ${floors}`);
-            }
-            if (_missingEvents.length > 0) {
-                const floors = _missingEvents.length <= 8
-                    ? _missingEvents.map(i => `#${i}`).join(', ')
-                    : _missingEvents.slice(0, 6).map(i => `#${i}`).join(', ') + ` и ещё ${_missingEvents.length} сообщений`;
-                parts.push(`Нет хронологии: ${floors}`);
-            }
-        console.warn(`[Horae] doNavbarIconClick недоступен, используется устаревший режим ящика`);
-            if (_missingTimestamp.length > batchIndices.length * 0.5) {
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        // Проверить, нет ли в буфере сообщений без данных хронологии
+        if (bufferEvents.length === 0) {
+            const hasAnyHoraeMeta = batchIndices.some(i => chat[i]?.horae_meta?.timestamp?.story_date);
+            if (!hasAnyHoraeMeta) {
+                showToast('Авто-сводка: в буферных сообщениях нет данных хронологии Horae. Рекомендуется сначала использовать «ИИ-анализ» для восстановления хронологии.', 'warning');
+                return;
             }
         }
         
         const batchMsg = remaining > 0
-            ? `| Индекс: ${vectorManager.vectors.size} записей`
+            ? `Авто-сводка: сжатие ${batchIndices.length}/${bufferMsgIndices.length} сообщений (осталось ${remaining} для следующего цикла)...`
             : `Авто-сводка: сжатие ${batchIndices.length} сообщений...`;
         showToast(batchMsg, 'info');
         
@@ -12275,18 +9804,18 @@ async function checkAutoSummary() {
         
         const response = await generateForSummary(prompt);
         if (!response?.trim()) {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Авто-сводка: ИИ вернул пустой ответ', 'warning');
             return;
         }
         
-// Константы
+        // Очистить теги horae из ответа ИИ, оставить только чистый текст сводки
         let summaryText = response.trim()
             .replace(/<horae>[\s\S]*?<\/horae>/gi, '')
             .replace(/<horaeevent>[\s\S]*?<\/horaeevent>/gi, '')
             .replace(/<!--horae[\s\S]*?-->/gi, '')
             .trim();
         if (!summaryText) {
-            showToast('Таблица экспортирована', 'warning');
+            showToast('Авто-сводка: после очистки тегов контент пуст', 'warning');
             return;
         }
 
@@ -12300,8 +9829,8 @@ async function checkAutoSummary() {
             timestamp: chat[e.msgIdx]?.horae_meta?.timestamp
         }));
         
-// Константы
-        const hideMin = msgIndices[0];
+        // Полный диапазон скрытия (включая все USER-сообщения посередине)
+        const hideMin = Math.max(1, msgIndices[0]);
         const hideMax = msgIndices[msgIndices.length - 1];
 
         const summaryId = `as_${Date.now()}`;
@@ -12315,99 +9844,100 @@ async function checkAutoSummary() {
             auto: true
         });
         
-// Константы
+        // Пометить исходные события как сжатые (при active скрывать исходные, показывать сводку)
         for (const e of bufferEvents) {
+            if (e.msgIdx === 0) continue;
             const meta = chat[e.msgIdx]?.horae_meta;
             if (meta?.events?.[e.evtIdx]) {
                 meta.events[e.evtIdx]._compressedBy = summaryId;
             }
         }
         
-// Константы
+        // Вставить карточку сводки: предпочтительно на сообщение с событиями, иначе на первое в диапазоне
         const targetIdx = bufferEvents.length > 0 ? bufferEvents[0].msgIdx : msgIndices[0];
         if (!chat[targetIdx].horae_meta) chat[targetIdx].horae_meta = createEmptyMeta();
         const targetMeta = chat[targetIdx].horae_meta;
         if (!targetMeta.events) targetMeta.events = [];
         targetMeta.events.push({
             is_important: true,
-            level: 'Сводка',
+            level: '摘要',
             summary: summaryText,
             isSummary: true,
             _summaryId: summaryId
         });
         
-// Константы
+        // /hide все сообщения в диапазоне
         const fullRangeIndices = [];
         for (let i = hideMin; i <= hideMax; i++) fullRangeIndices.push(i);
         await setMessagesHidden(chat, fullRangeIndices, true);
         
         await context.saveChat();
         updateTimelineDisplay();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Авто-сводка завершена: #${msgIndices[0]}-#${msgIndices[msgIndices.length - 1]}`, 'success');
+
+        // Отложенная вторичная проверка: предотвратить перезапись is_hidden асинхронным saveChat
+        setTimeout(() => {
+            enforceHiddenState();
+        }, 800);
     } catch (err) {
-        console.error('[Horae] Ошибка сжатия:', err);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        console.error('[Horae] Ошибка авто-сводки:', err);
+        showToast(`Ошибка авто-сводки: ${err.message || err}`, 'error');
     } finally {
         _summaryInProgress = false;
-// Константы
-        try {
-            await enforceHiddenState();
-            await getContext().saveChat();
-        } catch (_) {}
     }
 }
 
-/** 默认的剧情压缩提示词（含事件压缩和全文摘要两段，以分隔线区分） */
+/** Шаблон промпта сжатия сюжета по умолчанию (содержит два блока: сжатие событий и полный текст, разделены разделителем) */
 function getDefaultCompressPrompt() {
-    return `=====【Event Compression】=====
-You are a plot compression assistant. Compress the {{count}} plot events below into a concise summary (100-200 words), preserving key information and cause-and-effect relationships.
+    return `=====【Сжатие событий】=====
+Ты — помощник по сжатию сюжета. Сожми следующие {{count}} событий в краткую сводку (100-200 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{events}}
 
-Requirements:
-- Chronological order; preserve key turning points
-- Keep all character and place names verbatim
-- Plain text only; no markup or formatting
-- Do not omit critical or important events
-- {{user}} is the protagonist
-- Style: concise, objective narrative prose
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования
+- Не упускай события уровня «ключевое» и «важное»
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование
 
-=====【Full Text Summary】=====
-You are a plot compression assistant. Read the conversation log below and compress it into a concise summary (150-300 words), preserving key information and cause-and-effect relationships.
+=====【Полный текст сводки】=====
+Ты — помощник по сжатию сюжета. Прочитай следующий диалог и сожми его в краткую сводку (150-300 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{fulltext}}
 
-Requirements:
-- Chronological order; preserve turning points and critical details
-- Keep all character and place names verbatim
-- Plain text only; no markup or formatting
-- Preserve key dialogue and emotional shifts
-- {{user}} is the protagonist
-- Style: concise, objective narrative prose`;
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты и ключевые детали
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования
+- Сохраняй ключевые диалоги персонажей и их эмоциональные изменения
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование`;
 }
 
-/** 默认的自动摘要提示词（独立于手动压缩，由副API使用） */
+/** Промпт авто-сводки по умолчанию (независим от ручного сжатия, используется дополнительным API) */
 function getDefaultAutoSummaryPrompt() {
-    return `You are a plot compression assistant. Read the conversation log below and compress it into a concise summary (150-300 words), preserving key information and cause-and-effect relationships.
+    return `Ты — помощник по сжатию сюжета. Прочитай следующий диалог и сожми его в краткую сводку (150-300 символов), сохрани ключевую информацию и причинно-следственные связи.
 
 {{fulltext}}
 
-Existing event list (reference only — do not rely on it exclusively):
+Имеющиеся краткие описания событий (для справки, не полагайся только на этот список):
 {{events}}
 
-Requirements:
-- Chronological order; preserve turning points and critical details
-- Keep all character and place names verbatim
-- Plain text only; no markup, no XML tags (e.g. no <horae>)
-- Preserve key dialogue and emotional shifts
-- {{user}} is the protagonist
-- Style: concise, objective narrative prose`;
+Требования:
+- Излагай в хронологическом порядке, сохраняй важные повороты и ключевые детали
+- Имена и названия мест сохраняй в оригинале
+- Выводи только чистый текст, без разметки или форматирования (запрещены XML-теги типа <horae>)
+- Сохраняй ключевые диалоги персонажей и их эмоциональные изменения
+- {{user}} — имя главного героя
+- Стиль: краткое объективное повествование`;
 }
 
-/** 从压缩提示词模板中按模式提取对应的 prompt 段 */
+/** Извлечь соответствующий блок промпта из шаблона по режиму */
 function parseCompressPrompt(template, mode) {
-    const eventRe = /=+【(?:Event Compression|事件压缩)】=+/;
-    const fulltextRe = /=+【(?:Full Text Summary|全文摘要)】=+/;
+    const eventRe = /=+【Сжатие событий】=+/;
+    const fulltextRe = /=+【Полный текст сводки】=+/;
     const eMatch = template.match(eventRe);
     const fMatch = template.match(fulltextRe);
     if (eMatch && fMatch) {
@@ -12423,11 +9953,11 @@ function parseCompressPrompt(template, mode) {
             return mode === 'fulltext' ? fulltextSection : eventSection;
         }
     }
-// Константы
+    // Нет разделителя: весь текст используется как универсальный промпт
     return template;
 }
 
-/** 根据缓冲模式动态更新缓冲上限的说明文案 */
+/** Динамически обновлять подсказку лимита буфера в зависимости от режима */
 function updateAutoSummaryHint() {
     const hintEl = document.getElementById('horae-auto-summary-limit-hint');
     if (!hintEl) return;
@@ -12437,12 +9967,12 @@ function updateAutoSummaryHint() {
             '<small>Ориентир: Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
             'Рекомендуется 30–50% от контекстного окна модели.</small>';
     } else {
-        hintEl.innerHTML = 'Введите лимит токенов. При превышении запускается автосжатие.<br>' +
-            'Рекомендуется 30–50% от контекстного окна модели.</small>';
+        hintEl.innerHTML = 'Введите количество сообщений. При превышении запускается автосжатие.<br>' +
+            '<small>Когда сообщений сверх «хранить последних» становится больше этого числа, они автоматически сжимаются.</small>';
     }
 }
 
-/** 估算文本的token数（CJK按1.5、其余按0.4） */
+/** Оценить количество токенов текста (CJK: 1.5, остальные: 0.4) */
 function estimateTokens(text) {
     if (!text) return 0;
     const cjk = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
@@ -12450,20 +9980,7 @@ function estimateTokens(text) {
     return Math.ceil(cjk * 1.5 + rest * 0.4);
 }
 
-/** 根据 vectorStripTags 配置的标签列表，整块移除对应内容（小剧场等），避免污染 AI 摘要/解析 */
-function _stripConfiguredTags(text) {
-    if (!text) return text;
-    const tagList = settings.vectorStripTags;
-    if (!tagList) return text;
-    const tags = tagList.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
-    for (const tag of tags) {
-        const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        text = text.replace(new RegExp(`<${escaped}(?:\\s[^>]*)?>[\\s\\S]*?</${escaped}>`, 'gi'), '');
-    }
-    return text.trim();
-}
-
-/** 判断消息是否为空层（同层系统等代码渲染的无实际叙事内容楼层） */
+/** Проверить, является ли сообщение пустым (системная отрисовка кода без нарративного содержания) */
 function isEmptyOrCodeLayer(mes) {
     if (!mes) return true;
     const stripped = mes
@@ -12474,41 +9991,28 @@ function isEmptyOrCodeLayer(mes) {
     return stripped.length < 20;
 }
 
-/** AI智能摘要 — 批量分析历史消息，暂存结果后弹出审阅视窗 */
+/** ИИ-анализ — пакетный анализ истории сообщений, сохранение результатов, открытие окна проверки */
 async function batchAIScan() {
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Нет истории чата', 'warning');
         return;
     }
 
     const targets = [];
     let skippedEmpty = 0;
-    const isAntiParaphrase = !!settings.antiParaphraseMode;
     for (let i = 0; i < chat.length; i++) {
         const msg = chat[i];
-        if (msg.is_user) {
-            if (isAntiParaphrase && i + 1 < chat.length && !chat[i + 1].is_user) {
-                const nextMsg = chat[i + 1];
-                const nextMeta = nextMsg.horae_meta;
-                if (nextMeta?.events?.length > 0) { i++; continue; }
-                if (isEmptyOrCodeLayer(nextMsg.mes) && isEmptyOrCodeLayer(msg.mes)) { i++; skippedEmpty++; continue; }
-                const combined = `[USER ACTION]\n${_stripConfiguredTags(msg.mes)}\n\n[AI REPLY]\n${_stripConfiguredTags(nextMsg.mes)}`;
-                targets.push({ index: i + 1, text: combined });
-                i++;
-            }
-            continue;
-        }
-        if (isAntiParaphrase) continue;
+        if (msg.is_user) continue;
         if (isEmptyOrCodeLayer(msg.mes)) { skippedEmpty++; continue; }
         const meta = msg.horae_meta;
         if (meta?.events?.length > 0) continue;
-        targets.push({ index: i, text: _stripConfiguredTags(msg.mes) });
+        targets.push({ index: i, text: msg.mes });
     }
 
     if (targets.length === 0) {
         const hint = skippedEmpty > 0 ? `(пропущено ${skippedEmpty} пустых/системных сообщений)` : '';
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Все сообщения уже имеют данные хронологии, дополнение не требуется${hint}`, 'info');
         return;
     }
 
@@ -12536,20 +10040,20 @@ async function batchAIScan() {
 
     const scanResults = await executeBatchScan(batches, { includeNpc, includeAffection, includeScene, includeRelationship });
     if (scanResults.length === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Не удалось извлечь данные', 'warning');
         return;
     }
     showScanReviewModal(scanResults, { includeNpc, includeAffection, includeScene, includeRelationship });
 }
 
-/** 执行批量扫描，返回暂存结果（不写入chat） */
+/** Выполнить пакетное сканирование, вернуть промежуточные результаты (не записывать в диалог) */
 async function executeBatchScan(batches, options = {}) {
     const { includeNpc, includeAffection, includeScene, includeRelationship } = options;
     let cancelled = false;
     let cancelResolve = null;
     const cancelPromise = new Promise(resolve => { cancelResolve = resolve; });
 
-// Константы
+    // AbortController для прерывания HTTP-запроса (на уровне fetch)
     const fetchAbort = new AbortController();
     const _origFetch = window.fetch;
     window.fetch = function(input, init = {}) {
@@ -12568,12 +10072,12 @@ async function executeBatchScan(batches, options = {}) {
     overlay.className = 'horae-progress-overlay' + (isLightMode() ? ' horae-light' : '');
     overlay.innerHTML = `
         <div class="horae-progress-container">
-            <div class="horae-progress-title">ИИ составляет сводку...</div>
+            <div class="horae-progress-title">ИИ-анализ...</div>
             <div class="horae-progress-bar">
                 <div class="horae-progress-fill" style="width: 0%"></div>
             </div>
             <div class="horae-progress-text">Подготовка...</div>
-            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> Отменить сводку</button>
+            <button class="horae-progress-cancel"><i class="fa-solid fa-xmark"></i> Отмена</button>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -12582,13 +10086,13 @@ async function executeBatchScan(batches, options = {}) {
     const context = getContext();
     const userName = context?.name1 || 'Главный герой';
 
-// Константы
+    // Отмена: прервать fetch + stopGeneration + выход через Promise.race
     overlay.querySelector('.horae-progress-cancel').addEventListener('click', () => {
         if (cancelled) return;
         const hasPartial = scanResults.length > 0;
         const hint = hasPartial
-            ? `| Индекс: ${vectorManager.vectors.size} записей`
-            : 'Нет особых событий';
+            ? `Завершено ${scanResults.length} сводок будет сохранено, можно просмотреть в окне проверки.\n\nОстановить оставшиеся пакеты?`
+            : 'Текущий пакет ещё не завершён. Отменить?';
         if (!confirm(hint)) return;
         cancelled = true;
         fetchAbort.abort();
@@ -12599,7 +10103,7 @@ async function executeBatchScan(batches, options = {}) {
     });
     const scanResults = [];
 
-// Константы
+    // Динамически строить список разрешённых тегов
     let allowedTags = 'time、item、event';
     let forbiddenNote = 'Не выводить теги agenda/costume/location/atmosphere/characters';
     if (!includeNpc) forbiddenNote += '/npc';
@@ -12615,12 +10119,12 @@ async function executeBatchScan(batches, options = {}) {
     for (let b = 0; b < batches.length; b++) {
         if (cancelled) break;
         const batch = batches[b];
-        textEl.textContent = `«${source}» → «${target}»\nОписание после объединения: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
+        textEl.textContent = `Пакет ${b + 1}/${batches.length} (${batch.length} сообщений)...`;
         fillEl.style.width = `${Math.round((b / batches.length) * 100)}%`;
 
         const messagesBlock = batch.map(t => `[Сообщение#${t.index}]\n${t.text}`).join('\n\n');
 
-// Константы
+        // Пользовательский промпт или по умолчанию
         let batchPrompt;
         if (settings.customBatchPrompt) {
             batchPrompt = settings.customBatchPrompt
@@ -12630,52 +10134,52 @@ async function executeBatchScan(batches, options = {}) {
             let extraFormat = '';
             let extraRules = '';
             if (includeNpc) {
-                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~пол:значение~возраст:значение~раса:значение~профессия:значение (только при первом появлении или смене данных)`;
+                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~性别:значение~年龄:значение~种族:значение~职业:значение (только при первом появлении или смене данных)`;
                 extraRules += `\n· NPC: при первом появлении — полная запись (включая ~доп.поля), затем только изменения`;
             }
             if (includeAffection) {
-                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~пол:значение~возраст:значение~раса:значение~профессия:значение (только при первом появлении или смене данных)`;
-                extraRules += `\n· NPC: при первом появлении — полная запись (включая ~доп.поля), затем только изменения`;
+                extraFormat += `\naffection:имя_персонажа=значение_расположения (только расположение NPC к ${userName}, извлекать имеющиеся числа из текста)`;
+                extraRules += `\n· Расположение: извлекай только явно указанные значения из текста, не делай предположений`;
             }
             if (includeScene) {
-                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~пол:значение~возраст:значение~раса:значение~профессия:значение (только при первом появлении или смене данных)`;
-                extraRules += `\n· NPC: при первом появлении — полная запись (включая ~доп.поля), затем только изменения`;
+                extraFormat += `\nlocation:название_текущего_места (место сцены, многоуровневое через · напр. «Таверна·Зал»)\nscene_desc:находится... Описание постоянных физических характеристик места (50-150 символов, только при первом посещении или постоянных изменениях)`;
+                extraRules += `\n· Локация: строку location пиши для каждого сообщения; scene_desc — только при первом посещении нового места; для дочерних мест пиши только положение относительно родителя`;
             }
             if (includeRelationship) {
-                extraFormat += `\nnpc:имя_персонажа|внешность=характер@отношения_с_${userName}~пол:значение~возраст:значение~раса:значение~профессия:значение (только при первом появлении или смене данных)`;
-                extraRules += `\n· NPC: при первом появлении — полная запись (включая ~доп.поля), затем только изменения`;
+                extraFormat += `\nrel:ПерсонажA>ПерсонажB=тип_отношений|примечание (выводить при изменении отношений)`;
+                extraRules += `\n· Отношения: писать только при новых/изменившихся отношениях, формат rel:ПерсонажA>ПерсонажB=тип, примечание необязательно`;
             }
 
-            batchPrompt = `You are a plot analysis assistant. Analyze the following conversation log message by message, extracting [${allowedTags}] for each message.
+            batchPrompt = `Ты — помощник по анализу сюжета. Проанализируй каждое сообщение в диалоге и извлеки [${allowedTags}].
 
-Core principles:
-- Extract only information explicitly present in the text; fabrication is forbidden
-- Analyze each message independently, separated by ===Message#Number===
-- Strictly output only ${allowedTags} tags; ${forbiddenNote}
+Основные принципы:
+- Извлекай только явно указанную информацию, не выдумывай
+- Анализируй каждое сообщение отдельно, разделяй через ===Сообщение#номер===
+- Выводи только теги ${allowedTags}, ${forbiddenNote}
 
 ${messagesBlock}
 
-[Output Format] Output each message as:
+[Формат вывода] Для каждого сообщения:
 
-===Message#Number===
+===Сообщение#номер===
 <horae>
-time:date time (extracted from text, e.g. 2026/2/4 15:00 or Frost Month Third Day Dusk)
-item:emoji name(qty)|description=owner@location (newly obtained; description optional for ordinary)
-item!:emoji name(qty)|description=owner@location (important; description required)
-item-:name (consumed/lost/used up)${extraFormat}
+time:дата время (из текста, напр. 2026/2/4 15:00 или Третий день месяца Заморозков, сумерки)
+item:emoji название_предмета(кол-во)|описание=владелец@местоположение (новые предметы, описание необязательно для обычных)
+item!:emoji название_предмета(кол-во)|описание=владелец@местоположение (важный предмет, описание обязательно)
+item-:название_предмета (израсходованные/утерянные предметы)${extraFormat}
 </horae>
 <horaeevent>
-event:minor/important/critical|summary 30-50 words
+event:уровень|краткое описание события (30-50 символов, уровень: обычное/важное/ключевое — но значения тегов: 一般/重要/关键)
 </horaeevent>
 
-[Rules]
-· time: extract from text; infer from context if absent; required
-· event: key plot events in this message; at least one per message
-· Items only when obtained, consumed, or state changes; no item line if nothing changed
-· item format: emoji prefix e.g. 🔑🍞; no (1) for singles; precise location (❌ floor ✅ tavern hall table)
-· Importance: everyday dialogue=minor, plot-advancing=important, turning point=critical
-· ${userName} is the protagonist${extraRules}
-· Reminder: only ${allowedTags} are allowed; ${forbiddenNote}`;
+[Правила]
+· time: извлеки дату и время текущей сцены, обязательно (если нет явного времени — используй контекст)
+· event: ключевые события в данном сообщении, минимум одно event на сообщение
+· Предметы записывай только при получении, расходе или смене состояния; если нет изменений — пропускай строку item
+· Формат item: emoji-префикс напр. 🔑🍞, для одной единицы не пиши (1), местоположение точное (❌ на полу ✅ на столе в зале таверны)
+· Уровень важности: повседневный диалог=一般 (обычное), движение сюжета=重要 (важное), ключевой поворот=关键 (ключевое)
+· ${userName} — имя главного героя${extraRules}
+· Ещё раз: выводи только ${allowedTags}, ${forbiddenNote}`;
         }
 
         try {
@@ -12685,14 +10189,14 @@ event:minor/important/critical|summary 30-50 words
             ]);
             if (cancelled) break;
             if (!response) {
-        console.warn(`[Horae] doNavbarIconClick недоступен, используется устаревший режим ящика`);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                console.warn(`[Horae] Пакет ${b + 1}: ИИ не вернул содержимого`);
+                showToast(`Пакет ${b + 1}: ИИ не вернул содержимого (возможно, заблокировано цензурой)`, 'warning');
                 continue;
             }
-            const segments = response.split(/===(?:Message|消息)#(\d+)===/);
+            const segments = response.split(/===Сообщение#(\d+)===/);
             if (segments.length <= 1) {
                 console.warn(`[Horae] Пакет ${b + 1}: формат ответа ИИ не совпадает (не найден разделитель ===Сообщение#N===)`, response.substring(0, 300));
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Пакет ${b + 1}: формат ответа ИИ не совпадает, повторите`, 'warning');
                 continue;
             }
             for (let s = 1; s < segments.length; s += 2) {
@@ -12726,11 +10230,11 @@ event:minor/important/critical|summary 30-50 words
         } catch (err) {
             if (cancelled || err?.name === 'AbortError') break;
             console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+            showToast(`Пакет ${b + 1}: ошибка запроса ИИ, проверьте подключение к API`, 'error');
         }
 
         if (b < batches.length - 1 && !cancelled) {
-        textEl.textContent = `«${source}» → «${target}»\nОписание после объединения: ${merged.substring(0, 100)}${merged.length > 100 ? '...' : ''}`;
+            textEl.textContent = `Пакет ${b + 1} завершён, ожидание...`;
             await Promise.race([
                 new Promise(r => setTimeout(r, 2000)),
                 cancelPromise
@@ -12742,7 +10246,7 @@ event:minor/important/critical|summary 30-50 words
     return scanResults;
 }
 
-/** 从暂存结果中按分类提取审阅条目 */
+/** Извлечь позиции проверки из промежуточных результатов по категориям */
 function extractReviewCategories(scanResults) {
     const categories = { events: [], items: [], npcs: [], affection: [], scenes: [], relationships: [] };
 
@@ -12757,7 +10261,7 @@ function extractReviewCategories(scanResults) {
                     resultIndex: ri, field: 'events', subIndex: ei,
                     msgIndex: r.msgIndex,
                     time: meta.timestamp?.story_date || '',
-                    level: meta.events[ei].level || 'Обычное',
+                    level: meta.events[ei].level || '一般',
                     text: meta.events[ei].summary || ''
                 });
             }
@@ -12793,7 +10297,7 @@ function extractReviewCategories(scanResults) {
             });
         }
 
-// Константы
+        // Память о локациях
         if (meta.scene?.location && meta.scene?.scene_desc) {
             categories.scenes.push({
                 resultIndex: ri, field: 'scene', key: meta.scene.location,
@@ -12803,7 +10307,7 @@ function extractReviewCategories(scanResults) {
             });
         }
 
-// Константы
+        // Сеть отношений
         if (meta.relationships?.length > 0) {
             for (let rri = 0; rri < meta.relationships.length; rri++) {
                 const rel = meta.relationships[rri];
@@ -12817,14 +10321,14 @@ function extractReviewCategories(scanResults) {
         }
     }
 
-// Константы
+    // Дедупликация расположения: для одноимённых NPC сохранять только последнее значение (итоговое)
     const affMap = new Map();
     for (const item of categories.affection) {
         affMap.set(item.text, item);
     }
     categories.affection = [...affMap.values()];
 
-// Константы
+    // Дедупликация локаций: для одноимённых мест сохранять только последнее описание
     const sceneMap = new Map();
     for (const item of categories.scenes) {
         sceneMap.set(item.text, item);
@@ -12835,14 +10339,14 @@ function extractReviewCategories(scanResults) {
     return categories;
 }
 
-/** 审阅条目唯一标识 */
+/** Уникальный идентификатор позиции проверки */
 function makeReviewKey(item) {
     if (item.field === 'events') return `${item.resultIndex}-events-${item.subIndex}`;
     if (item.field === 'relationships') return `${item.resultIndex}-relationships-${item.subIndex}`;
     return `${item.resultIndex}-${item.field}-${item.key}`;
 }
 
-/** 摘要审阅弹窗 — 按分类展示，支持逐条删除和补充摘要 */
+/** Диалог проверки сводок — отображение по категориям, поддержка удаления и дополнения */
 function showScanReviewModal(scanResults, scanOptions) {
     const categories = extractReviewCategories(scanResults);
     const deletedSet = new Set();
@@ -12857,7 +10361,7 @@ function showScanReviewModal(scanResults, scanOptions) {
     ].filter(t => t.items.length > 0);
 
     if (tabs.length === 0) {
-        showToast('Таблица экспортирована', 'warning');
+        showToast('Не удалось извлечь данные', 'warning');
         return;
     }
 
@@ -12875,7 +10379,9 @@ function showScanReviewModal(scanResults, scanOptions) {
         const itemsHtml = t.items.map(item => {
             const itemKey = escapeHtml(makeReviewKey(item));
             const levelAttr = item.level ? ` data-level="${escapeHtml(item.level)}"` : '';
-            const levelBadge = item.level ? `<span class="horae-level-badge ${item.level === 'Ключевой' ? 'critical' : item.level === 'Ключевой' ? 'important' : ''}" style="font-size:10px;margin-right:4px;">${escapeHtml(item.level)}</span>` : '';
+            const itemLevelDisplayMap = {'一般': 'Обычн.', '重要': 'Важное', '关键': 'Ключ.'};
+            const itemLevelDisplay = itemLevelDisplayMap[item.level] || item.level || '';
+            const levelBadge = item.level ? `<span class="horae-level-badge ${item.level === '关键' ? 'critical' : item.level === '重要' ? 'important' : ''}" style="font-size:10px;margin-right:4px;">${escapeHtml(itemLevelDisplay)}</span>` : '';
             const descHtml = item.desc ? `<div class="horae-review-item-sub" style="font-style:italic;opacity:0.8;">📝 ${escapeHtml(item.desc)}</div>` : '';
             return `<div class="horae-review-item" data-key="${itemKey}"${levelAttr}>
                 <div class="horae-review-item-body">
@@ -12900,8 +10406,8 @@ function showScanReviewModal(scanResults, scanOptions) {
     modal.innerHTML = `
         <div class="horae-modal-content">
             <div class="horae-modal-header">
-                <span>Проверка сводки</span>
-                <span style="font-size:12px;color:var(--horae-text-muted);">всего ${totalCount}</span>
+                <span>Проверка сводок</span>
+                <span style="font-size:12px;color:var(--horae-text-muted);">Всего: ${totalCount}</span>
             </div>
             <div class="horae-review-tabs">${tabsHtml}</div>
             <div class="horae-review-body">${panelsHtml}</div>
@@ -12909,15 +10415,15 @@ function showScanReviewModal(scanResults, scanOptions) {
                 <div class="horae-review-stats">Удалено: <strong id="horae-review-del-count">0</strong></div>
                 <div class="horae-review-actions">
                     <button class="horae-btn" id="horae-review-cancel"><i class="fa-solid fa-xmark"></i> Отмена</button>
-                    <button class="horae-btn primary" id="horae-review-rescan" disabled style="opacity:0.5;"><i class="fa-solid fa-wand-magic-sparkles"></i> Дополнить сводку</button>
-                    <button class="horae-btn primary" id="horae-review-confirm"><i class="fa-solid fa-check"></i> Подтвердить сохранение</button>
+                    <button class="horae-btn primary" id="horae-review-rescan" disabled style="opacity:0.5;"><i class="fa-solid fa-wand-magic-sparkles"></i> Дополнить сводки</button>
+                    <button class="horae-btn primary" id="horae-review-confirm"><i class="fa-solid fa-check"></i> Подтвердить и сохранить</button>
                 </div>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
 
-// Константы
+    // Переключение вкладок
     modal.querySelectorAll('.horae-review-tab').forEach(tabBtn => {
         tabBtn.addEventListener('click', () => {
             modal.querySelectorAll('.horae-review-tab').forEach(t => t.classList.remove('active'));
@@ -12927,7 +10433,7 @@ function showScanReviewModal(scanResults, scanOptions) {
         });
     });
 
-// Константы
+    // Переключение удалить/восстановить
     modal.querySelectorAll('.horae-review-delete-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const key = btn.dataset.key;
@@ -12958,7 +10464,7 @@ function showScanReviewModal(scanResults, scanOptions) {
         }
     }
 
-// Константы
+    // Подтвердить и сохранить
     modal.querySelector('#horae-review-confirm').addEventListener('click', async () => {
         applyDeletedToResults(scanResults, deletedSet, categories);
         let saved = 0;
@@ -12970,11 +10476,11 @@ function showScanReviewModal(scanResults, scanOptions) {
                 m.timestamp?.story_date || (m.scene?.scene_desc) || (m.relationships?.length > 0);
             if (!hasData) continue;
             m._aiScanned = true;
-// Константы
+            // Записать память о локациях в locationMemory
             if (m.scene?.location && m.scene?.scene_desc) {
                 horaeManager._updateLocationMemory(m.scene.location, m.scene.scene_desc);
             }
-// Константы
+            // Слияние данных сети отношений
             if (m.relationships?.length > 0) {
                 horaeManager._mergeRelationships(m.relationships);
             }
@@ -12985,17 +10491,17 @@ function showScanReviewModal(scanResults, scanOptions) {
         horaeManager.rebuildTableData();
         await getContext().saveChat();
         modal.remove();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+        showToast(`Сохранено ${saved} сводок`, 'success');
         refreshAllDisplays();
         renderCustomTablesList();
     });
 
-// Константы
+    // Отмена
     const closeModal = () => { if (confirm('Закрыть окно проверки? Несохранённые сводки будут потеряны.\n(Можно запустить «ИИ-анализ» снова для продолжения)')) modal.remove(); };
     modal.querySelector('#horae-review-cancel').addEventListener('click', closeModal);
     modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
-// Константы
+    // Дополнить сводки — повторно обработать сообщения с удалёнными записями
     modal.querySelector('#horae-review-rescan').addEventListener('click', async () => {
         const deletedMsgIndices = new Set();
         for (const key of deletedSet) {
@@ -13003,7 +10509,7 @@ function showScanReviewModal(scanResults, scanOptions) {
             if (!isNaN(ri) && scanResults[ri]) deletedMsgIndices.add(scanResults[ri].msgIndex);
         }
         if (deletedMsgIndices.size === 0) return;
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+        if (!confirm(`Будет повторно сгенерировано ${deletedMsgIndices.size} сообщений, минимум 1 генерация.\n\nПродолжить?`)) return;
 
         applyDeletedToResults(scanResults, deletedSet, categories);
 
@@ -13032,7 +10538,7 @@ function showScanReviewModal(scanResults, scanOptions) {
     });
 }
 
-/** 将删除标记应用到 scanResults 的实际数据 */
+/** Применить метки удаления к фактическим данным scanResults */
 function applyDeletedToResults(scanResults, deletedSet, categories) {
     const deleteMap = new Map();
     const allItems = [...categories.events, ...categories.items, ...categories.npcs, ...categories.affection, ...categories.scenes, ...categories.relationships];
@@ -13074,7 +10580,7 @@ function applyDeletedToResults(scanResults, deletedSet, categories) {
     }
 }
 
-/** AI摘要配置弹窗 */
+/** Диалог настройки ИИ-анализа */
 function showAIScanConfigDialog(targetCount) {
     return new Promise(resolve => {
         const modal = document.createElement('div');
@@ -13086,7 +10592,7 @@ function showAIScanConfigDialog(targetCount) {
                 </div>
                 <div class="horae-modal-body" style="padding: 16px;">
                     <p style="margin: 0 0 12px; color: var(--horae-text-muted); font-size: 13px;">
-                        Обнаружено <strong style="color: var(--horae-primary-light);">${targetCount}</strong> сообщений без хронологии (уже обработанные пропускаются)
+                        Обнаружено <strong style="color: var(--horae-primary-light);">${targetCount}</strong> сообщений без хронологии (уже имеющие данные пропускаются автоматически)
                     </p>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--horae-text);">
                         Лимит токенов на пакет
@@ -13094,41 +10600,29 @@ function showAIScanConfigDialog(targetCount) {
                             style="flex:1; padding: 6px 10px; background: var(--horae-bg); border: 1px solid var(--horae-border); border-radius: 4px; color: var(--horae-text); font-size: 13px;">
                     </label>
                     <p style="margin: 8px 0 12px; color: var(--horae-text-muted); font-size: 11px;">
-                        Чем больше значение, тем больше сообщений в пакете и меньше вызовов API, но возможно превышение лимита модели.<br>
+                        Больше значение = больше сообщений за раз, меньше генераций, но возможен выход за пределы модели.<br>
                         Claude ≈ 80K~200K · Gemini ≈ 100K~1000K · GPT-4o ≈ 80K~128K
                     </p>
                     <div style="border-top: 1px solid var(--horae-border); padding-top: 12px;">
                         <p style="margin: 0 0 8px; font-size: 12px; color: var(--horae-text);">Дополнительные данные (необязательно)</p>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-bottom: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-npc" ${settings.aiScanIncludeNpc ? 'checked' : ''}>
-                            Информация о NPC
+                            Информация о персонажах (NPC)
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-affection" ${settings.aiScanIncludeAffection ? 'checked' : ''}>
-                            Привязанность
+                            Расположение
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-top: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-scene" ${settings.aiScanIncludeScene ? 'checked' : ''}>
-                            Память о локациях (физические характеристики)
+                            Память о локациях (описание физических характеристик)
                         </label>
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--horae-text); margin-top: 6px; cursor: pointer;">
                             <input type="checkbox" id="horae-scan-include-relationship" ${settings.aiScanIncludeRelationship ? 'checked' : ''}>
                             Сеть отношений
                         </label>
                         <p style="margin: 6px 0 0; color: var(--horae-text-muted); font-size: 10px;">
-                            Извлекает информацию из истории. После извлечения можно скорректировать каждую запись в окне проверки.
-                        </p>
-                    </div>
-                    <div style="border-top: 1px solid var(--horae-border); padding-top: 12px; margin-top: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--horae-text);">
-                            <i class="fa-solid fa-filter" style="font-size: 11px; opacity: .6;"></i>
-                            Теги для исключения контента
-                            <input type="text" id="horae-scan-strip-tags" value="${escapeHtml(settings.vectorStripTags || '')}" placeholder="snow, theater, side"
-                                style="flex:1; padding: 5px 8px; background: var(--horae-bg); border: 1px solid var(--horae-border); border-radius: 4px; color: var(--horae-text); font-size: 12px;">
-                        </label>
-                        <p style="margin: 4px 0 0; color: var(--horae-text-muted); font-size: 10px;">
-                            Имена тегов через запятую; совпадающие блоки удаляются перед отправкой ИИ (напр. <snow>...</snow>).<br>
-                            Действует одновременно на разбор хронологии и векторный поиск; синхронизируется с той же настройкой в разделе векторов.
+                            Извлечение информации из текста истории. После этого можно проверить каждую запись в окне проверки.
                         </p>
                     </div>
                 </div>
@@ -13146,13 +10640,10 @@ function showAIScanConfigDialog(targetCount) {
             const includeAffection = modal.querySelector('#horae-scan-include-affection').checked;
             const includeScene = modal.querySelector('#horae-scan-include-scene').checked;
             const includeRelationship = modal.querySelector('#horae-scan-include-relationship').checked;
-            const newStripTags = modal.querySelector('#horae-scan-strip-tags').value.trim();
             settings.aiScanIncludeNpc = includeNpc;
             settings.aiScanIncludeAffection = includeAffection;
             settings.aiScanIncludeScene = includeScene;
             settings.aiScanIncludeRelationship = includeRelationship;
-            settings.vectorStripTags = newStripTags;
-            $('#horae-setting-vector-strip-tags').val(newStripTags);
             saveSettings();
             modal.remove();
             resolve({ tokenLimit: Math.max(10000, val), includeNpc, includeAffection, includeScene, includeRelationship });
@@ -13167,7 +10658,7 @@ function showAIScanConfigDialog(targetCount) {
     });
 }
 
-/** 撤销AI摘要 — 清除所有 _aiScanned 标记的数据 */
+/** Отмена ИИ-анализа — очистить все данные с меткой _aiScanned */
 async function undoAIScan() {
     const chat = horaeManager.getChat();
     if (!chat || chat.length === 0) return;
@@ -13178,11 +10669,11 @@ async function undoAIScan() {
     }
 
     if (count === 0) {
-        showToast('Таблица экспортирована', 'info');
+        showToast('Данные ИИ-анализа не найдены', 'info');
         return;
     }
 
-            if (!confirm(`Удалить связь ${rel.from} → ${rel.to}?`)) return;
+    if (!confirm(`Будут очищены данные ИИ-анализа из ${count} сообщений (события и предметы).\nВручную отредактированные данные затронуты не будут.\n\nПродолжить?`)) return;
 
     for (let i = 0; i < chat.length; i++) {
         const meta = chat[i].horae_meta;
@@ -13195,13 +10686,13 @@ async function undoAIScan() {
 
     horaeManager.rebuildTableData();
     await getContext().saveChat();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+    showToast(`Отменён ИИ-анализ для ${count} сообщений`, 'success');
     refreshAllDisplays();
     renderCustomTablesList();
 }
 
 /**
- * 导出数据
+ * Экспорт данных
  */
 function exportData() {
     const chat = horaeManager.getChat();
@@ -13222,16 +10713,16 @@ function exportData() {
     a.click();
     URL.revokeObjectURL(url);
     
-    showToast('Таблица экспортирована', 'success');
+    showToast('Данные экспортированы', 'success');
 }
 
 /**
- * 导入数据（支持两种模式）
+ * Импорт данных (поддерживает два режима)
  */
 function importData() {
     const mode = confirm(
-        '<small>Ориентир: Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
-        '<small>Ориентир: Claude ≈ 80K~200K · GPT-4o ≈ 128K · Gemini ≈ 1M~2M<br>' +
+        'Выберите режим импорта:\n\n' +
+        '[OK] → Импорт по номеру сообщения (восстановление в том же диалоге)\n' +
         '[Отмена] → Импорт как начальное состояние (новый диалог наследует метаданные)'
     ) ? 'match' : 'initial';
     
@@ -13247,7 +10738,7 @@ function importData() {
             const importObj = JSON.parse(text);
             
             if (!importObj.data || !Array.isArray(importObj.data)) {
-                throw new Error('Недействительные данные таблицы');
+                throw new Error('Неверный формат данных');
             }
             
             const chat = horaeManager.getChat();
@@ -13261,15 +10752,15 @@ function importData() {
                     }
                 }
                 await getContext().saveChat();
-    showToast(`Удалено ${selectedAgendaIndices.size} задач(а/и)`, 'success');
+                showToast(`Успешно импортировано ${imported} записей`, 'success');
             } else {
                 _importAsInitialState(importObj, chat);
                 await getContext().saveChat();
-                showToast('Таблица экспортирована', 'success');
+                showToast('Метаданные импортированы как начальное состояние', 'success');
             }
             refreshAllDisplays();
         } catch (error) {
-            console.error('[Horae] Ошибка ИИ-анализа:', error);
+            console.error('[Horae] Ошибка импорта:', error);
             showToast('Ошибка импорта: ' + error.message, 'error');
         }
     };
@@ -13277,8 +10768,8 @@ function importData() {
 }
 
 /**
- * 从导出文件提取最终累积状态，写入当前对话的 chat[0] 作为初始元数据，
- * 适用于新聊天继承旧聊天的世界观数据。
+ * Извлечь финальное накопленное состояние из файла экспорта, записать в chat[0] текущего диалога как начальные метаданные.
+ * Подходит для наследования данных мира из предыдущего диалога.
  */
 function _importAsInitialState(importObj, chat) {
     const allMetas = importObj.data
@@ -13290,7 +10781,7 @@ function _importAsInitialState(importObj, chat) {
     if (!chat[0].horae_meta) chat[0].horae_meta = createEmptyMeta();
     const target = chat[0].horae_meta;
     
-// Константы
+    // Накопление NPC
     for (const meta of allMetas) {
         if (meta.npcs) {
             for (const [name, info] of Object.entries(meta.npcs)) {
@@ -13334,12 +10825,14 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-// Константы
+    // Импортировать только ключевые+важные события
     const importedEvents = [];
     for (const meta of allMetas) {
         if (!meta.events?.length) continue;
         for (const evt of meta.events) {
-            importedEvents.push({ ...evt });
+            if (evt.level === '关键' || evt.level === '重要') {
+                importedEvents.push({ ...evt });
+            }
         }
     }
     if (importedEvents.length > 0) {
@@ -13347,13 +10840,7 @@ function _importAsInitialState(importObj, chat) {
         target.events.push(...importedEvents);
     }
     
-// Константы
-    const srcFirstMeta = allMetas[0];
-    if (srcFirstMeta?.autoSummaries?.length) {
-        target.autoSummaries = srcFirstMeta.autoSummaries.map(s => ({ ...s }));
-    }
-    
-// Константы
+    // Сеть отношений
     const finalRels = [];
     for (const meta of allMetas) {
         if (meta.relationships?.length) {
@@ -13366,7 +10853,7 @@ function _importAsInitialState(importObj, chat) {
     }
     if (finalRels.length > 0) target.relationships = finalRels;
     
-// Константы
+    // RPG данные
     for (const meta of allMetas) {
         if (meta.rpg) {
             if (!target.rpg) target.rpg = { bars: {}, status: {}, skills: {}, attributes: {} };
@@ -13376,7 +10863,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-// Константы
+    // Пользовательские таблицы
     for (const meta of allMetas) {
         if (meta.tableContributions) {
             if (!target.tableContributions) target.tableContributions = {};
@@ -13384,7 +10871,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-// Константы
+    // Память о локациях
     for (const meta of allMetas) {
         if (meta.locationMemory) {
             if (!target.locationMemory) target.locationMemory = {};
@@ -13392,7 +10879,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-// Константы
+    // Задачи
     const seenAgenda = new Set();
     for (const meta of allMetas) {
         if (meta.agenda?.length) {
@@ -13406,7 +10893,7 @@ function _importAsInitialState(importObj, chat) {
         }
     }
     
-// Константы
+    // Обработать удалённые предметы
     for (const meta of allMetas) {
         if (meta.deletedItems?.length) {
             for (const name of meta.deletedItems) {
@@ -13418,15 +10905,14 @@ function _importAsInitialState(importObj, chat) {
     const npcCount = Object.keys(target.npcs || {}).length;
     const itemCount = Object.keys(target.items || {}).length;
     const eventCount = importedEvents.length;
-    const summaryCount = target.autoSummaries?.length || 0;
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+    console.log(`[Horae] Импортировано начальное состояние: ${npcCount} NPC, ${itemCount} предметов, ${eventCount} ключевых/важных событий`);
 }
 
 /**
- * 清除所有数据
+ * Очистить все данные
  */
 async function clearAllData() {
-    if (!confirm('Описание события пусто!\n\nПосле сохранения событие будет удалено.\n\nПодтвердить удаление?')) {
+    if (!confirm('Очистить все метаданные Horae? Это действие необратимо!')) {
         return;
     }
     
@@ -13436,11 +10922,11 @@ async function clearAllData() {
     }
     
     await getContext().saveChat();
-    showToast('Таблица экспортирована', 'warning');
+    showToast('Все данные очищены', 'warning');
     refreshAllDisplays();
 }
 
-/** 使用AI分析消息内容 */
+/** Анализ содержимого сообщения с помощью ИИ */
 async function analyzeMessageWithAI(messageContent) {
     const context = getContext();
     const userName = context?.name1 || 'Главный герой';
@@ -13464,7 +10950,7 @@ async function analyzeMessageWithAI(messageContent) {
             return parsed;
         }
     } catch (error) {
-        console.error('[Horae] Ошибка ИИ-анализа:', error);
+        console.error('[Horae] Ошибка вызова ИИ-анализа:', error);
         throw error;
     }
     
@@ -13472,86 +10958,65 @@ async function analyzeMessageWithAI(messageContent) {
 }
 
 // ============================================
-// Константы
+// Привязка событий
 // ============================================
 
 /**
- * AI回复接收时触发
+ * Срабатывает при получении ответа ИИ
  */
 async function onMessageReceived(messageId) {
     if (!settings.enabled || !settings.autoParse) return;
     _autoSummaryRanThisTurn = false;
 
-    let isRegenerate = false;
-    try {
-        const chat = horaeManager.getChat();
-        const message = chat[messageId];
-        
-        if (!message || message.is_user) return;
-        
-        if (message.horae_meta?._skipHorae) return;
-        
-        isRegenerate = !!(message.horae_meta?.timestamp?.absolute);
-        let savedFlags = null;
-        let savedGlobal = null;
-        if (isRegenerate) {
-            savedFlags = _saveCompressedFlags(message.horae_meta);
-            if (messageId === 0) savedGlobal = _saveGlobalMeta(message.horae_meta);
-            message.horae_meta = createEmptyMeta();
-        }
-        
-        horaeManager.processAIResponse(messageId, message.mes);
-        
-        if (isRegenerate) {
-            _restoreCompressedFlags(message.horae_meta, savedFlags);
-            if (savedGlobal) _restoreGlobalMeta(message.horae_meta, savedGlobal);
-            horaeManager.rebuildTableData();
-            horaeManager.rebuildRelationships();
-            horaeManager.rebuildLocationMemory();
-            horaeManager.rebuildRpgData();
-        }
-        
-        if (!_summaryInProgress) {
-            await getContext().saveChat();
-        }
-    } catch (err) {
-            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
-    }
-
-// Константы
-    try {
-        refreshAllDisplays();
-        renderCustomTablesList();
-    } catch (err) {
-        console.error('[Horae] Ошибка сжатия:', err);
+    const chat = horaeManager.getChat();
+    const message = chat[messageId];
+    
+    if (!message || message.is_user) return;
+    
+    // Пропустить обработку сообщений с меткой побочной сцены
+    if (message.horae_meta?._skipHorae) return;
+    
+    // Определение regenerate/swipe: если meta уже есть — перегенерация, очистить старые данные
+    const isRegenerate = !!(message.horae_meta?.timestamp?.absolute);
+    let savedFlags = null;
+    if (isRegenerate) {
+        savedFlags = _saveCompressedFlags(message.horae_meta);
+        message.horae_meta = createEmptyMeta();
     }
     
+    const hasTag = horaeManager.processAIResponse(messageId, message.mes);
+    
+    if (isRegenerate) {
+        _restoreCompressedFlags(message.horae_meta, savedFlags);
+        horaeManager.rebuildTableData();
+        horaeManager.rebuildRelationships();
+        horaeManager.rebuildLocationMemory();
+        horaeManager.rebuildRpgData();
+    }
+    
+    await getContext().saveChat();
+    refreshAllDisplays();
+    renderCustomTablesList();
+    
     setTimeout(() => {
-        try {
-            const messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
-            if (messageEl) {
-                const oldPanel = messageEl.querySelector('.horae-message-panel');
-                if (oldPanel) oldPanel.remove();
-                addMessagePanel(messageEl, messageId);
-            }
-        } catch (err) {
-            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
+        const messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
+        if (messageEl) {
+            const oldPanel = messageEl.querySelector('.horae-message-panel');
+            if (oldPanel) oldPanel.remove();
+            addMessagePanel(messageEl, messageId);
         }
     }, 100);
 
     if (settings.vectorEnabled && vectorManager.isReady) {
-        try {
-            const meta = horaeManager.getMessageMeta(messageId);
-            if (meta) {
-                vectorManager.addMessage(messageId, meta).then(() => {
-                    _updateVectorStatus();
-                }).catch(err => console.warn('[Horae] Ошибка обновления векторного индекса:', err));
-            }
-        } catch (err) {
-            console.warn('[Horae] Переход не удался:', err);
+        const meta = horaeManager.getMessageMeta(messageId);
+        if (meta) {
+            vectorManager.addMessage(messageId, meta).then(() => {
+                _updateVectorStatus();
+            }).catch(err => console.warn('[Horae] Ошибка обновления векторного индекса:', err));
         }
     }
 
+    // Последовательный запуск авто-сводки после ответа ИИ (пропустить, если параллельный путь уже выполнился)
     if (!isRegenerate && settings.autoSummaryEnabled && settings.sendTimeline) {
         setTimeout(() => {
             if (!_autoSummaryRanThisTurn) {
@@ -13562,7 +11027,7 @@ async function onMessageReceived(messageId) {
 }
 
 /**
- * 消息删除时触发 — 重建表格数据
+ * Срабатывает при удалении сообщения — пересборка данных таблиц
  */
 function onMessageDeleted() {
     if (!settings.enabled) return;
@@ -13578,7 +11043,7 @@ function onMessageDeleted() {
 }
 
 /**
- * 消息编辑时触发 — 重新解析该消息并重建表格
+ * Срабатывает при редактировании сообщения — повторный разбор и пересборка таблиц
  */
 function onMessageEdited(messageId) {
     if (!settings.enabled) return;
@@ -13587,14 +11052,12 @@ function onMessageEdited(messageId) {
     const message = chat[messageId];
     if (!message || message.is_user) return;
     
-// Константы
+    // Сохранить метку сжатия сводок, сбросить meta, после разбора восстановить
     const savedFlags = _saveCompressedFlags(message.horae_meta);
-    const savedGlobal = messageId === 0 ? _saveGlobalMeta(message.horae_meta) : null;
     message.horae_meta = createEmptyMeta();
     
     horaeManager.processAIResponse(messageId, message.mes);
     _restoreCompressedFlags(message.horae_meta, savedFlags);
-    if (savedGlobal) _restoreGlobalMeta(message.horae_meta, savedGlobal);
     
     horaeManager.rebuildTableData();
     horaeManager.rebuildRelationships();
@@ -13615,14 +11078,14 @@ function onMessageEdited(messageId) {
     }
 }
 
-/** 注入上下文（数据+规则合并注入） */
+/** Инжектировать контекст (данные + правила объединены) */
 async function onPromptReady(eventData) {
     if (_isSummaryGeneration) return;
     if (!settings.enabled || !settings.injectContext) return;
     if (eventData.dryRun) return;
     
     try {
-// Константы
+        // Определение swipe/regenerate
         let skipLast = 0;
         const chat = horaeManager.getChat();
         if (chat && chat.length > 0) {
@@ -13637,20 +11100,20 @@ async function onPromptReady(eventData) {
                 (lastMsg.horae_meta.events || []).length > 0
             )) {
                 skipLast = 1;
-                console.log('[Horae] Конфигурация панели атрибутов автоматически перенесена на шесть параметров DnD');
+                console.log('[Horae] Обнаружен swipe/regenerate, пропустить старую память последнего сообщения');
             }
         }
 
         const dataPrompt = horaeManager.generateCompactPrompt(skipLast);
 
         let recallPrompt = '';
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Проверка векторов: vectorEnabled=${settings.vectorEnabled}, isReady=${vectorManager.isReady}, vectors=${vectorManager.vectors.size}`);
         if (settings.vectorEnabled && vectorManager.isReady) {
             try {
                 recallPrompt = await vectorManager.generateRecallPrompt(horaeManager, skipLast, settings);
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+                console.log(`[Horae] Результат векторного извлечения: ${recallPrompt ? recallPrompt.length + ' символов' : 'пусто'}`);
             } catch (err) {
-                console.error('[Horae] Ошибка сжатия:', err);
+                console.error('[Horae] Ошибка векторного извлечения:', err);
             }
         }
 
@@ -13681,147 +11144,84 @@ async function onPromptReady(eventData) {
             eventData.chat.splice(-position, 0, { role: 'system', content: combinedPrompt });
         }
         
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+        console.log(`[Horae] Контекст инжектирован, позиция: -${position}${skipLast ? ' (последнее сообщение пропущено)' : ''}${recallPrompt ? ' (включено векторное извлечение)' : ''}`);
     } catch (error) {
-        console.error('[Horae] Ошибка ИИ-анализа:', error);
+        console.error('[Horae] Ошибка инжекции контекста:', error);
     }
 }
 
 /**
- * 分支/聊天切换后重建全局数据，清理孤立摘要
- */
-function _rebuildGlobalDataForCurrentChat() {
-    const chat = horaeManager.getChat();
-    if (!chat?.length) return;
-    
-    horaeManager.rebuildRelationships();
-    horaeManager.rebuildLocationMemory();
-    horaeManager.rebuildRpgData();
-    
-// Константы
-    const sums = chat[0]?.horae_meta?.autoSummaries;
-    if (sums?.length) {
-        const chatLen = chat.length;
-        const orphaned = [];
-        for (let i = sums.length - 1; i >= 0; i--) {
-            const s = sums[i];
-            if (s.range && s.range[0] >= chatLen) {
-                orphaned.push(sums.splice(i, 1)[0]);
-            }
-        }
-        if (orphaned.length > 0) {
-// Константы
-            for (const s of orphaned) {
-                for (let j = 0; j < chatLen; j++) {
-                    const evts = chat[j]?.horae_meta?.events;
-                    if (!evts) continue;
-                    for (const e of evts) {
-                        if (e._compressedBy === s.id) delete e._compressedBy;
-                    }
-                }
-            }
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
-        }
-    }
-}
-
-/**
- * 聊天切换时触发
+ * Срабатывает при смене диалога
  */
 async function onChatChanged() {
     if (!settings.enabled) return;
     
-    try {
-        clearTableHistory();
-        horaeManager.init(getContext(), settings);
-        _rebuildGlobalDataForCurrentChat();
-        refreshAllDisplays();
-        renderCustomTablesList();
-        renderDicePanel();
-    } catch (err) {
-        console.error('[Horae] Ошибка сжатия:', err);
-    }
+    clearTableHistory();
+    horaeManager.init(getContext(), settings);
+    
+    refreshAllDisplays();
+    renderCustomTablesList();
+    renderDicePanel();
 
     if (settings.vectorEnabled && vectorManager.isReady) {
-        try {
-            const ctx = getContext();
-            const chatId = ctx?.chatId || _deriveChatId(ctx);
-            vectorManager.loadChat(chatId, horaeManager.getChat()).then(() => {
-                _updateVectorStatus();
-            }).catch(err => console.warn('[Horae] Ошибка обновления векторного индекса:', err));
-        } catch (err) {
-            console.warn('[Horae] Переход не удался:', err);
-        }
+        const ctx = getContext();
+        const chatId = ctx?.chatId || _deriveChatId(ctx);
+        vectorManager.loadChat(chatId, horaeManager.getChat()).then(() => {
+            _updateVectorStatus();
+        }).catch(err => console.warn('[Horae] Ошибка загрузки векторного индекса:', err));
     }
     
     setTimeout(() => {
-        try {
-            horaeManager.init(getContext(), settings);
-            renderCustomTablesList();
-
-            document.querySelectorAll('.mes:not(.horae-processed)').forEach(messageEl => {
-                const messageId = parseInt(messageEl.getAttribute('mesid'));
-                if (!isNaN(messageId)) {
-                    const msg = horaeManager.getChat()[messageId];
-                    if (msg && !msg.is_user && msg.horae_meta) {
-                        addMessagePanel(messageEl, messageId);
-                    }
-                    messageEl.classList.add('horae-processed');
+        document.querySelectorAll('.mes:not(.horae-processed)').forEach(messageEl => {
+            const messageId = parseInt(messageEl.getAttribute('mesid'));
+            if (!isNaN(messageId)) {
+                const msg = horaeManager.getChat()[messageId];
+                if (msg && !msg.is_user && msg.horae_meta) {
+                    addMessagePanel(messageEl, messageId);
                 }
-            });
-        } catch (err) {
-            console.error('[Horae] Ошибка сжатия:', err);
-        }
+                messageEl.classList.add('horae-processed');
+            }
+        });
     }, 500);
 }
 
-/** 消息渲染时触发 */
+/** Срабатывает при рендеринге сообщения */
 function onMessageRendered(messageId) {
     if (!settings.enabled || !settings.showMessagePanel) return;
     
     setTimeout(() => {
-        try {
-            const messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
-            if (messageEl) {
-                const msg = horaeManager.getChat()[messageId];
-                if (msg && !msg.is_user) {
-                    addMessagePanel(messageEl, messageId);
-                    messageEl.classList.add('horae-processed');
-                }
+        const messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
+        if (messageEl) {
+            const msg = horaeManager.getChat()[messageId];
+            if (msg && !msg.is_user) {
+                addMessagePanel(messageEl, messageId);
+                messageEl.classList.add('horae-processed');
             }
-        } catch (err) {
-            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
         }
     }, 100);
 }
 
-/** swipe切换分页时触发 — 重置meta、重新解析并刷新所有显示 */
+/** Срабатывает при переключении swipe — сброс meta, повторный разбор и обновление отображения */
 function onSwipePanel(messageId) {
     if (!settings.enabled) return;
     
     setTimeout(() => {
-        try {
-            const msg = horaeManager.getChat()[messageId];
-            if (!msg || msg.is_user) return;
-            
-            const savedFlags = _saveCompressedFlags(msg.horae_meta);
-            const savedGlobal = messageId === 0 ? _saveGlobalMeta(msg.horae_meta) : null;
-            msg.horae_meta = createEmptyMeta();
-            horaeManager.processAIResponse(messageId, msg.mes);
-            _restoreCompressedFlags(msg.horae_meta, savedFlags);
-            if (savedGlobal) _restoreGlobalMeta(msg.horae_meta, savedGlobal);
-            
-            horaeManager.rebuildTableData();
-            horaeManager.rebuildRelationships();
-            horaeManager.rebuildLocationMemory();
-            horaeManager.rebuildRpgData();
-            getContext().saveChat();
-            
-            refreshAllDisplays();
-            renderCustomTablesList();
-        } catch (err) {
-            console.error(`[Horae] Ошибка сводки пакета ${b + 1}:`, err);
-        }
+        const msg = horaeManager.getChat()[messageId];
+        if (!msg || msg.is_user) return;
+        
+        const savedFlags = _saveCompressedFlags(msg.horae_meta);
+        msg.horae_meta = createEmptyMeta();
+        horaeManager.processAIResponse(messageId, msg.mes);
+        _restoreCompressedFlags(msg.horae_meta, savedFlags);
+        
+        horaeManager.rebuildTableData();
+        horaeManager.rebuildRelationships();
+        horaeManager.rebuildLocationMemory();
+        horaeManager.rebuildRpgData();
+        getContext().saveChat();
+        
+        refreshAllDisplays();
+        renderCustomTablesList();
         
         if (settings.showMessagePanel) {
             const messageEl = document.querySelector(`.mes[mesid="${messageId}"]`);
@@ -13835,7 +11235,7 @@ function onSwipePanel(messageId) {
 }
 
 // ============================================
-// Константы
+// Обучение для новых пользователей
 // ============================================
 
 const TUTORIAL_STEPS = [
@@ -13848,7 +11248,7 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
+        title: 'Обработка старых записей — ИИ-анализ',
         content: `Если у тебя есть старые записи чата, нужно сначала использовать «ИИ-анализ» для пакетного восстановления тегов <code>&lt;horae&gt;</code>.<br>
             ИИ перечитает историю диалога и создаст структурированные данные хронологии.<br><br>
             <strong>Для новых диалогов действий не требуется</strong> — плагин работает автоматически.`,
@@ -13856,7 +11256,6 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Авто-сводка и скрытие',
         content: `После включения старые сообщения, превысившие порог, будут автоматически сжаты в сводку и скрыты — экономит токены.<br><br>
             <strong>Внимание</strong>: функция требует наличия данных хронологии (теги <code>&lt;horae&gt;</code>) для корректной работы.<br>
@@ -13871,7 +11270,6 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Векторная память (дополнение к авто-сводке)',
         content: `Это функция воспоминаний для <strong>пользователей авто-сводки</strong>. После сжатия сводок детали старых сообщений теряются. Векторная память автоматически извлекает из скрытой хронологии нужные фрагменты, когда диалог касается прошлых событий.<br><br>
             <strong>Нужно ли включать?</strong><br>
@@ -13892,7 +11290,6 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Глубина контекста',
         content: `Управляет диапазоном событий хронологии, отправляемых ИИ.<br><br>
             · Значение по умолчанию <strong>15</strong>: отправлять только «обычные» события из последних 15 сообщений<br>
@@ -13903,7 +11300,6 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Позиция внедрения (глубина)',
         content: `Управляет тем, в какое место диалога вставляется информация о состоянии Horae.<br><br>
             · Значение по умолчанию <strong>1</strong>: вставлять после последнего сообщения (-1)<br>
@@ -13914,7 +11310,6 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Пользовательские промпты',
         content: `Ты можешь настроить различные промпты для управления поведением ИИ:<br>
             · <strong>Системный промпт</strong> — правила вывода тегов <code>&lt;horae&gt;</code><br>
@@ -13931,7 +11326,6 @@ const TUTORIAL_STEPS = [
         }
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Пользовательские таблицы',
         content: `Создавай таблицы в стиле Excel, в которые ИИ будет вносить нужную информацию (напр. таблица навыков, фракций).<br><br>
             <strong>Ключевые советы</strong>:<br>
@@ -13942,7 +11336,6 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Расширенное отслеживание',
         content: `Следующие функции отключены по умолчанию и предназначены для пользователей, стремящихся к детальному RP:<br><br>
             · <strong>Память о локациях</strong> — записывает постоянные физические характеристики мест для единообразных описаний<br>
@@ -13954,7 +11347,6 @@ const TUTORIAL_STEPS = [
         action: null
     },
     {
-        title: 'Добро пожаловать в Horae — Хроники Времени!',
         title: 'Обучение завершено!',
         content: `Если ты начинаешь новый диалог, никаких дополнительных действий не нужно — плагин автоматически заставит ИИ добавлять теги в ответы и строить хронологию.<br><br>
             Если захочешь пройти обучение снова, найди кнопку «Начать обучение заново» в нижней части настроек.<br><br>
@@ -13971,7 +11363,7 @@ async function startTutorial() {
         const step = TUTORIAL_STEPS[i];
         const isLast = i === TUTORIAL_STEPS.length - 1;
 
-// Константы
+        // При первом шаге, требующем панели, открыть drawer и переключить на вкладку настроек
         if (step.target && !drawerOpened) {
             const drawerIcon = $('#horae_drawer_icon');
             if (drawerIcon.hasClass('closedIcon')) {
@@ -14006,7 +11398,7 @@ function showTutorialStep(step, current, total, isLast) {
         document.querySelectorAll('.horae-tutorial-card').forEach(e => e.remove());
         document.querySelectorAll('.horae-tutorial-highlight').forEach(e => e.classList.remove('horae-tutorial-highlight'));
 
-// Подсветить цель и определить точку вставки
+        // Подсветить цель и определить точку вставки
         let highlightEl = null;
         let insertAfterEl = null;
         if (step.target) {
@@ -14032,7 +11424,7 @@ function showTutorialStep(step, current, total, isLast) {
             </div>
         `;
 
-// Вставить сразу после целевой области; если нет цели — в начало страницы настроек
+        // Вставить сразу после целевой области; если нет цели — в начало страницы настроек
         if (insertAfterEl && insertAfterEl.parentNode) {
             insertAfterEl.parentNode.insertBefore(card, insertAfterEl.nextSibling);
         } else {
@@ -14044,7 +11436,7 @@ function showTutorialStep(step, current, total, isLast) {
             }
         }
 
-// Автопрокрутка к подсвеченной цели (карточка обучения следует за ней, оба видны)
+        // Автопрокрутка к подсвеченной цели (карточка обучения следует за ней, оба видны)
         const scrollTarget = highlightEl || card;
         setTimeout(() => scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
@@ -14058,11 +11450,11 @@ function showTutorialStep(step, current, total, isLast) {
 }
 
 // ============================================
-// Инициализация
+// Инициализировать 
 // ============================================
 
 jQuery(async () => {
-    console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+    console.log(`[Horae] Загрузка v${VERSION}...`);
 
     await initNavbarFunction();
     loadSettings();
@@ -14070,11 +11462,11 @@ jQuery(async () => {
 
     $('#extensions-settings-button').after(await getTemplate('drawer'));
 
-// Константы
+    // Инжектировать переключатель верхней иконки в панель расширений
     const extToggleHtml = `
         <div id="horae-ext-settings" class="inline-drawer" style="margin-top:4px;">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>Horae — Хроники Времени</b>
+                <b>Horae Хроники Времени</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
@@ -14087,7 +11479,7 @@ jQuery(async () => {
     `;
     $('#extensions_settings2').append(extToggleHtml);
     
-// Константы
+    // Привязать переключатель иконки в панели расширений (переключение свёртывания управляется глобальным обработчиком SillyTavern)
     $('#horae-ext-show-top-icon').on('change', function() {
         settings.showTopIcon = this.checked;
         saveSettings();
@@ -14109,13 +11501,13 @@ jQuery(async () => {
     eventSource.on(event_types.MESSAGE_DELETED, onMessageDeleted);
     eventSource.on(event_types.MESSAGE_EDITED, onMessageEdited);
     
-// Константы
+    // Параллельная авто-сводка: запускается параллельно при отправке сообщения пользователем (независимый API через прямой HTTP, не влияет на основное подключение)
     if (event_types.USER_MESSAGE_RENDERED) {
         eventSource.on(event_types.USER_MESSAGE_RENDERED, () => {
             if (!settings.autoSummaryEnabled || !settings.sendTimeline) return;
             _autoSummaryRanThisTurn = true;
             checkAutoSummary().catch((e) => {
-                console.warn('[Horae] Не удалось загрузить модуль команд SillyTavern, переход к ручной установке:', e);
+                console.warn('[Horae] Ошибка параллельной авто-сводки, повтор после ответа ИИ:', e);
                 _autoSummaryRanThisTurn = false;
             });
         });
@@ -14129,11 +11521,11 @@ jQuery(async () => {
     
     renderDicePanel();
     
-// Константы
+    // Обучение для новых пользователей (только для тех, кто ещё ни разу не использовал Horae)
     if (_isFirstTimeUser) {
         setTimeout(() => startTutorial(), 800);
     }
     
     isInitialized = true;
-        console.log(`[Horae] Регулярные выражения синхронизированы в конец списка (всего ${HORAE_REGEX_RULES.length}  шт.)`);
+    console.log(`[Horae] v${VERSION} загружен! Автор: SenriYuki`);
 });
