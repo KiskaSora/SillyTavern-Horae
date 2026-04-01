@@ -1,50 +1,50 @@
 /**
- * Horae - 核心管理器
- * 负责元数据的存储、解析、聚合
+ * Horae — Основной менеджер
+ * Отвечает за хранение, парсинг и агрегацию метаданных
  */
 
 import { parseStoryDate, calculateRelativeTime, calculateDetailedRelativeTime, generateTimeReference, formatRelativeTime, formatFullDateTime } from '../utils/timeUtils.js';
 
 /**
  * @typedef {Object} HoraeTimestamp
- * @property {string} story_date - 剧情日期，如 "10/1"
- * @property {string} story_time - 剧情时间，如 "15:00" 或 "下午"
- * @property {string} absolute - ISO格式的实际时间戳
+ * @property {string} story_date - дата сюжета, напр. "10/1"
+ * @property {string} story_time - время сюжета, напр. "15:00" или "下午"
+ * @property {string} absolute - реальная метка времени в формате ISO
  */
 
 /**
  * @typedef {Object} HoraeScene
- * @property {string} location - 场景地点
- * @property {string[]} characters_present - 在场角色列表
- * @property {string} atmosphere - 场景氛围
+ * @property {string} location - место сцены
+ * @property {string[]} characters_present - список присутствующих персонажей
+ * @property {string} atmosphere - атмосфера сцены
  */
 
 /**
  * @typedef {Object} HoraeEvent
- * @property {boolean} is_important - 是否重要事件
- * @property {string} level - 事件级别：一般/重要/关键
- * @property {string} summary - 事件摘要
+ * @property {boolean} is_important - важное ли событие
+ * @property {string} level - уровень события: 一般/重要/关键
+ * @property {string} summary - краткое описание события
  */
 
 /**
  * @typedef {Object} HoraeItemInfo
- * @property {string|null} icon - emoji图标
- * @property {string|null} holder - 持有者
- * @property {string} location - 位置描述
+ * @property {string|null} icon - emoji-иконка
+ * @property {string|null} holder - владелец
+ * @property {string} location - описание местоположения
  */
 
 /**
  * @typedef {Object} HoraeMeta
  * @property {HoraeTimestamp} timestamp
  * @property {HoraeScene} scene
- * @property {Object.<string, string>} costumes - 角色服装 {角色名: 服装描述}
- * @property {Object.<string, HoraeItemInfo>} items - 物品追踪
+ * @property {Object.<string, string>} costumes - одежда персонажей {имя: описание}
+ * @property {Object.<string, HoraeItemInfo>} items - отслеживание предметов
  * @property {HoraeEvent|null} event
- * @property {Object.<string, string|number>} affection - 好感度
- * @property {Object.<string, {description: string, first_seen: string}>} npcs - 临时NPC
+ * @property {Object.<string, string|number>} affection - расположение
+ * @property {Object.<string, {description: string, first_seen: string}>} npcs - NPC
  */
 
-/** 创建空的元数据对象 */
+/** Создать пустой объект метаданных */
 export function createEmptyMeta() {
     return {
         timestamp: {
@@ -70,28 +70,28 @@ export function createEmptyMeta() {
 }
 
 /**
- * 提取物品的基本名称（去掉末尾的数量括号）
- * "新鲜牛大骨(5斤)" → "新鲜牛大骨"
- * "清水(9L)" → "清水"
- * "简易急救包" → "简易急救包"（无数量，不变）
- * "简易急救包(已开封)" → 不变（非数字开头的括号不去掉）
+ * Извлечь базовое название предмета (убрать конечные скобки с количеством)
+ * "Свежая говяжья кость(5斤)" → "Свежая говяжья кость"
+ * "Чистая вода(9L)" → "Чистая вода"
+ * "Аптечка" → "Аптечка" (без количества, без изменений)
+ * "Аптечка(вскрыта)" → без изменений (скобки без числа не удаляются)
  */
-// 个体量词：1个 = 就一个，可省略。纯量词(个)(把)也无意义
+// Индивидуальные счётные слова: 1个 = одна штука, можно опустить
 const COUNTING_CLASSIFIERS = '个把条块张根口份枚只颗支件套双对碗杯盘盆串束扎';
-// 容器/批量单位：1箱 = 一箱(里面有很多)，不可省略
-// 度量单位(斤/L/kg等)：有实际计量意义，不可省略
+// Контейнерные/массовые единицы: 1箱 = один ящик (много внутри), нельзя опустить
+// Единицы измерения (斤/L/kg и т.д.): имеют реальное значение, нельзя опустить
 
-// 物品ID：3位数字左补零，如 001, 002, ...
+// ID предмета: 3-значное число с ведущими нулями, напр. 001, 002, ...
 function padItemId(id) { return String(id).padStart(3, '0'); }
 
-function getItemBaseName(name) {
+export function getItemBaseName(name) {
     return name
-        .replace(/[\(（][\d][\d\.\/]*[a-zA-Z\u4e00-\u9fff]*[\)）]$/, '')  // 数字+任意单位
-        .replace(new RegExp(`[\\(（][${COUNTING_CLASSIFIERS}][\\)）]$`), '')  // 纯个体量词（AI错误格式）
+        .replace(/[\(（][\d][\d\.\/]*[a-zA-Z\u4e00-\u9fff]*[\)）]$/, '')  // Число+любая единица
+        .replace(new RegExp(`[\\(（][${COUNTING_CLASSIFIERS}][\\)）]$`), '')  // Чистое счётное слово (ошибочный формат ИИ)
         .trim();
 }
 
-/** 按基本名查找已有物品 */
+/** Найти существующий предмет по базовому имени */
 function findExistingItemByBaseName(stateItems, newName) {
     const newBase = getItemBaseName(newName);
     if (stateItems[newName]) return newName;
@@ -103,39 +103,39 @@ function findExistingItemByBaseName(stateItems, newName) {
     return null;
 }
 
-/** Horae 管理器 */
+/** Менеджер Horae */
 class HoraeManager {
     constructor() {
         this.context = null;
         this.settings = null;
     }
 
-    /** 初始化管理器 */
+    /** Инициализировать менеджер */
     init(context, settings) {
         this.context = context;
         this.settings = settings;
     }
 
-    /** 获取当前聊天记录 */
+    /** Получить текущую историю чата */
     getChat() {
         return this.context?.chat || [];
     }
 
-    /** 获取消息元数据 */
+    /** Получить метаданные сообщения */
     getMessageMeta(messageIndex) {
         const chat = this.getChat();
         if (messageIndex < 0 || messageIndex >= chat.length) return null;
         return chat[messageIndex].horae_meta || null;
     }
 
-    /** 设置消息元数据 */
+    /** Установить метаданные сообщения */
     setMessageMeta(messageIndex, meta) {
         const chat = this.getChat();
         if (messageIndex < 0 || messageIndex >= chat.length) return;
         chat[messageIndex].horae_meta = meta;
     }
 
-    /** 聚合所有消息元数据，获取最新状态 */
+    /** Агрегировать метаданные всех сообщений, получить последнее состояние */
     getLatestState(skipLast = 0) {
         const chat = this.getChat();
         const state = createEmptyMeta();
@@ -169,32 +169,32 @@ class HoraeManager {
                 Object.assign(state.costumes, meta.costumes);
             }
             
-            // 物品：合并更新
+            // Предметы: объединение обновлений
             if (meta.items) {
                 for (let [name, newInfo] of Object.entries(meta.items)) {
-                    // 去掉无意义的数量标记
-                    // (1) 裸数字1 → 去掉
+                    // Удалить бессмысленные метки количества
+                    // (1) Голая единица → удалить
                     name = name.replace(/[\(（]1[\)）]$/, '').trim();
-                    // 个体量词+数字1 → 去掉
+                    // Счётное слово+1 → удалить
                     name = name.replace(new RegExp(`[\\(（]1[${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();
-                    // 纯个体量词 → 去掉
+                    // Чистое счётное слово → удалить
                     name = name.replace(new RegExp(`[\\(（][${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();
-                    // 度量/容器单位保留
+                    // Единицы измерения/контейнеры сохранить
                     
-                    // 数量为0视为消耗，自动删除
+                    // Количество 0 считается израсходованным, автоудаление
                     const zeroMatch = name.match(/[\(（]0[a-zA-Z\u4e00-\u9fff]*[\)）]$/);
                     if (zeroMatch) {
                         const baseName = getItemBaseName(name);
                         for (const itemName of Object.keys(state.items)) {
                             if (getItemBaseName(itemName).toLowerCase() === baseName.toLowerCase()) {
                                 delete state.items[itemName];
-                                console.log(`[Horae] 物品数量归零自动删除: ${itemName}`);
+                                console.log(`[Horae] Количество предмета обнулено, автоудаление: ${itemName}`);
                             }
                         }
                         continue;
                     }
                     
-                    // 检测消耗状态标记，视为删除
+                    // Обнаружение метки расхода, считается удалением
                     const consumedPatterns = /[\(（](已消耗|已用完|已销毁|消耗殆尽|消耗|用尽)[\)）]/;
                     const holderConsumed = /^(消耗|已消耗|已用完|消耗殆尽|用尽|无)$/;
                     if (consumedPatterns.test(name) || holderConsumed.test(newInfo.holder || '')) {
@@ -203,26 +203,29 @@ class HoraeManager {
                         for (const itemName of Object.keys(state.items)) {
                             if (getItemBaseName(itemName).toLowerCase() === baseName.toLowerCase()) {
                                 delete state.items[itemName];
-                                console.log(`[Horae] 物品已消耗自动删除: ${itemName}`);
+                                console.log(`[Horae] Предмет израсходован, автоудаление: ${itemName}`);
                             }
                         }
                         continue;
                     }
                     
-                    // 基本名匹配已有物品
+                    // Поиск существующего предмета по базовому имени
                     const existingKey = findExistingItemByBaseName(state.items, name);
                     
                     if (existingKey) {
                         const existingItem = state.items[existingKey];
-                        // 只合并实际存在的字段
                         const mergedItem = { ...existingItem };
-                        if (newInfo.icon) mergedItem.icon = newInfo.icon;
-                        // importance：只升不降（空 < ! < !!）
-                        mergedItem.importance = newInfo.importance || existingItem.importance || '';
+                        const locked = !!existingItem._locked;
+                        if (!locked && newInfo.icon) mergedItem.icon = newInfo.icon;
+                        if (!locked) {
+                            const _impRank = { '': 0, '!': 1, '!!': 2 };
+                            const _newR = _impRank[newInfo.importance] ?? 0;
+                            const _oldR = _impRank[existingItem.importance] ?? 0;
+                            mergedItem.importance = _newR >= _oldR ? (newInfo.importance || '') : (existingItem.importance || '');
+                        }
                         if (newInfo.holder !== undefined) mergedItem.holder = newInfo.holder;
                         if (newInfo.location !== undefined) mergedItem.location = newInfo.location;
-                        // 非空描述才覆盖
-                        if (newInfo.description !== undefined && newInfo.description.trim()) {
+                        if (!locked && newInfo.description !== undefined && newInfo.description.trim()) {
                             mergedItem.description = newInfo.description;
                         }
                         if (!mergedItem.description) mergedItem.description = existingItem.description || '';
@@ -237,7 +240,7 @@ class HoraeManager {
                 }
             }
             
-            // 处理已删除物品
+            // Обработка удалённых предметов
             if (meta.deletedItems && meta.deletedItems.length > 0) {
                 for (const deletedItem of meta.deletedItems) {
                     const deleteBase = getItemBaseName(deletedItem).toLowerCase();
@@ -251,11 +254,11 @@ class HoraeManager {
                 }
             }
             
-            // 好感度：支持绝对值和相对值
+            // Расположение: поддержка абсолютных и относительных значений
             if (meta.affection) {
                 for (const [key, value] of Object.entries(meta.affection)) {
                     if (typeof value === 'object' && value !== null) {
-                        // 新格式：{type: 'absolute'|'relative', value: number|string}
+                        // Новый формат: {type: 'absolute'|'relative', value: number|string}
                         if (value.type === 'absolute') {
                             state.affection[key] = value.value;
                         } else if (value.type === 'relative') {
@@ -263,25 +266,25 @@ class HoraeManager {
                             state.affection[key] = (state.affection[key] || 0) + delta;
                         }
                     } else {
-                        // 旧格式兼容
+                        // Совместимость со старым форматом
                         const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
                         state.affection[key] = (state.affection[key] || 0) + numValue;
                     }
                 }
             }
             
-            // NPC：逐字段合并，保留_id
+            // NPC: поле за полем слияние, сохранение _id
             if (meta.npcs) {
-                // 可更新字段 vs 受保护字段
+                // Обновляемые поля vs защищённые поля
                 const updatableFields = ['appearance', 'personality', 'relationship', 'age', 'job', 'note'];
-                const protectedFields = ['gender', 'race']; // 性别/种族极少改变
+                const protectedFields = ['gender', 'race', 'birthday'];
                 for (const [name, newNpc] of Object.entries(meta.npcs)) {
                     const existing = state.npcs[name];
                     if (existing) {
                         for (const field of updatableFields) {
                             if (newNpc[field] !== undefined) existing[field] = newNpc[field];
                         }
-                        // age变更时记录剧情日期作为基准
+                        // При изменении age записать дату сюжета как базовую
                         if (newNpc.age !== undefined && newNpc.age !== '') {
                             if (!existing._ageRefDate) {
                                 existing._ageRefDate = state.timestamp.story_date || '';
@@ -292,7 +295,7 @@ class HoraeManager {
                                 existing._ageRefDate = state.timestamp.story_date || '';
                             }
                         }
-                        // 受保护字段：仅在未设定时才填入
+                        // Защищённые поля: заполнять только если ещё не заданы
                         for (const field of protectedFields) {
                             if (newNpc[field] !== undefined && !existing[field]) {
                                 existing[field] = newNpc[field];
@@ -308,6 +311,7 @@ class HoraeManager {
                             age: newNpc.age || '',
                             race: newNpc.race || '',
                             job: newNpc.job || '',
+                            birthday: newNpc.birthday || '',
                             note: newNpc.note || '',
                             _ageRefDate: newNpc.age ? (state.timestamp.story_date || '') : '',
                             first_seen: newNpc.first_seen || new Date().toISOString(),
@@ -316,7 +320,7 @@ class HoraeManager {
                     }
                 }
             }
-            // 情绪状态（覆盖式）
+            // Эмоциональное состояние (перезапись)
             if (meta.mood) {
                 for (const [charName, emotion] of Object.entries(meta.mood)) {
                     state.mood[charName] = emotion;
@@ -324,7 +328,7 @@ class HoraeManager {
             }
         }
         
-        // 过滤用户已删除的NPC（防回滚）
+        // Фильтрация удалённых пользователем NPC (антиоткат)
         const deletedNpcs = chat[0]?.horae_meta?._deletedNpcs;
         if (deletedNpcs?.length) {
             for (const name of deletedNpcs) {
@@ -338,7 +342,7 @@ class HoraeManager {
             }
         }
         
-        // 为无ID物品分配ID
+        // Присвоить ID предметам без ID
         let maxId = 0;
         for (const info of Object.values(state.items)) {
             if (info._id) {
@@ -353,7 +357,7 @@ class HoraeManager {
             }
         }
         
-        // 为无ID的NPC分配ID
+        // Присвоить ID для NPC без ID
         let maxNpcId = 0;
         for (const info of Object.values(state.npcs)) {
             if (info._id) {
@@ -371,56 +375,88 @@ class HoraeManager {
         return state;
     }
 
-    /** 根据剧情时间推移计算NPC当前年龄 */
+    /** Разобрать строку дня рождения, поддержка yyyy-mm-dd / yyyy/mm/dd / mm-dd / mm/dd */
+    _parseBirthday(str) {
+        if (!str) return null;
+        let m = str.match(/(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+        if (m) return { year: parseInt(m[1]), month: parseInt(m[2]), day: parseInt(m[3]) };
+        m = str.match(/^(\d{1,2})[\/\-.](\d{1,2})$/);
+        if (m) return { year: null, month: parseInt(m[1]), day: parseInt(m[2]) };
+        return null;
+    }
+
+    /** Вычислить текущий возраст NPC по ходу сюжетного времени (приоритет — точный расчёт по дню рождения) */
     calcCurrentAge(npcInfo, currentStoryDate) {
         const original = npcInfo.age || '';
-        const refDate = npcInfo._ageRefDate || '';
-        
-        // 无法推算的情况：无年龄、无参考日期、无当前日期
-        if (!original || !refDate || !currentStoryDate) {
+        if (!original || !currentStoryDate) {
             return { display: original, original, changed: false };
         }
-        
+
         const ageNum = parseInt(original);
         if (isNaN(ageNum)) {
-            // 非数字年龄，无法推算
             return { display: original, original, changed: false };
         }
-        
-        const refParsed = parseStoryDate(refDate);
+
         const curParsed = parseStoryDate(currentStoryDate);
-        
-        // 需要两者都是 standard 类型且有年份才能推算
-        if (!refParsed || !curParsed || refParsed.type !== 'standard' || curParsed.type !== 'standard') {
+        if (!curParsed || curParsed.type !== 'standard' || !curParsed.year) {
             return { display: original, original, changed: false };
         }
-        if (!refParsed.year || !curParsed.year) {
+
+        const bdParsed = this._parseBirthday(npcInfo.birthday);
+
+        // ── Полная дата рождения (с годом): точный расчёт ──
+        if (bdParsed?.year) {
+            let age = curParsed.year - bdParsed.year;
+            if (bdParsed.month && curParsed.month) {
+                if (curParsed.month < bdParsed.month ||
+                    (curParsed.month === bdParsed.month && (curParsed.day || 1) < (bdParsed.day || 1))) {
+                    age -= 1;
+                }
+            }
+            age = Math.max(0, age);
+            return { display: String(age), original, changed: age !== ageNum };
+        }
+
+        // Оба следующих случая требуют _ageRefDate
+        const refDate = npcInfo._ageRefDate || '';
+        if (!refDate) return { display: original, original, changed: false };
+
+        const refParsed = parseStoryDate(refDate);
+        if (!refParsed || refParsed.type !== 'standard' || !refParsed.year) {
             return { display: original, original, changed: false };
         }
-        
+
+        // ── Только месяц и день рождения: вычислить год рождения по refDate+age, затем точный расчёт ──
+        if (bdParsed?.month) {
+            let birthYear = refParsed.year - ageNum;
+            if (refParsed.month) {
+                const refBeforeBd = refParsed.month < bdParsed.month ||
+                    (refParsed.month === bdParsed.month && (refParsed.day || 1) < (bdParsed.day || 1));
+                if (refBeforeBd) birthYear -= 1;
+            }
+            let currentAge = curParsed.year - birthYear;
+            if (curParsed.month) {
+                const curBeforeBd = curParsed.month < bdParsed.month ||
+                    (curParsed.month === bdParsed.month && (curParsed.day || 1) < (bdParsed.day || 1));
+                if (curBeforeBd) currentAge -= 1;
+            }
+            if (currentAge <= ageNum) return { display: original, original, changed: false };
+            return { display: String(currentAge), original, changed: true };
+        }
+
+        // ── Нет дня рождения: откат к старой логике ──
         let yearDiff = curParsed.year - refParsed.year;
-        
-        // 月日判断是否已过生日
         if (refParsed.month && curParsed.month) {
-            if (curParsed.month < refParsed.month || 
+            if (curParsed.month < refParsed.month ||
                 (curParsed.month === refParsed.month && (curParsed.day || 1) < (refParsed.day || 1))) {
                 yearDiff -= 1;
             }
         }
-        
-        if (yearDiff <= 0) {
-            return { display: original, original, changed: false };
-        }
-        
-        const currentAge = ageNum + yearDiff;
-        return { 
-            display: String(currentAge), 
-            original, 
-            changed: true 
-        };
+        if (yearDiff <= 0) return { display: original, original, changed: false };
+        return { display: String(ageNum + yearDiff), original, changed: true };
     }
 
-    /** 通过ID查找物品 */
+    /** Найти предмет по ID */
     findItemById(items, id) {
         const normalizedId = id.replace(/^#/, '').trim();
         for (const [name, info] of Object.entries(items)) {
@@ -431,7 +467,7 @@ class HoraeManager {
         return null;
     }
 
-    /** 获取事件列表（limit=0表示不限制数量） */
+    /** Получить список событий (limit=0 — без ограничения) */
     getEvents(limit = 0, filterLevel = 'all', skipLast = 0) {
         const chat = this.getChat();
         const end = Math.max(0, chat.length - skipLast);
@@ -466,44 +502,44 @@ class HoraeManager {
         return events;
     }
 
-    /** 获取重要事件列表（兼容旧调用） */
+    /** Получить список важных событий (совместимость со старым вызовом) */
     getImportantEvents(limit = 0) {
         return this.getEvents(limit, 'all');
     }
 
-    /** 生成紧凑的上下文注入内容（skipLast: swipe时跳过末尾N条消息） */
+    /** Сгенерировать компактный контекст для инъекции (skipLast: при swipe пропустить N последних сообщений) */
     generateCompactPrompt(skipLast = 0) {
         const state = this.getLatestState(skipLast);
         const lines = [];
         
-        // 状态快照头
-        lines.push('[当前状态快照——对比本回合剧情，仅在<horae>中输出发生实质变化的字段]');
+        // Заголовок снимка состояния
+        lines.push('[Текущий снимок состояния — сравни с текущим ходом сюжета, выводи в <horae> только реально изменившиеся поля]');
         
         const sendTimeline = this.settings?.sendTimeline !== false;
         const sendCharacters = this.settings?.sendCharacters !== false;
         const sendItems = this.settings?.sendItems !== false;
         
-        // 时间
+        // Время
         if (state.timestamp.story_date) {
             const fullDateTime = formatFullDateTime(state.timestamp.story_date, state.timestamp.story_time);
-            lines.push(`[时间|${fullDateTime}]`);
+            lines.push(`[Время|${fullDateTime}]`);
             
-            // 时间参考
+            // Ориентир времени
             if (sendTimeline) {
                 const timeRef = generateTimeReference(state.timestamp.story_date);
                 if (timeRef && timeRef.type === 'standard') {
-                    // 标准日历
-                    lines.push(`[时间参考|昨天=${timeRef.yesterday}|前天=${timeRef.dayBefore}|3天前=${timeRef.threeDaysAgo}]`);
+                    // Стандартный календарь
+                    lines.push(`[Ориентир времени|вчера=${timeRef.yesterday}|позавчера=${timeRef.dayBefore}|3 дня назад=${timeRef.threeDaysAgo}]`);
                 } else if (timeRef && timeRef.type === 'fantasy') {
-                    // 奇幻日历
-                    lines.push(`[时间参考|奇幻日历模式，参见剧情轨迹中的相对时间标记]`);
+                    // Фэнтезийный календарь
+                    lines.push(`[Ориентир времени|режим фэнтезийного календаря, см. метки относительного времени в хронологии сюжета]`);
                 }
             }
         }
         
-        // 场景
+        // Сцена
         if (state.scene.location) {
-            let sceneStr = `[场景|${state.scene.location}`;
+            let sceneStr = `[Сцена|${state.scene.location}`;
             if (state.scene.atmosphere) {
                 sceneStr += `|${state.scene.atmosphere}`;
             }
@@ -515,27 +551,27 @@ class HoraeManager {
                 const loc = state.scene.location;
                 const entry = this._findLocationMemory(loc, locMem, state._previousLocation);
                 if (entry?.desc) {
-                    lines.push(`[场景记忆|${entry.desc}]`);
+                    lines.push(`[Память о локации|${entry.desc}]`);
                 }
-                // 附带父级地点描述（如「酒馆·大厅」→ 同时发送「酒馆」的描述）
+                // Добавить описание родительского места (напр. «Таверна·Зал» → также отправить описание «Таверна»)
                 const sepMatch = loc.match(/[·・\-\/\|]/);
                 if (sepMatch) {
                     const parent = loc.substring(0, sepMatch.index).trim();
                     if (parent && locMem[parent] && locMem[parent].desc && parent !== entry?._matchedName) {
-                        lines.push(`[场景记忆:${parent}|${locMem[parent].desc}]`);
+                        lines.push(`[Память о локации:${parent}|${locMem[parent].desc}]`);
                     }
                 }
             }
         }
         
-        // 在场角色和服装
+        // Присутствующие персонажи и одежда
         if (sendCharacters) {
             const presentChars = state.scene.characters_present || [];
             
             if (presentChars.length > 0) {
                 const charStrs = [];
                 for (const char of presentChars) {
-                    // 模糊匹配服装
+                    // Нечёткое сопоставление одежды
                     const costumeKey = Object.keys(state.costumes || {}).find(
                         k => k === char || k.includes(char) || char.includes(k)
                     );
@@ -545,10 +581,10 @@ class HoraeManager {
                         charStrs.push(char);
                     }
                 }
-                lines.push(`[在场|${charStrs.join('|')}]`);
+                lines.push(`[Присутствуют|${charStrs.join('|')}]`);
             }
             
-            // 情绪状态（仅在场角色，变化驱动）
+            // Эмоции (только присутствующие, по изменениям)
             if (this.settings?.sendMood) {
                 const moodEntries = [];
                 for (const char of presentChars) {
@@ -557,15 +593,15 @@ class HoraeManager {
                     }
                 }
                 if (moodEntries.length > 0) {
-                    lines.push(`[情绪|${moodEntries.join('|')}]`);
+                    lines.push(`[Эмоции|${moodEntries.join('|')}]`);
                 }
             }
             
-            // 关系网络（仅在场角色相关的关系，从 chat[0] 读取，零AI输出token）
+            // Сеть отношений (только связи присутствующих, из chat[0], 0 токенов от ИИ)
             if (this.settings?.sendRelationships) {
                 const rels = this.getRelationshipsForCharacters(presentChars);
                 if (rels.length > 0) {
-                    lines.push('\n[关系网络]');
+                    lines.push('\n[Сеть отношений]');
                     for (const r of rels) {
                         const noteStr = r.note ? `(${r.note})` : '';
                         lines.push(`${r.from}→${r.to}: ${r.type}${noteStr}`);
@@ -574,12 +610,23 @@ class HoraeManager {
             }
         }
         
-        // 物品
+        // Предметы (экипированные не показываются здесь, чтобы избежать дублирования)
         if (sendItems) {
             const items = Object.entries(state.items);
-            if (items.length > 0) {
-                lines.push('\n[物品清单]');
-                for (const [name, info] of items) {
+            // Собрать набор имён экипированных предметов
+            const equippedNames = new Set();
+            if (this.settings?.rpgMode && !!this.settings.sendRpgEquipment) {
+                const rpgData = this.getRpgStateAt(skipLast);
+                for (const [, slots] of Object.entries(rpgData.equipment || {})) {
+                    for (const [, eqItems] of Object.entries(slots)) {
+                        for (const eq of eqItems) equippedNames.add(eq.name);
+                    }
+                }
+            }
+            const unequipped = items.filter(([name]) => !equippedNames.has(name));
+            if (unequipped.length > 0) {
+                lines.push('\n[Список предметов]');
+                for (const [name, info] of unequipped) {
                     const id = info._id || '???';
                     const icon = info.icon || '';
                     const imp = info.importance === '!!' ? '关键' : info.importance === '!' ? '重要' : '';
@@ -590,33 +637,33 @@ class HoraeManager {
                     lines.push(`#${id} ${icon}${name}${impTag}${desc} = ${holder}${loc}`);
                 }
             } else {
-                lines.push('\n[物品清单] (空)');
+                lines.push('\n[Список предметов] (пусто)');
             }
         }
         
-        // 好感度
+        // Расположение
         if (sendCharacters) {
             const affections = Object.entries(state.affection).filter(([_, v]) => v !== 0);
             if (affections.length > 0) {
                 const affStr = affections.map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join('|');
-                lines.push(`[好感|${affStr}]`);
+                lines.push(`[Расположение|${affStr}]`);
             }
             
-            // NPC信息
+            // Информация о NPC
             const npcs = Object.entries(state.npcs);
             if (npcs.length > 0) {
-                lines.push('\n[已知NPC]');
+                lines.push('\n[Известные NPC]');
                 for (const [name, info] of npcs) {
                     const id = info._id || '?';
                     const app = info.appearance || '';
                     const per = info.personality || '';
                     const rel = info.relationship || '';
-                    // 主体：N编号 名｜外貌=性格@关系
+                    // Основное: N-номер имя｜внешность=характер@отношения
                     let npcStr = `N${id} ${name}`;
                     if (app || per || rel) {
                         npcStr += `｜${app}=${per}@${rel}`;
                     }
-                    // 扩展字段
+                    // Расширенные поля
                     const extras = [];
                     if (info._aliases?.length) extras.push(`曾用名:${info._aliases.join('/')}`);
                     if (info.gender) extras.push(`性别:${info.gender}`);
@@ -626,6 +673,7 @@ class HoraeManager {
                     }
                     if (info.race) extras.push(`种族:${info.race}`);
                     if (info.job) extras.push(`职业:${info.job}`);
+                    if (info.birthday) extras.push(`生日:${info.birthday}`);
                     if (info.note) extras.push(`补充:${info.note}`);
                     if (extras.length > 0) npcStr += `~${extras.join('~')}`;
                     lines.push(npcStr);
@@ -633,7 +681,7 @@ class HoraeManager {
             }
         }
         
-        // 待办事项
+        // Задачи
         const chatForAgenda = this.getChat();
         const allAgendaItems = [];
         const seenTexts = new Set();
@@ -646,7 +694,7 @@ class HoraeManager {
                 seenTexts.add(item.text);
             }
         }
-        // AI写入的（swipe时跳过末尾消息）
+        // Записанные ИИ (при swipe пропуск последних)
         const agendaEnd = Math.max(0, (chatForAgenda?.length || 0) - skipLast);
         if (chatForAgenda) {
             for (let i = 1; i < agendaEnd; i++) {
@@ -664,56 +712,97 @@ class HoraeManager {
         }
         const activeAgenda = allAgendaItems.filter(a => !a.done);
         if (activeAgenda.length > 0) {
-            lines.push('\n[待办事项]');
+            lines.push('\n[Задачи]');
             for (const item of activeAgenda) {
                 const datePrefix = item.date ? `${item.date} ` : '';
                 lines.push(`· ${datePrefix}${item.text}`);
             }
         }
         
-        // RPG 状态（仅启用时注入，按位置快照）
+        // RPG-статус (инъекция только при включении, фильтр по присутствующим)
         if (this.settings?.rpgMode) {
             const rpg = this.getRpgStateAt(skipLast);
             const sendBars = this.settings?.sendRpgBars !== false;
             const sendSkills = this.settings?.sendRpgSkills !== false;
 
-            // 属性条名称映射
+            // Маппинг названий полос атрибутов
             const _barCfg = this.settings?.rpgBarConfig || [];
             const _barNames = {};
             for (const b of _barCfg) _barNames[b.key] = b.name;
 
+            // Фильтрация RPG-данных по присутствующим (без данных сцены — отправить всё)
+            const presentChars = state.scene.characters_present || [];
+            const userName = this.context?.name1 || '';
+            const _cUoB = !!this.settings?.rpgBarsUserOnly;
+            const _cUoS = !!this.settings?.rpgSkillsUserOnly;
+            const _cUoA = !!this.settings?.rpgAttrsUserOnly;
+            const _cUoE = !!this.settings?.rpgEquipmentUserOnly;
+            const _cUoR = !!this.settings?.rpgReputationUserOnly;
+            const _cUoL = !!this.settings?.rpgLevelUserOnly;
+            const _cUoC = !!this.settings?.rpgCurrencyUserOnly;
+            const allRpgNames = new Set([
+                ...Object.keys(rpg.bars), ...Object.keys(rpg.status || {}),
+                ...Object.keys(rpg.skills), ...Object.keys(rpg.attributes || {}),
+                ...Object.keys(rpg.reputation || {}), ...Object.keys(rpg.equipment || {}),
+                ...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {}),
+                ...Object.keys(rpg.currency || {}),
+            ]);
+            const rpgAllowed = new Set();
+            if (presentChars.length > 0) {
+                for (const p of presentChars) {
+                    const n = p.trim();
+                    if (!n) continue;
+                    if (allRpgNames.has(n)) { rpgAllowed.add(n); continue; }
+                    if (n === userName && allRpgNames.has(userName)) { rpgAllowed.add(userName); continue; }
+                    for (const rn of allRpgNames) {
+                        if (rn.includes(n) || n.includes(rn)) { rpgAllowed.add(rn); break; }
+                    }
+                }
+            }
+            const filterRpg = rpgAllowed.size > 0;
+            // В режиме userOnly строки без префикса имени персонажа
+            const _ctxPre = (name, isUo) => {
+                if (isUo) return '';
+                const npc = state.npcs[name];
+                return npc?._id ? `N${npc._id} ${name}: ` : `${name}: `;
+            };
+
             if (sendBars && Object.keys(rpg.bars).length > 0) {
-                lines.push('\n[RPG状态]');
+                lines.push('\n[RPG-статус]');
                 for (const [name, bars] of Object.entries(rpg.bars)) {
-                    const npc = state.npcs[name];
-                    const pre = npc?._id ? `N${npc._id} ` : '';
+                    if (_cUoB && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
                     const parts = [];
                     for (const [type, val] of Object.entries(bars)) {
                         const label = val[2] || _barNames[type] || type.toUpperCase();
                         parts.push(`${label} ${val[0]}/${val[1]}`);
                     }
                     const sts = rpg.status?.[name];
-                    if (sts?.length > 0) parts.push(`状态:${sts.join('/')}`);
-                    if (parts.length > 0) lines.push(`${pre}${name}: ${parts.join(' | ')}`);
+                    if (sts?.length > 0) parts.push(`Статус:${sts.join('/')}`);
+                    if (parts.length > 0) lines.push(`${_ctxPre(name, _cUoB)}${parts.join(' | ')}`);
                 }
-                // 只有状态无属性条的角色
                 for (const [name, effects] of Object.entries(rpg.status || {})) {
                     if (rpg.bars[name] || effects.length === 0) continue;
-                    const npc = state.npcs[name];
-                    const pre = npc?._id ? `N${npc._id} ` : '';
-                    lines.push(`${pre}${name}: 状态:${effects.join('/')}`);
+                    if (_cUoB && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
+                    lines.push(`${_ctxPre(name, _cUoB)}Статус:${effects.join('/')}`);
                 }
             }
 
             if (sendSkills && Object.keys(rpg.skills).length > 0) {
-                const hasAny = Object.values(rpg.skills).some(arr => arr?.length > 0);
+                const hasAny = Object.entries(rpg.skills).some(([n, arr]) =>
+                    arr?.length > 0 && (!_cUoS || n === userName) && (!filterRpg || rpgAllowed.has(n)));
                 if (hasAny) {
-                    lines.push('\n[技能列表]');
+                    lines.push('\n[Список навыков]');
                     for (const [name, skills] of Object.entries(rpg.skills)) {
                         if (!skills?.length) continue;
-                        const npc = state.npcs[name];
-                        const pre = npc?._id ? `N${npc._id} ` : '';
-                        lines.push(`${pre}${name}:`);
+                        if (_cUoS && name !== userName) continue;
+                        if (filterRpg && !rpgAllowed.has(name)) continue;
+                        if (!_cUoS) {
+                            const npc = state.npcs[name];
+                            const pre = npc?._id ? `N${npc._id} ` : '';
+                            lines.push(`${pre}${name}:`);
+                        }
                         for (const sk of skills) {
                             const lv = sk.level ? ` ${sk.level}` : '';
                             const desc = sk.desc ? ` | ${sk.desc}` : '';
@@ -726,31 +815,144 @@ class HoraeManager {
             const sendAttrs = this.settings?.sendRpgAttributes !== false;
             const attrCfg = this.settings?.rpgAttributeConfig || [];
             if (sendAttrs && attrCfg.length > 0 && Object.keys(rpg.attributes || {}).length > 0) {
-                lines.push('\n[多维属性]');
+                lines.push('\n[Многомерные атрибуты]');
                 for (const [name, vals] of Object.entries(rpg.attributes)) {
-                    const npc = state.npcs[name];
-                    const pre = npc?._id ? `N${npc._id} ` : '';
+                    if (_cUoA && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
                     const parts = attrCfg.map(a => `${a.name}${vals[a.key] ?? '?'}`);
-                    lines.push(`${pre}${name}: ${parts.join(' | ')}`);
+                    lines.push(`${_ctxPre(name, _cUoA)}${parts.join(' | ')}`);
+                }
+            }
+
+            // Экипировка (независимые слоты по персонажам, полное описание для экономии токенов)
+            const sendEq = !!this.settings?.sendRpgEquipment;
+            const eqPerChar = (rpg.equipmentConfig?.perChar) || {};
+            const storedEq = this.getChat()?.[0]?.horae_meta?.rpg?.equipment || {};
+            if (sendEq && Object.keys(rpg.equipment || {}).length > 0) {
+                let hasEqData = false;
+                for (const [name, slots] of Object.entries(rpg.equipment)) {
+                    if (_cUoE && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
+                    const ownerCfg = eqPerChar[name];
+                    const validEqSlots = (ownerCfg && Array.isArray(ownerCfg.slots))
+                        ? new Set(ownerCfg.slots.map(s => s.name)) : null;
+                    const deletedEqSlots = ownerCfg ? new Set(ownerCfg._deletedSlots || []) : new Set();
+                    const parts = [];
+                    for (const [slotName, items] of Object.entries(slots)) {
+                        if (deletedEqSlots.has(slotName)) continue;
+                        if (validEqSlots && validEqSlots.size > 0 && !validEqSlots.has(slotName)) continue;
+                        for (const item of items) {
+                            const attrStr = Object.entries(item.attrs || {}).map(([k, v]) => `${k}${v >= 0 ? '+' : ''}${v}`).join(',');
+                            const stored = storedEq[name]?.[slotName]?.find(e => e.name === item.name);
+                            const desc = stored?._itemMeta?.description || '';
+                            const descPart = desc ? ` "${desc}"` : '';
+                            parts.push(`[${slotName}]${item.name}${attrStr ? `{${attrStr}}` : ''}${descPart}`);
+                        }
+                    }
+                    if (parts.length > 0) {
+                        if (!hasEqData) { lines.push('\n[Экипировка]'); hasEqData = true; }
+                        lines.push(`${_ctxPre(name, _cUoE)}${parts.join(' | ')}`);
+                    }
+                }
+            }
+
+            // Репутация (требуется включение)
+            const sendRep = !!this.settings?.sendRpgReputation;
+            const repConfig = rpg.reputationConfig || { categories: [] };
+            if (sendRep && repConfig.categories.length > 0 && Object.keys(rpg.reputation || {}).length > 0) {
+                const validRepNames = new Set(repConfig.categories.map(c => c.name));
+                const deletedRepNames = new Set(repConfig._deletedCategories || []);
+                let hasRepData = false;
+                for (const [name, cats] of Object.entries(rpg.reputation)) {
+                    if (_cUoR && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
+                    const parts = [];
+                    for (const [catName, data] of Object.entries(cats)) {
+                        if (!validRepNames.has(catName) || deletedRepNames.has(catName)) continue;
+                        parts.push(`${catName}:${data.value}`);
+                    }
+                    if (parts.length > 0) {
+                        if (!hasRepData) { lines.push('\n[Репутация]'); hasRepData = true; }
+                        lines.push(`${_ctxPre(name, _cUoR)}${parts.join(' | ')}`);
+                    }
+                }
+            }
+
+            // Уровень
+            const sendLvl = !!this.settings?.sendRpgLevel;
+            if (sendLvl && (Object.keys(rpg.levels || {}).length > 0 || Object.keys(rpg.xp || {}).length > 0)) {
+                const allLvlNames = new Set([...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {})]);
+                let hasLvlData = false;
+                for (const name of allLvlNames) {
+                    if (_cUoL && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
+                    const lv = rpg.levels?.[name];
+                    const xp = rpg.xp?.[name];
+                    if (lv == null && !xp) continue;
+                    if (!hasLvlData) { lines.push('\n[Уровень]'); hasLvlData = true; }
+                    let lvStr = lv != null ? `Lv.${lv}` : '';
+                    if (xp) lvStr += ` (Опыт: ${xp[0]}/${xp[1]})`;
+                    lines.push(`${_ctxPre(name, _cUoL)}${lvStr.trim()}`);
+                }
+            }
+
+            // Валюта
+            const sendCur = !!this.settings?.sendRpgCurrency;
+            const curConfig = rpg.currencyConfig || { denominations: [] };
+            if (sendCur && curConfig.denominations.length > 0 && Object.keys(rpg.currency || {}).length > 0) {
+                let hasCurData = false;
+                for (const [name, coins] of Object.entries(rpg.currency)) {
+                    if (_cUoC && name !== userName) continue;
+                    if (filterRpg && !rpgAllowed.has(name)) continue;
+                    const parts = [];
+                    for (const d of curConfig.denominations) {
+                        const val = coins[d.name];
+                        if (val != null) parts.push(`${d.name}×${val}`);
+                    }
+                    if (parts.length > 0) {
+                        if (!hasCurData) { lines.push('\n[Валюта]'); hasCurData = true; }
+                        lines.push(`${_ctxPre(name, _cUoC)}${parts.join(', ')}`);
+                    }
+                }
+            }
+
+            // Опорный пункт
+            if (!!this.settings?.sendRpgStronghold) {
+                const shNodes = rpg.strongholds || [];
+                if (shNodes.length > 0) {
+                    lines.push('\n[Опорный пункт]');
+                    function _shTreeStr(nodes, parentId, indent) {
+                        const children = nodes.filter(n => (n.parent || null) === parentId);
+                        let str = '';
+                        for (const c of children) {
+                            const lvStr = c.level != null ? ` Lv.${c.level}` : '';
+                            str += `${'  '.repeat(indent)}${c.name}${lvStr}`;
+                            if (c.desc) str += ` — ${c.desc}`;
+                            str += '\n';
+                            str += _shTreeStr(nodes, c.id, indent + 1);
+                        }
+                        return str;
+                    }
+                    lines.push(_shTreeStr(shNodes, null, 0).trimEnd());
                 }
             }
         }
 
-        // 剧情轨迹
+        // Хронология сюжета
         if (sendTimeline) {
             const allEvents = this.getEvents(0, 'all', skipLast);
-            // 过滤掉被活跃摘要覆盖的原始事件（_compressedBy 且摘要为 active）
+            // Отфильтровать исходные события, перекрытые активными сводками (_compressedBy с active сводкой)
             const timelineChat = this.getChat();
             const autoSums = timelineChat?.[0]?.horae_meta?.autoSummaries || [];
             const activeSumIds = new Set(autoSums.filter(s => s.active).map(s => s.id));
-            // 被活跃摘要压缩的事件不发送；摘要为 inactive 时其 _summaryId 事件不发送
+            // Сжатые активной сводкой события не отправляются; при inactive сводке её _summaryId события тоже не отправляются
             const events = allEvents.filter(e => {
                 if (e.event?._compressedBy && activeSumIds.has(e.event._compressedBy)) return false;
                 if (e.event?._summaryId && !activeSumIds.has(e.event._summaryId)) return false;
                 return true;
             });
             if (events.length > 0) {
-                lines.push('\n[剧情轨迹]');
+                lines.push('\n[Хронология сюжета]');
                 
                 const currentDate = state.timestamp?.story_date || '';
                 
@@ -767,25 +969,25 @@ class HoraeManager {
                     
                     const { days, fromDate, toDate } = result;
                     
-                    if (days === 0) return '(今天)';
-                    if (days === 1) return '(昨天)';
-                    if (days === 2) return '(前天)';
-                    if (days === 3) return '(大前天)';
-                    if (days === -1) return '(明天)';
-                    if (days === -2) return '(后天)';
-                    if (days === -3) return '(大后天)';
+                    if (days === 0) return '(сегодня)';
+                    if (days === 1) return '(вчера)';
+                    if (days === 2) return '(позавчера)';
+                    if (days === 3) return '(3 дня назад)';
+                    if (days === -1) return '(завтра)';
+                    if (days === -2) return '(послезавтра)';
+                    if (days === -3) return '(через 3 дня)';
                     
                     if (days >= 4 && days <= 13 && fromDate) {
-                        const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+                        const WEEKDAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
                         const weekday = fromDate.getDay();
-                        return `(上周${WEEKDAY_NAMES[weekday]})`;
+                        return `(пред. ${WEEKDAY_NAMES[weekday]})`;
                     }
                     
                     if (days >= 20 && days < 60 && fromDate && toDate) {
                         const fromMonth = fromDate.getMonth();
                         const toMonth = toDate.getMonth();
                         if (fromMonth !== toMonth) {
-                            return `(上个月${fromDate.getDate()}号)`;
+                            return `(${fromDate.getDate()} пр. мес.)`;
                         }
                     }
                     
@@ -794,12 +996,12 @@ class HoraeManager {
                         const toYear = toDate.getFullYear();
                         if (fromYear < toYear) {
                             const fromMonth = fromDate.getMonth() + 1;
-                            return `(去年${fromMonth}月)`;
+                            return `(${fromMonth} мес. пр. г.)`;
                         }
                     }
                     
-                    if (days > 0 && days < 30) return `(${days}天前)`;
-                    if (days > 0) return `(${Math.round(days / 30)}个月前)`;
+                    if (days > 0 && days < 30) return `(${days} дн. назад)`;
+                    if (days > 0) return `(${Math.round(days / 30)} мес. назад)`;
                     if (days === -999 || days === -998 || days === -997) return '';
                     return '';
                 };
@@ -820,10 +1022,24 @@ class HoraeManager {
                 const allToShow = [...criticalAndImportant, ...normalEvents]
                     .sort((a, b) => (a.messageIndex || 0) - (b.messageIndex || 0));
                 
+                // Предварительно построить маппинг summaryId→диапазон дат, чтобы сводки имели временной охват
+                const _sumDateRanges = {};
+                for (const s of autoSums) {
+                    if (!s.active || !s.originalEvents?.length) continue;
+                    const dates = s.originalEvents.map(oe => oe.timestamp?.story_date).filter(Boolean);
+                    if (dates.length > 0) {
+                        const first = dates[0], last = dates[dates.length - 1];
+                        _sumDateRanges[s.id] = first === last ? first : `${first}~${last}`;
+                    }
+                }
+
                 for (const e of allToShow) {
                     const isSummary = e.event?.isSummary || e.event?.level === '摘要';
                     if (isSummary) {
-                        lines.push(`📋 [摘要]: ${e.event.summary}`);
+                        const dateRange = e.event?._summaryId ? _sumDateRanges[e.event._summaryId] : '';
+                        const dateTag = dateRange ? `·${dateRange}` : '';
+                        const relTag = dateRange ? getRelativeDesc(dateRange.split('~')[0]) : '';
+                        lines.push(`📋 [Сводка${dateTag}]${relTag}: ${e.event.summary}`);
                     } else {
                         const mark = getLevelMark(e.event?.level);
                         const date = e.timestamp?.story_date || '?';
@@ -837,7 +1053,7 @@ class HoraeManager {
             }
         }
         
-        // 自定义表格数据（合并全局和本地）
+        // Пользовательские таблицы (объединение глобальных и локальных)
         const chat = this.getChat();
         const firstMsg = chat?.[0];
         const localTables = firstMsg?.horae_meta?.customTables || [];
@@ -848,19 +1064,19 @@ class HoraeManager {
             const cols = table.cols || 2;
             const data = table.data || {};
             
-            // 有内容或有填表说明才输出
+            // Выводить только при наличии содержимого или инструкций заполнения
             const hasContent = Object.values(data).some(v => v && v.trim());
             const hasPrompt = table.prompt && table.prompt.trim();
             if (!hasContent && !hasPrompt) continue;
             
-            const tableName = table.name || '自定义表格';
-            lines.push(`\n[${tableName}](${rows - 1}行×${cols - 1}列)`);
+            const tableName = table.name || 'Пользовательская таблица';
+            lines.push(`\n[${tableName}](${rows - 1} строк × ${cols - 1} столб.)`);
             
             if (table.prompt && table.prompt.trim()) {
-                lines.push(`(填写要求: ${table.prompt.trim()})`);
+                lines.push(`(Требования к заполнению: ${table.prompt.trim()})`);
             }
             
-            // 检测最后有内容的行（含行标题列）
+            // Определить последнюю строку с данными (включая столбец заголовков)
             let lastDataRow = 0;
             for (let r = rows - 1; r >= 1; r--) {
                 for (let c = 0; c < cols; c++) {
@@ -877,16 +1093,16 @@ class HoraeManager {
             const lockedCols = new Set(table.lockedCols || []);
             const lockedCells = new Set(table.lockedCells || []);
 
-            // 输出表头行（带坐标标注）
+            // Вывести строку заголовков (с координатами)
             const headerRow = [];
             for (let c = 0; c < cols; c++) {
-                const label = data[`0-${c}`] || (c === 0 ? '表头' : `列${c}`);
+                const label = data[`0-${c}`] || (c === 0 ? 'Заголовок' : `Столб.${c}`);
                 const coord = `[0,${c}]`;
                 headerRow.push(lockedCols.has(c) ? `${coord}${label}🔒` : `${coord}${label}`);
             }
             lines.push(headerRow.join(' | '));
 
-            // 输出数据行（带坐标标注）
+            // Вывести строки данных (с координатами)
             for (let r = 1; r <= lastDataRow; r++) {
                 const rowData = [];
                 for (let c = 0; c < cols; c++) {
@@ -902,12 +1118,12 @@ class HoraeManager {
                 lines.push(rowData.join(' | '));
             }
             
-            // 标注被省略的尾部空行
+            // Отметить пропущенные пустые строки в конце
             if (lastDataRow < rows - 1) {
-                lines.push(`(共${rows - 1}行，第${lastDataRow + 1}-${rows - 1}行暂无数据)`);
+                lines.push(`(всего ${rows - 1} строк, строки ${lastDataRow + 1}-${rows - 1} пока без данных)`);
             }
 
-            // 提示完全空的数据列
+            // Указать полностью пустые столбцы данных
             const emptyCols = [];
             for (let c = 1; c < cols; c++) {
                 let colHasData = false;
@@ -917,15 +1133,15 @@ class HoraeManager {
                 if (!colHasData) emptyCols.push(c);
             }
             if (emptyCols.length > 0) {
-                const emptyColNames = emptyCols.map(c => data[`0-${c}`] || `列${c}`);
-                lines.push(`(${emptyColNames.join('、')}：暂无数据，如剧情中已有相关信息请填写)`);
+                const emptyColNames = emptyCols.map(c => data[`0-${c}`] || `Столб.${c}`);
+                lines.push(`(${emptyColNames.join(', ')}: пока без данных, заполните если в сюжете уже есть соответствующая информация)`);
             }
         }
         
         return lines.join('\n');
     }
 
-    /** 获取好感度等级描述 */
+    /** Получить описание уровня расположения */
     getAffectionLevel(value) {
         if (value >= 80) return 'Обожание';
         if (value >= 60) return 'Близость';
@@ -938,7 +1154,22 @@ class HoraeManager {
         return 'Ненависть';
     }
 
-    /** 解析AI回复中的horae标签 */
+    /**
+     * По пользовательскому списку тегов (через запятую),
+     * целиком удалить соответствующие теги и их содержимое (включая необязательные атрибуты),
+     * чтобы horae-теги внутри пользовательских блоков (мини-сценки и т.д.) не загрязняли парсинг основного текста.
+     */
+    _stripCustomTags(text, tagList) {
+        if (!text || !tagList) return text;
+        const tags = tagList.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
+        for (const tag of tags) {
+            const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            text = text.replace(new RegExp(`<${escaped}(?:\\s[^>]*)?>[\\s\\S]*?</${escaped}>`, 'gi'), '');
+        }
+        return text;
+    }
+
+    /** Разобрать теги horae в ответе ИИ */
     parseHoraeTag(message) {
         if (!message) return null;
         
@@ -987,38 +1218,43 @@ class HoraeManager {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
             
-            // time:10/1 15:00 或 time:小镇历永夜2931年 2月1日(五) 20:30
+            // time:10/1 15:00 или time:小镇历永夜2931年 2月1日(五) 20:30
             if (trimmedLine.startsWith('time:')) {
                 const timeStr = trimmedLine.substring(5).trim();
-                // 从末尾分离 HH:MM 时钟时间
+                // Отделить HH:MM время от конца
                 const clockMatch = timeStr.match(/\b(\d{1,2}:\d{2})\s*$/);
                 if (clockMatch) {
                     result.timestamp.story_time = clockMatch[1];
                     result.timestamp.story_date = timeStr.substring(0, timeStr.lastIndexOf(clockMatch[1])).trim();
                 } else {
-                    // 无时钟时间，整个字符串作为日期
+                    // Нет времени, вся строка = дата
                     result.timestamp.story_date = timeStr;
                     result.timestamp.story_time = '';
                 }
             }
-            // location:咖啡馆二楼
+            // location:второй этаж кафе
             else if (trimmedLine.startsWith('location:')) {
                 result.scene.location = trimmedLine.substring(9).trim();
             }
-            // atmosphere:轻松
+            // atmosphere:расслабленная
             else if (trimmedLine.startsWith('atmosphere:')) {
                 result.scene.atmosphere = trimmedLine.substring(11).trim();
             }
-            // scene_desc:地点的固定物理特征描述
+            // scene_desc:описание постоянных физических характеристик места (поддержка нескольких сцен в одном ответе)
             else if (trimmedLine.startsWith('scene_desc:')) {
-                result.scene.scene_desc = trimmedLine.substring(11).trim();
+                const desc = trimmedLine.substring(11).trim();
+                result.scene.scene_desc = desc;
+                if (result.scene.location && desc) {
+                    if (!result.scene._descPairs) result.scene._descPairs = [];
+                    result.scene._descPairs.push({ location: result.scene.location, desc });
+                }
             }
-            // characters:爱丽丝,鲍勃
+            // characters:Алиса,Боб
             else if (trimmedLine.startsWith('characters:')) {
                 const chars = trimmedLine.substring(11).trim();
                 result.scene.characters_present = chars.split(/[,，]/).map(c => c.trim()).filter(Boolean);
             }
-            // costume:爱丽丝=白色连衣裙
+            // costume:Алиса=белое платье
             else if (trimmedLine.startsWith('costume:')) {
                 const costumeStr = trimmedLine.substring(8).trim();
                 const eqIndex = costumeStr.indexOf('=');
@@ -1028,7 +1264,7 @@ class HoraeManager {
                     result.costumes[char] = costume;
                 }
             }
-            // item-:物品名 表示物品已消耗/删除
+            // item-:имя_предмета означает расход/удаление
             else if (trimmedLine.startsWith('item-:')) {
                 const itemName = trimmedLine.substring(6).trim();
                 const cleanName = itemName.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, '').trim();
@@ -1036,7 +1272,7 @@ class HoraeManager {
                     result.deletedItems.push(cleanName);
                 }
             }
-            // item:🍺劣质麦酒|描述=酒馆@吧台 / item!:📜重要物品|特殊功能描述=角色@位置 / item!!:💎关键物品=@位置
+            // item:🍺плохое пиво|описание=таверна@барная стойка / item!:📜важный предмет|описание=персонаж@место / item!!:💎ключевой предмет=@место
             else if (trimmedLine.startsWith('item!!:') || trimmedLine.startsWith('item!:') || trimmedLine.startsWith('item:')) {
                 let importance = '';  // 一般用空字符串
                 let itemStr;
@@ -1074,7 +1310,7 @@ class HoraeManager {
                         itemName = itemNamePart;
                     }
                     
-                    // 去掉无意义的数量标记
+                    // Удалить бессмысленные метки количества
                     itemName = itemName.replace(/[\(（]1[\)）]$/, '').trim();
                     itemName = itemName.replace(new RegExp(`[\\(（]1[${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();
                     itemName = itemName.replace(new RegExp(`[\\(（][${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();
@@ -1090,7 +1326,7 @@ class HoraeManager {
                     result.items[itemName] = itemInfo;
                 }
             }
-            // event:重要|爱丽丝坦白了秘密
+            // event:重要|Алиса раскрыла секрет
             else if (trimmedLine.startsWith('event:')) {
                 const eventStr = trimmedLine.substring(6).trim();
                 const parts = eventStr.split('|');
@@ -1112,18 +1348,18 @@ class HoraeManager {
                     });
                 }
             }
-            // affection:鲍勃=65 或 affection:鲍勃+5（兼容新旧格式）
-            // 容忍AI附加注解如 affection:汤姆=18(+0)|观察到xxx，只提取名字和数值
+            // affection:Боб=65 или affection:Боб+5 (совместимость со старым/новым форматом)
+            // Допускать примечания ИИ вроде affection:Том=18(+0)|наблюдение, извлекать только имя и число
             else if (trimmedLine.startsWith('affection:')) {
                 const affStr = trimmedLine.substring(10).trim();
-                // 新格式：角色名=数值（绝对值，允许带正负号如 =+28 或 =-15）
+                // Новый формат: имя=число (абсолютное, допускается знак +/-, напр. =+28 или =-15)
                 const absoluteMatch = affStr.match(/^(.+?)=\s*([+\-]?\d+\.?\d*)/);
                 if (absoluteMatch) {
                     const key = absoluteMatch[1].trim();
                     const value = parseFloat(absoluteMatch[2]);
                     result.affection[key] = { type: 'absolute', value: value };
                 } else {
-                    // 旧格式：角色名+/-数值（相对值，无=号）— 允许数值后跟任意注解
+                    // Старый формат: имя+/-число (относительное, без =) — допускаются примечания после числа
                     const relativeMatch = affStr.match(/^(.+?)([+\-]\d+\.?\d*)/);
                     if (relativeMatch) {
                         const key = relativeMatch[1].trim();
@@ -1132,8 +1368,8 @@ class HoraeManager {
                     }
                 }
             }
-            // npc:名|外貌=性格@关系~性别:男~年龄:25~种族:人类~职业:佣兵~补充:xxx
-            // 使用 ~ 分隔扩展字段（key:value），不依赖顺序
+            // npc:имя|внешность=характер@отношения~性别:муж~年龄:25~种族:человек~职业:наёмник~补充:xxx
+            // ~ разделяет расширенные поля (key:value), порядок не важен
             else if (trimmedLine.startsWith('npc:')) {
                 const npcStr = trimmedLine.substring(4).trim();
                 const npcInfo = this._parseNpcFields(npcStr);
@@ -1148,7 +1384,7 @@ class HoraeManager {
                     result.npcs[name] = npcInfo;
                 }
             }
-            // agenda-:已完成待办内容 / agenda:订立日期|内容
+            // agenda-:выполненная задача / agenda:дата|содержание
             else if (trimmedLine.startsWith('agenda-:')) {
                 const delStr = trimmedLine.substring(8).trim();
                 if (delStr) {
@@ -1170,7 +1406,7 @@ class HoraeManager {
                     text = agendaStr;
                 }
                 if (text) {
-                    // 检测 AI 用括号标记完成的情况，自动归入 deletedAgenda
+                    // Обнаружение пометки выполнения в скобках от ИИ, автоматическое перемещение в deletedAgenda
                     const doneMatch = text.match(/[\(（](完成|已完成|done|finished|completed|失效|取消|已取消)[\)）]\s*$/i);
                     if (doneMatch) {
                         const cleanText = text.substring(0, text.length - doneMatch[0].length).trim();
@@ -1180,7 +1416,7 @@ class HoraeManager {
                     }
                 }
             }
-            // rel:角色A>角色B=关系类型|备注
+            // rel:персонажA>персонажB=тип_связи|примечание
             else if (trimmedLine.startsWith('rel:')) {
                 const relStr = trimmedLine.substring(4).trim();
                 const arrowIdx = relStr.indexOf('>');
@@ -1197,7 +1433,7 @@ class HoraeManager {
                     }
                 }
             }
-            // mood:角色名=情绪状态
+            // mood:имя_персонажа=эмоциональное_состояние
             else if (trimmedLine.startsWith('mood:')) {
                 const moodStr = trimmedLine.substring(5).trim();
                 const eqIdx = moodStr.indexOf('=');
@@ -1211,7 +1447,7 @@ class HoraeManager {
             }
         }
 
-        // 解析自定义表格数据
+        // Разбор данных пользовательских таблиц
         if (tableMatches.length > 0) {
             result.tableUpdates = [];
             for (const tm of tableMatches) {
@@ -1225,9 +1461,9 @@ class HoraeManager {
             }
         }
 
-        // 解析 RPG 数据
+        // Разбор RPG-данных
         if (rpgMatches.length > 0) {
-            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {} };
+            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [] };
             for (const rm of rpgMatches) {
                 const rpgContent = rm[1].trim();
                 for (const rpgLine of rpgContent.split('\n')) {
@@ -1240,7 +1476,7 @@ class HoraeManager {
         return result;
     }
 
-    /** 将解析结果合并到元数据 */
+    /** Объединить результат парсинга с метаданными */
     mergeParsedToMeta(baseMeta, parsed) {
         const meta = baseMeta ? JSON.parse(JSON.stringify(baseMeta)) : createEmptyMeta();
         
@@ -1278,11 +1514,11 @@ class HoraeManager {
             meta.deletedItems = [...new Set([...meta.deletedItems, ...parsed.deletedItems])];
         }
         
-        // 支持新格式（events数组）和旧格式（单个event）
+        // Поддержка нового формата (массив events) и старого (одиночный event)
         if (parsed.events && parsed.events.length > 0) {
             meta.events = parsed.events;
         } else if (parsed.event) {
-            // 兼容旧格式：转换为数组
+            // Совместимость со старым форматом: преобразование в массив
             meta.events = [parsed.event];
         }
         
@@ -1294,7 +1530,7 @@ class HoraeManager {
             Object.assign(meta.npcs, parsed.npcs);
         }
         
-        // 追加AI写入的待办（跳过用户已手动删除的）
+        // Добавить задачи от ИИ (пропуская удалённые пользователем вручную)
         if (parsed.agenda && parsed.agenda.length > 0) {
             if (!meta.agenda) meta.agenda = [];
             const chat0 = this.getChat()?.[0];
@@ -1308,19 +1544,19 @@ class HoraeManager {
             }
         }
         
-        // 关系网络：存入当前消息（后续由 processAIResponse 合并到 chat[0]）
+        // Сеть отношений: сохранить в текущее сообщение (затем processAIResponse объединит в chat[0])
         if (parsed.relationships && parsed.relationships.length > 0) {
             if (!meta.relationships) meta.relationships = [];
             meta.relationships = parsed.relationships;
         }
         
-        // 情绪状态
+        // Эмоциональное состояние
         if (parsed.mood && Object.keys(parsed.mood).length > 0) {
             if (!meta.mood) meta.mood = {};
             Object.assign(meta.mood, parsed.mood);
         }
         
-        // tableUpdates 作为副属性传递
+        // tableUpdates передаётся как побочное свойство
         if (parsed.tableUpdates) {
             meta._tableUpdates = parsed.tableUpdates;
         }
@@ -1332,55 +1568,214 @@ class HoraeManager {
         return meta;
     }
 
-    /** 解析单行 RPG 数据 */
+    /** Разобрать одну строку RPG-данных */
     _parseRpgLine(line, rpg) {
-        // 属性条: key:owner=cur/max 或 key:owner=cur/max(显示名)
-        const barMatch = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i);
-        if (barMatch && !/^(status|skill)$/i.test(barMatch[1])) {
-            const type = barMatch[1].toLowerCase();
-            const owner = barMatch[2].trim();
-            const current = parseInt(barMatch[3]);
-            const max = parseInt(barMatch[4]);
-            const label = barMatch[5]?.trim() || null;
+        const _uoName = this.context?.name1 || 'Главный герой';
+        const _uoB = !!this.settings?.rpgBarsUserOnly;
+        const _uoS = !!this.settings?.rpgSkillsUserOnly;
+        const _uoA = !!this.settings?.rpgAttrsUserOnly;
+        const _uoE = !!this.settings?.rpgEquipmentUserOnly;
+        const _uoR = !!this.settings?.rpgReputationUserOnly;
+        const _uoL = !!this.settings?.rpgLevelUserOnly;
+        const _uoC = !!this.settings?.rpgCurrencyUserOnly;
+
+        // Общее: определить, является ли строка форматом userOnly без owner
+        // Полоса атрибутов: обычный key:owner=cur/max или userOnly key:cur/max(отображаемое имя)
+        const barNormal = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i);
+        const barUo = _uoB ? line.match(/^([a-zA-Z]\w*):(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i) : null;
+        if (barNormal && !/^(status|skill)$/i.test(barNormal[1])) {
+            const type = barNormal[1].toLowerCase();
+            const owner = _uoB ? _uoName : barNormal[2].trim();
+            const current = parseInt(barNormal[3]);
+            const max = parseInt(barNormal[4]);
+            const label = barNormal[5]?.trim() || null;
             if (!rpg.bars[owner]) rpg.bars[owner] = {};
             rpg.bars[owner][type] = label ? [current, max, label] : [current, max];
             return;
         }
-        // status:N01 Name=效果1/效果2
+        if (barUo && !/^(status|skill)$/i.test(barUo[1])) {
+            const type = barUo[1].toLowerCase();
+            const current = parseInt(barUo[2]);
+            const max = parseInt(barUo[3]);
+            const label = barUo[4]?.trim() || null;
+            if (!rpg.bars[_uoName]) rpg.bars[_uoName] = {};
+            rpg.bars[_uoName][type] = label ? [current, max, label] : [current, max];
+            return;
+        }
+        // status
         if (line.startsWith('status:')) {
             const str = line.substring(7).trim();
             const eq = str.indexOf('=');
-            if (eq > 0) {
-                const owner = str.substring(0, eq).trim();
+            if (_uoB && eq < 0) {
+                rpg.status[_uoName] = (!str || /^(正常|无|none)$/i.test(str))
+                    ? [] : str.split('/').map(s => s.trim()).filter(Boolean);
+            } else if (eq > 0) {
+                const owner = _uoB ? _uoName : str.substring(0, eq).trim();
                 const val = str.substring(eq + 1).trim();
                 rpg.status[owner] = (!val || /^(正常|无|none)$/i.test(val))
                     ? [] : val.split('/').map(s => s.trim()).filter(Boolean);
             }
             return;
         }
-        // skill:N01 Name|技能名|等级|效果
+        // skill
         if (line.startsWith('skill:')) {
             const parts = line.substring(6).trim().split('|').map(s => s.trim());
-            if (parts.length >= 2) {
+            if (_uoS && parts.length >= 1) {
+                rpg.skills.push({ owner: _uoName, name: parts[0], level: parts[1] || '', desc: parts[2] || '' });
+            } else if (parts.length >= 2) {
                 rpg.skills.push({ owner: parts[0], name: parts[1], level: parts[2] || '', desc: parts[3] || '' });
             }
             return;
         }
-        // skill-:N01 Name|技能名
+        // skill-
         if (line.startsWith('skill-:')) {
             const parts = line.substring(7).trim().split('|').map(s => s.trim());
-            if (parts.length >= 2) {
+            if (_uoS && parts.length >= 1) {
+                rpg.removedSkills.push({ owner: _uoName, name: parts[0] });
+            } else if (parts.length >= 2) {
                 rpg.removedSkills.push({ owner: parts[0], name: parts[1] });
             }
             return;
         }
-        // attr:N01 Name|key=val|key=val...
+        // equip
+        if (line.startsWith('equip:')) {
+            const parts = line.substring(6).trim().split('|').map(s => s.trim());
+            const minParts = _uoE ? 2 : 3;
+            if (parts.length >= minParts) {
+                const owner = _uoE ? _uoName : parts[0];
+                const slot = _uoE ? parts[0] : parts[1];
+                const itemName = _uoE ? parts[1] : parts[2];
+                const attrPart = _uoE ? parts[2] : parts[3];
+                const attrs = {};
+                if (attrPart) {
+                    for (const kv of attrPart.split(',')) {
+                        const m = kv.trim().match(/^(.+?)=(-?\d+)$/);
+                        if (m) attrs[m[1].trim()] = parseInt(m[2]);
+                    }
+                }
+                if (!rpg.equipment) rpg.equipment = [];
+                rpg.equipment.push({ owner, slot, name: itemName, attrs });
+            }
+            return;
+        }
+        // unequip
+        if (line.startsWith('unequip:')) {
+            const parts = line.substring(8).trim().split('|').map(s => s.trim());
+            const minParts = _uoE ? 2 : 3;
+            if (parts.length >= minParts) {
+                if (!rpg.unequip) rpg.unequip = [];
+                if (_uoE) {
+                    rpg.unequip.push({ owner: _uoName, slot: parts[0], name: parts[1] });
+                } else {
+                    rpg.unequip.push({ owner: parts[0], slot: parts[1], name: parts[2] });
+                }
+            }
+            return;
+        }
+        // rep
+        if (line.startsWith('rep:')) {
+            const parts = line.substring(4).trim().split('|').map(s => s.trim());
+            if (_uoR && parts.length >= 1) {
+                const kv = parts[0].match(/^(.+?)=(-?\d+)$/);
+                if (kv) {
+                    if (!rpg.reputation) rpg.reputation = {};
+                    if (!rpg.reputation[_uoName]) rpg.reputation[_uoName] = {};
+                    rpg.reputation[_uoName][kv[1].trim()] = parseInt(kv[2]);
+                }
+            } else if (parts.length >= 2) {
+                const owner = parts[0];
+                const kv = parts[1].match(/^(.+?)=(-?\d+)$/);
+                if (kv) {
+                    if (!rpg.reputation) rpg.reputation = {};
+                    if (!rpg.reputation[owner]) rpg.reputation[owner] = {};
+                    rpg.reputation[owner][kv[1].trim()] = parseInt(kv[2]);
+                }
+            }
+            return;
+        }
+        // level
+        if (line.startsWith('level:')) {
+            const str = line.substring(6).trim();
+            if (_uoL) {
+                const val = parseInt(str);
+                if (!isNaN(val)) {
+                    if (!rpg.levels) rpg.levels = {};
+                    rpg.levels[_uoName] = val;
+                }
+            } else {
+                const eq = str.indexOf('=');
+                if (eq > 0) {
+                    const owner = str.substring(0, eq).trim();
+                    const val = parseInt(str.substring(eq + 1).trim());
+                    if (!isNaN(val)) {
+                        if (!rpg.levels) rpg.levels = {};
+                        rpg.levels[owner] = val;
+                    }
+                }
+            }
+            return;
+        }
+        // xp
+        if (line.startsWith('xp:')) {
+            const str = line.substring(3).trim();
+            if (_uoL) {
+                const m = str.match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (m) {
+                    if (!rpg.xp) rpg.xp = {};
+                    rpg.xp[_uoName] = [parseInt(m[1]), parseInt(m[2])];
+                }
+            } else {
+                const eq = str.indexOf('=');
+                if (eq > 0) {
+                    const owner = str.substring(0, eq).trim();
+                    const valStr = str.substring(eq + 1).trim();
+                    const m = valStr.match(/^(\d+)\s*\/\s*(\d+)$/);
+                    if (m) {
+                        if (!rpg.xp) rpg.xp = {};
+                        rpg.xp[owner] = [parseInt(m[1]), parseInt(m[2])];
+                    }
+                }
+            }
+            return;
+        }
+        // currency
+        if (line.startsWith('currency:')) {
+            const parts = line.substring(9).trim().split('|').map(s => s.trim());
+            if (_uoC && parts.length >= 1) {
+                const kvStr = parts.length >= 2 ? parts[1] : parts[0];
+                const kv = kvStr.match(/^(.+?)=([+-]?\d+)$/);
+                if (kv) {
+                    if (!rpg.currency) rpg.currency = [];
+                    const rawVal = kv[2];
+                    const isDelta = rawVal.startsWith('+') || rawVal.startsWith('-');
+                    rpg.currency.push({ owner: _uoName, name: kv[1].trim(), value: parseInt(rawVal), isDelta });
+                }
+            } else if (parts.length >= 2) {
+                const owner = parts[0];
+                const kv = parts[1].match(/^(.+?)=([+-]?\d+)$/);
+                if (kv) {
+                    if (!rpg.currency) rpg.currency = [];
+                    const rawVal = kv[2];
+                    const isDelta = rawVal.startsWith('+') || rawVal.startsWith('-');
+                    rpg.currency.push({ owner, name: kv[1].trim(), value: parseInt(rawVal), isDelta });
+                }
+            }
+            return;
+        }
+        // attr
         if (line.startsWith('attr:')) {
             const parts = line.substring(5).trim().split('|').map(s => s.trim());
-            if (parts.length >= 2) {
-                const owner = parts[0];
+            if (parts.length >= 1) {
+                let owner, startIdx;
+                if (_uoA) {
+                    owner = _uoName;
+                    startIdx = 0;
+                } else {
+                    owner = parts[0];
+                    startIdx = 1;
+                }
                 const vals = {};
-                for (let i = 1; i < parts.length; i++) {
+                for (let i = startIdx; i < parts.length; i++) {
                     const kv = parts[i].match(/^(\w+)=(\d+)$/);
                     if (kv) vals[kv[1].toLowerCase()] = parseInt(kv[2]);
                 }
@@ -1389,10 +1784,38 @@ class HoraeManager {
                     rpg.attributes[owner] = vals;
                 }
             }
+            return;
+        }
+        // base:путь_опорного_пункта=уровень или base:путь|desc=описание
+        // Путь разделяется > по уровням, напр. base:Поместье>Кузница>Горн=2
+        if (line.startsWith('base:')) {
+            if (!rpg.baseChanges) rpg.baseChanges = [];
+            const raw = line.substring(5).trim();
+            const pipeIdx = raw.indexOf('|');
+            if (pipeIdx >= 0) {
+                const path = raw.substring(0, pipeIdx).trim();
+                const rest = raw.substring(pipeIdx + 1).trim();
+                const kv = rest.match(/^(desc|level)=(.+)$/);
+                if (kv) {
+                    rpg.baseChanges.push({ path, field: kv[1], value: kv[2].trim() });
+                }
+            } else {
+                const eqIdx = raw.indexOf('=');
+                if (eqIdx >= 0) {
+                    const path = raw.substring(0, eqIdx).trim();
+                    const val = raw.substring(eqIdx + 1).trim();
+                    const numVal = parseInt(val);
+                    if (!isNaN(numVal)) {
+                        rpg.baseChanges.push({ path, field: 'level', value: numVal });
+                    } else {
+                        rpg.baseChanges.push({ path, field: 'desc', value: val });
+                    }
+                }
+            }
         }
     }
 
-    /** 通过 N编号 解析归属者的规范名称 */
+    /** Определить каноническое имя владельца по N-номеру */
     _resolveRpgOwner(ownerStr) {
         const m = ownerStr.match(/^N(\d+)\s+(.+)$/);
         if (m) {
@@ -1411,7 +1834,7 @@ class HoraeManager {
         return ownerStr.trim();
     }
 
-    /** 合并 RPG 变更到 chat[0].horae_meta.rpg */
+    /** Объединить RPG-изменения в chat[0].horae_meta.rpg */
     _mergeRpgData(changes) {
         const chat = this.getChat();
         if (!chat?.length || !changes) return;
@@ -1420,18 +1843,23 @@ class HoraeManager {
         if (!first.horae_meta.rpg) first.horae_meta.rpg = { bars: {}, status: {}, skills: {} };
         const rpg = first.horae_meta.rpg;
 
+        const _mUN = this.context?.name1 || '';
+
         for (const [raw, barData] of Object.entries(changes.bars || {})) {
             const owner = this._resolveRpgOwner(raw);
+            if (this.settings?.rpgBarsUserOnly && owner !== _mUN) continue;
             if (!rpg.bars[owner]) rpg.bars[owner] = {};
             Object.assign(rpg.bars[owner], barData);
         }
         for (const [raw, effects] of Object.entries(changes.status || {})) {
             const owner = this._resolveRpgOwner(raw);
+            if (this.settings?.rpgBarsUserOnly && owner !== _mUN) continue;
             if (!rpg.status) rpg.status = {};
             rpg.status[owner] = effects;
         }
         for (const sk of (changes.skills || [])) {
             const owner = this._resolveRpgOwner(sk.owner);
+            if (this.settings?.rpgSkillsUserOnly && owner !== _mUN) continue;
             if (!rpg.skills[owner]) rpg.skills[owner] = [];
             const idx = rpg.skills[owner].findIndex(s => s.name === sk.name);
             if (idx >= 0) {
@@ -1443,41 +1871,194 @@ class HoraeManager {
         }
         for (const sk of (changes.removedSkills || [])) {
             const owner = this._resolveRpgOwner(sk.owner);
+            if (this.settings?.rpgSkillsUserOnly && owner !== _mUN) continue;
             if (rpg.skills[owner]) {
                 rpg.skills[owner] = rpg.skills[owner].filter(s => s.name !== sk.name);
             }
         }
-        // 多维属性
+        // Многомерные атрибуты
         for (const [raw, vals] of Object.entries(changes.attributes || {})) {
             const owner = this._resolveRpgOwner(raw);
+            if (this.settings?.rpgAttrsUserOnly && owner !== _mUN) continue;
             if (!rpg.attributes) rpg.attributes = {};
             rpg.attributes[owner] = { ...(rpg.attributes[owner] || {}), ...vals };
         }
+        // Экипировка：按角色独立格位配置
+        if (changes.equipment?.length > 0 || changes.unequip?.length > 0) {
+            if (!rpg.equipmentConfig) rpg.equipmentConfig = { locked: false, perChar: {} };
+            if (!rpg.equipmentConfig.perChar) rpg.equipmentConfig.perChar = {};
+            if (!rpg.equipment) rpg.equipment = {};
+            const _getOwnerSlots = (owner) => {
+                const pc = rpg.equipmentConfig.perChar[owner];
+                if (!pc || !Array.isArray(pc.slots)) return { valid: new Set(), deleted: new Set(), maxMap: {} };
+                return {
+                    valid: new Set(pc.slots.map(s => s.name)),
+                    deleted: new Set(pc._deletedSlots || []),
+                    maxMap: Object.fromEntries(pc.slots.map(s => [s.name, s.maxCount ?? 1])),
+                };
+            };
+            const _findAndTakeItem = (name) => {
+                const state = this.getLatestState();
+                const itemInfo = state?.items?.[name];
+                if (!itemInfo) return null;
+                const meta = { icon: itemInfo.icon || '', description: itemInfo.description || '', importance: itemInfo.importance || '', _id: itemInfo._id || '', _locked: itemInfo._locked || false };
+                for (let k = chat.length - 1; k >= 0; k--) {
+                    if (chat[k]?.horae_meta?.items?.[name]) { delete chat[k].horae_meta.items[name]; break; }
+                }
+                return meta;
+            };
+            const _returnItemFromEquip = (entry, owner) => {
+                if (!first.horae_meta.items) first.horae_meta.items = {};
+                const m = entry._itemMeta || {};
+                first.horae_meta.items[entry.name] = {
+                    icon: m.icon || '📦', description: m.description || '', importance: m.importance || '',
+                    holder: owner, location: '', _id: m._id || '', _locked: m._locked || false,
+                };
+            };
+            for (const u of (changes.unequip || [])) {
+                const owner = this._resolveRpgOwner(u.owner);
+                if (this.settings?.rpgEquipmentUserOnly && owner !== _mUN) continue;
+                if (!rpg.equipment[owner]?.[u.slot]) continue;
+                const removed = rpg.equipment[owner][u.slot].find(e => e.name === u.name);
+                rpg.equipment[owner][u.slot] = rpg.equipment[owner][u.slot].filter(e => e.name !== u.name);
+                if (removed) _returnItemFromEquip(removed, owner);
+                if (!rpg.equipment[owner][u.slot].length) delete rpg.equipment[owner][u.slot];
+                if (rpg.equipment[owner] && !Object.keys(rpg.equipment[owner]).length) delete rpg.equipment[owner];
+            }
+            for (const eq of (changes.equipment || [])) {
+                const slotName = eq.slot;
+                const owner = this._resolveRpgOwner(eq.owner);
+                if (this.settings?.rpgEquipmentUserOnly && owner !== _mUN) continue;
+                const { valid, deleted, maxMap } = _getOwnerSlots(owner);
+                if (valid.size > 0 && (!valid.has(slotName) || deleted.has(slotName))) continue;
+                if (!rpg.equipment[owner]) rpg.equipment[owner] = {};
+                if (!rpg.equipment[owner][slotName]) rpg.equipment[owner][slotName] = [];
+                const existing = rpg.equipment[owner][slotName].findIndex(e => e.name === eq.name);
+                if (existing >= 0) {
+                    rpg.equipment[owner][slotName][existing].attrs = eq.attrs;
+                } else {
+                    const maxCount = maxMap[slotName] ?? 1;
+                    if (rpg.equipment[owner][slotName].length >= maxCount) {
+                        const bumped = rpg.equipment[owner][slotName].shift();
+                        if (bumped) _returnItemFromEquip(bumped, owner);
+                    }
+                    const itemMeta = _findAndTakeItem(eq.name);
+                    rpg.equipment[owner][slotName].push({ name: eq.name, attrs: eq.attrs || {}, ...(itemMeta ? { _itemMeta: itemMeta } : {}) });
+                }
+            }
+        }
+        // Репутация: только определённые и неудалённые категории из reputationConfig
+        if (changes.reputation && Object.keys(changes.reputation).length > 0) {
+            if (!rpg.reputationConfig) rpg.reputationConfig = { categories: [], _deletedCategories: [] };
+            if (!rpg.reputation) rpg.reputation = {};
+            const validNames = new Set((rpg.reputationConfig.categories || []).map(c => c.name));
+            const deleted = new Set(rpg.reputationConfig._deletedCategories || []);
+            for (const [raw, cats] of Object.entries(changes.reputation)) {
+                const owner = this._resolveRpgOwner(raw);
+                if (this.settings?.rpgReputationUserOnly && owner !== _mUN) continue;
+                if (!rpg.reputation[owner]) rpg.reputation[owner] = {};
+                for (const [catName, val] of Object.entries(cats)) {
+                    if (!validNames.has(catName) || deleted.has(catName)) continue;
+                    const cfg = rpg.reputationConfig.categories.find(c => c.name === catName);
+                    const clamped = Math.max(cfg?.min ?? -100, Math.min(cfg?.max ?? 100, val));
+                    if (!rpg.reputation[owner][catName]) {
+                        rpg.reputation[owner][catName] = { value: clamped, subItems: {} };
+                    } else {
+                        rpg.reputation[owner][catName].value = clamped;
+                    }
+                }
+            }
+        }
+        // Уровень
+        for (const [raw, val] of Object.entries(changes.levels || {})) {
+            const owner = this._resolveRpgOwner(raw);
+            if (this.settings?.rpgLevelUserOnly && owner !== _mUN) continue;
+            if (!rpg.levels) rpg.levels = {};
+            rpg.levels[owner] = val;
+        }
+        // Очки опыта
+        for (const [raw, val] of Object.entries(changes.xp || {})) {
+            const owner = this._resolveRpgOwner(raw);
+            if (this.settings?.rpgLevelUserOnly && owner !== _mUN) continue;
+            if (!rpg.xp) rpg.xp = {};
+            rpg.xp[owner] = val;
+        }
+        // Валюта：只接受 currencyConfig 中已定义的币种
+        if (changes.currency?.length > 0) {
+            if (!rpg.currencyConfig) rpg.currencyConfig = { denominations: [] };
+            if (!rpg.currency) rpg.currency = {};
+            const validDenoms = new Set((rpg.currencyConfig.denominations || []).map(d => d.name));
+            for (const c of changes.currency) {
+                const owner = this._resolveRpgOwner(c.owner);
+                if (this.settings?.rpgCurrencyUserOnly && owner !== _mUN) continue;
+                if (!validDenoms.has(c.name)) continue;
+                if (!rpg.currency[owner]) rpg.currency[owner] = {};
+                if (c.isDelta) {
+                    rpg.currency[owner][c.name] = (rpg.currency[owner][c.name] || 0) + c.value;
+                } else {
+                    rpg.currency[owner][c.name] = c.value;
+                }
+            }
+        }
+        // Опорный пункт变更
+        if (changes.baseChanges?.length > 0) {
+            if (!rpg.strongholds) rpg.strongholds = [];
+            for (const bc of changes.baseChanges) {
+                const pathParts = bc.path.split('>').map(s => s.trim()).filter(Boolean);
+                let parentId = null;
+                let targetNode = null;
+                for (const part of pathParts) {
+                    targetNode = rpg.strongholds.find(n => n.name === part && (n.parent || null) === parentId);
+                    if (!targetNode) {
+                        targetNode = { id: 'sh_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: part, level: null, desc: '', parent: parentId };
+                        rpg.strongholds.push(targetNode);
+                    }
+                    parentId = targetNode.id;
+                }
+                if (targetNode) {
+                    if (bc.field === 'level') targetNode.level = typeof bc.value === 'number' ? bc.value : parseInt(bc.value);
+                    else if (bc.field === 'desc') targetNode.desc = String(bc.value);
+                }
+            }
+        }
     }
 
-    /** 从所有消息重建 RPG 全局数据（保留用户手动编辑） */
+    /** Перестроить глобальные RPG-данные из всех сообщений (сохраняя ручные правки) */
     rebuildRpgData() {
         const chat = this.getChat();
         if (!chat?.length) return;
         const first = chat[0];
         if (!first.horae_meta) first.horae_meta = createEmptyMeta();
         const old = first.horae_meta.rpg || {};
-        // 保留用户手动添加的技能
+        // Сохранить навыки, добавленные вручную
         const userSkills = {};
         for (const [owner, arr] of Object.entries(old.skills || {})) {
             const ua = (arr || []).filter(s => s._userAdded);
             if (ua.length) userSkills[owner] = ua;
         }
-        // 保留用户手动删除记录和手动填写的属性
+        // Сохранить записи ручного удаления и ручные атрибуты
         const deletedSkills = old._deletedSkills || [];
         const userAttrs = old.attributes || {};
+        // Сохранить конфигурацию репутации и пользовательские подробности
+        const oldRepConfig = old.reputationConfig || { categories: [], _deletedCategories: [] };
+        const oldReputation = old.reputation ? JSON.parse(JSON.stringify(old.reputation)) : {};
+        // Сохранить конфигурацию экипировки
+        const oldEquipConfig = old.equipmentConfig || { locked: false, perChar: {} };
+        // Сохранить конфигурацию валюты
+        const oldCurrencyConfig = old.currencyConfig || { denominations: [] };
 
-        first.horae_meta.rpg = { bars: {}, status: {}, skills: {}, attributes: { ...userAttrs }, _deletedSkills: deletedSkills };
+        first.horae_meta.rpg = {
+            bars: {}, status: {}, skills: {}, attributes: { ...userAttrs }, _deletedSkills: deletedSkills,
+            reputationConfig: oldRepConfig, reputation: {},
+            equipmentConfig: oldEquipConfig, equipment: {},
+            levels: {}, xp: {},
+            currencyConfig: oldCurrencyConfig, currency: {},
+        };
         for (let i = 1; i < chat.length; i++) {
             const changes = chat[i]?.horae_meta?._rpgChanges;
             if (changes) this._mergeRpgData(changes);
         }
-        // 回填用户手动添加的技能
+        // Восстановить навыки, добавленные вручную
         const rpg = first.horae_meta.rpg;
         for (const [owner, arr] of Object.entries(userSkills)) {
             if (!rpg.skills[owner]) rpg.skills[owner] = [];
@@ -1485,33 +2066,58 @@ class HoraeManager {
                 if (!rpg.skills[owner].some(s => s.name === sk.name)) rpg.skills[owner].push(sk);
             }
         }
-        // 过滤用户手动删除的技能
+        // Отфильтровать навыки, удалённые вручную
         for (const del of deletedSkills) {
             if (rpg.skills[del.owner]) {
                 rpg.skills[del.owner] = rpg.skills[del.owner].filter(s => s.name !== del.name);
                 if (!rpg.skills[del.owner].length) delete rpg.skills[del.owner];
             }
         }
+        // Восстановить подробности репутации (ИИ пишет только основное значение, подробности — чисто пользовательские данные)
+        const deletedRepCats = new Set(rpg.reputationConfig?._deletedCategories || []);
+        const validRepCats = new Set((rpg.reputationConfig?.categories || []).map(c => c.name));
+        for (const [owner, cats] of Object.entries(oldReputation)) {
+            if (!rpg.reputation[owner]) rpg.reputation[owner] = {};
+            for (const [catName, data] of Object.entries(cats)) {
+                if (deletedRepCats.has(catName) || !validRepCats.has(catName)) continue;
+                if (!rpg.reputation[owner][catName]) {
+                    rpg.reputation[owner][catName] = data;
+                } else {
+                    rpg.reputation[owner][catName].subItems = data.subItems || {};
+                }
+            }
+        }
     }
 
-    /** 获取 RPG 全局数据（chat[0] 累积） */
+    /** Получить глобальные RPG-данные (накопленные в chat[0]) */
     getRpgData() {
-        return this.getChat()?.[0]?.horae_meta?.rpg || { bars: {}, status: {}, skills: {}, attributes: {} };
+        return this.getChat()?.[0]?.horae_meta?.rpg || {
+            bars: {}, status: {}, skills: {}, attributes: {},
+            reputation: {}, reputationConfig: { categories: [], _deletedCategories: [] },
+            equipment: {}, equipmentConfig: { locked: false, perChar: {} },
+            levels: {}, xp: {},
+            currency: {}, currencyConfig: { denominations: [] },
+        };
     }
 
     /**
-     * 构建到指定消息位置的 RPG 快照（不修改 chat[0]）
-     * @param {number} skipLast - 跳过末尾N条消息（swipe时=1）
+     * Построить RPG-снимок до указанной позиции сообщения (не изменяя chat[0])
+     * @param {number} skipLast - пропустить N последних сообщений (при swipe=1)
      */
     getRpgStateAt(skipLast = 0) {
         const chat = this.getChat();
-        if (!chat?.length) return { bars: {}, status: {}, skills: {}, attributes: {} };
+        if (!chat?.length) return { bars: {}, status: {}, skills: {}, attributes: {}, reputation: {}, equipment: {}, levels: {}, xp: {}, currency: {} };
         const end = Math.max(1, chat.length - skipLast);
-        const snapshot = { bars: {}, status: {}, skills: {}, attributes: {} };
         const first = chat[0];
         const rpgMeta = first?.horae_meta?.rpg || {};
+        const snapshot = {
+            bars: {}, status: {}, skills: {}, attributes: {}, reputation: {}, equipment: {},
+            levels: JSON.parse(JSON.stringify(rpgMeta.levels || {})),
+            xp: JSON.parse(JSON.stringify(rpgMeta.xp || {})),
+            currency: JSON.parse(JSON.stringify(rpgMeta.currency || {})),
+        };
 
-        // 用户手动编辑的数据
+        // Данные, отредактированные пользователем вручную
         const userSkills = {};
         for (const [owner, arr] of Object.entries(rpgMeta.skills || {})) {
             const ua = (arr || []).filter(s => s._userAdded);
@@ -1523,7 +2129,11 @@ class HoraeManager {
             userAttrs[owner] = { ...vals };
         }
 
-        // 从消息中累积属性（snapshot 是独立对象，不污染 chat[0]）
+        // Конфигурация слотов экипировки (предварительное получение для проверки maxCount в цикле)
+        const _eqCfg = rpgMeta.equipmentConfig || { locked: false, perChar: {} };
+        const _eqPerChar = _eqCfg.perChar || {};
+
+        // Накопить атрибуты из сообщений (snapshot — отдельный объект, не загрязняет chat[0])
         const _resolve = (raw) => this._resolveRpgOwner(raw);
         for (let i = 1; i < end; i++) {
             const changes = chat[i]?.horae_meta?._rpgChanges;
@@ -1558,33 +2168,130 @@ class HoraeManager {
                 const owner = _resolve(raw);
                 snapshot.attributes[owner] = { ...(snapshot.attributes[owner] || {}), ...vals };
             }
+            for (const [raw, cats] of Object.entries(changes.reputation || {})) {
+                const owner = _resolve(raw);
+                if (!snapshot.reputation[owner]) snapshot.reputation[owner] = {};
+                for (const [catName, val] of Object.entries(cats)) {
+                    if (!snapshot.reputation[owner][catName]) {
+                        snapshot.reputation[owner][catName] = { value: val, subItems: {} };
+                    } else {
+                        snapshot.reputation[owner][catName].value = val;
+                    }
+                }
+            }
+            // Экипировка
+            for (const u of (changes.unequip || [])) {
+                const owner = _resolve(u.owner);
+                if (!snapshot.equipment[owner]?.[u.slot]) continue;
+                snapshot.equipment[owner][u.slot] = snapshot.equipment[owner][u.slot].filter(e => e.name !== u.name);
+                if (!snapshot.equipment[owner][u.slot].length) delete snapshot.equipment[owner][u.slot];
+                if (!Object.keys(snapshot.equipment[owner] || {}).length) delete snapshot.equipment[owner];
+            }
+            for (const eq of (changes.equipment || [])) {
+                const owner = _resolve(eq.owner);
+                const ownerCfg = _eqPerChar[owner];
+                const maxCount = (ownerCfg && Array.isArray(ownerCfg.slots))
+                    ? (ownerCfg.slots.find(s => s.name === eq.slot)?.maxCount ?? 1) : 1;
+                if (!snapshot.equipment[owner]) snapshot.equipment[owner] = {};
+                if (!snapshot.equipment[owner][eq.slot]) snapshot.equipment[owner][eq.slot] = [];
+                const idx = snapshot.equipment[owner][eq.slot].findIndex(e => e.name === eq.name);
+                if (idx >= 0) {
+                    snapshot.equipment[owner][eq.slot][idx].attrs = eq.attrs;
+                } else {
+                    while (snapshot.equipment[owner][eq.slot].length >= maxCount) snapshot.equipment[owner][eq.slot].shift();
+                    snapshot.equipment[owner][eq.slot].push({ name: eq.name, attrs: eq.attrs || {} });
+                }
+            }
+            // Уровень/经验
+            for (const [raw, val] of Object.entries(changes.levels || {})) {
+                snapshot.levels[_resolve(raw)] = val;
+            }
+            for (const [raw, val] of Object.entries(changes.xp || {})) {
+                snapshot.xp[_resolve(raw)] = val;
+            }
+            // Валюта（过滤已删除/未注册的币种）
+            const validDenoms = new Set(
+                (rpgMeta.currencyConfig?.denominations || []).map(d => d.name)
+            );
+            for (const c of (changes.currency || [])) {
+                if (validDenoms.size && !validDenoms.has(c.name)) continue;
+                const owner = _resolve(c.owner);
+                if (!snapshot.currency[owner]) snapshot.currency[owner] = {};
+                if (c.isDelta) {
+                    snapshot.currency[owner][c.name] = (snapshot.currency[owner][c.name] || 0) + c.value;
+                } else {
+                    snapshot.currency[owner][c.name] = c.value;
+                }
+            }
         }
 
-        // 合入用户手动属性（AI数据优先覆盖）
+        // Влить ручные атрибуты (данные ИИ имеют приоритет перезаписи)
         for (const [owner, vals] of Object.entries(userAttrs)) {
             if (!snapshot.attributes[owner]) snapshot.attributes[owner] = {};
             for (const [k, v] of Object.entries(vals)) {
                 if (snapshot.attributes[owner][k] === undefined) snapshot.attributes[owner][k] = v;
             }
         }
-        // 回填用户手动技能
+        // Восстановить навыки, добавленные вручную
         for (const [owner, arr] of Object.entries(userSkills)) {
             if (!snapshot.skills[owner]) snapshot.skills[owner] = [];
             for (const sk of arr) {
                 if (!snapshot.skills[owner].some(s => s.name === sk.name)) snapshot.skills[owner].push(sk);
             }
         }
-        // 过滤用户手动删除
+        // Отфильтровать ручные удаления
         for (const del of deletedSkills) {
             if (snapshot.skills[del.owner]) {
                 snapshot.skills[del.owner] = snapshot.skills[del.owner].filter(s => s.name !== del.name);
                 if (!snapshot.skills[del.owner].length) delete snapshot.skills[del.owner];
             }
         }
+        // Репутация: влить пользовательские подробности, отфильтровать удалённые категории
+        const repConfig = rpgMeta.reputationConfig || { categories: [], _deletedCategories: [] };
+        const validRepNames = new Set((repConfig.categories || []).map(c => c.name));
+        const deletedRepNames = new Set(repConfig._deletedCategories || []);
+        const userRep = rpgMeta.reputation || {};
+        for (const [owner, cats] of Object.entries(userRep)) {
+            if (!snapshot.reputation[owner]) snapshot.reputation[owner] = {};
+            for (const [catName, data] of Object.entries(cats)) {
+                if (deletedRepNames.has(catName) || !validRepNames.has(catName)) continue;
+                if (!snapshot.reputation[owner][catName]) {
+                    snapshot.reputation[owner][catName] = { ...data };
+                } else {
+                    snapshot.reputation[owner][catName].subItems = data.subItems || {};
+                }
+            }
+        }
+        // Удалить из снимка удалённые категории репутации
+        for (const [owner, cats] of Object.entries(snapshot.reputation)) {
+            for (const catName of Object.keys(cats)) {
+                if (deletedRepNames.has(catName) || !validRepNames.has(catName)) {
+                    delete cats[catName];
+                }
+            }
+            if (!Object.keys(cats).length) delete snapshot.reputation[owner];
+        }
+        snapshot.reputationConfig = repConfig;
+        // Экипировка：按角色过滤已删除格位
+        for (const [owner, slots] of Object.entries(snapshot.equipment)) {
+            const ownerCfg = _eqPerChar[owner];
+            if (!ownerCfg || !Array.isArray(ownerCfg.slots)) continue;
+            const validEqSlots = new Set(ownerCfg.slots.map(s => s.name));
+            const deletedEqSlots = new Set(ownerCfg._deletedSlots || []);
+            for (const slotName of Object.keys(slots)) {
+                if (deletedEqSlots.has(slotName) || (validEqSlots.size > 0 && !validEqSlots.has(slotName))) {
+                    delete slots[slotName];
+                }
+            }
+            if (!Object.keys(slots).length) delete snapshot.equipment[owner];
+        }
+        snapshot.equipmentConfig = _eqCfg;
+        // Валюта配置
+        snapshot.currencyConfig = rpgMeta.currencyConfig || { denominations: [] };
         return snapshot;
     }
 
-    /** 合并关系数据到 chat[0].horae_meta */
+    /** Объединить данные отношений в chat[0].horae_meta */
     _mergeRelationships(newRels) {
         const chat = this.getChat();
         if (!chat?.length || !newRels?.length) return;
@@ -1604,13 +2311,13 @@ class HoraeManager {
         }
     }
 
-    /** 从所有消息重建 chat[0] 的关系网络（用于编辑/删除后回推） */
+    /** Перестроить сеть отношений chat[0] из всех сообщений (для отката после правок/удаления) */
     rebuildRelationships() {
         const chat = this.getChat();
         if (!chat?.length) return;
         const firstMsg = chat[0];
         if (!firstMsg.horae_meta) firstMsg.horae_meta = createEmptyMeta();
-        // 保留用户手动编辑的关系，其余重建
+        // Сохранить отредактированные вручную связи, остальное перестроить
         const userEdited = (firstMsg.horae_meta.relationships || []).filter(r => r._userEdited);
         firstMsg.horae_meta.relationships = [...userEdited];
         for (let i = 1; i < chat.length; i++) {
@@ -1619,7 +2326,7 @@ class HoraeManager {
         }
     }
 
-    /** 从所有消息重建 chat[0] 的场景记忆（用于编辑/删除/重新生成后回推） */
+    /** Перестроить память о локациях chat[0] из всех сообщений (для отката после правок/удаления/перегенерации) */
     rebuildLocationMemory() {
         const chat = this.getChat();
         if (!chat?.length) return;
@@ -1628,7 +2335,7 @@ class HoraeManager {
         const existing = firstMsg.horae_meta.locationMemory || {};
         const rebuilt = {};
         const deletedNames = new Set();
-        // 保留用户手动创建/编辑的条目，记录已删除的条目
+        // Сохранить созданные/отредактированные вручную записи, отметить удалённые
         for (const [name, info] of Object.entries(existing)) {
             if (info._deleted) {
                 deletedNames.add(name);
@@ -1637,12 +2344,24 @@ class HoraeManager {
             }
             if (info._userEdited) rebuilt[name] = { ...info };
         }
-        // 从消息重放 AI 写入的 scene_desc（按时间顺序，后覆盖前），跳过已删除的
+        // Воспроизвести scene_desc от ИИ из сообщений (хронологически, поздние перезаписывают ранние), пропуская удалённые/отредактированные пользователем
         for (let i = 1; i < chat.length; i++) {
             const meta = chat[i]?.horae_meta;
-            if (meta?.scene?.scene_desc && meta?.scene?.location) {
+            const pairs = meta?.scene?._descPairs;
+            if (pairs?.length > 0) {
+                for (const p of pairs) {
+                    if (deletedNames.has(p.location)) continue;
+                    if (rebuilt[p.location]?._userEdited) continue;
+                    rebuilt[p.location] = {
+                        desc: p.desc,
+                        firstSeen: rebuilt[p.location]?.firstSeen || new Date().toISOString(),
+                        lastUpdated: new Date().toISOString()
+                    };
+                }
+            } else if (meta?.scene?.scene_desc && meta?.scene?.location) {
                 const loc = meta.scene.location;
                 if (deletedNames.has(loc)) continue;
+                if (rebuilt[loc]?._userEdited) continue;
                 rebuilt[loc] = {
                     desc: meta.scene.scene_desc,
                     firstSeen: rebuilt[loc]?.firstSeen || new Date().toISOString(),
@@ -1658,7 +2377,7 @@ class HoraeManager {
         return chat?.[0]?.horae_meta?.relationships || [];
     }
 
-    /** 设置关系网络（用户手动编辑时） */
+    /** Установить сеть отношений (при ручном редактировании) */
     setRelationships(relationships) {
         const chat = this.getChat();
         if (!chat?.length) return;
@@ -1667,7 +2386,7 @@ class HoraeManager {
         firstMsg.horae_meta.relationships = relationships;
     }
 
-    /** 获取指定角色相关的关系（无在场角色时返回空数组） */
+    /** Получить связи указанных персонажей (пустой массив, если нет присутствующих) */
     getRelationshipsForCharacters(charNames) {
         if (!charNames?.length) return [];
         const rels = this.getRelationships();
@@ -1675,14 +2394,14 @@ class HoraeManager {
         return rels.filter(r => nameSet.has(r.from) || nameSet.has(r.to));
     }
 
-    /** 全局删除已完成的待办事项 */
+    /** Глобально удалить выполненные задачи */
     removeCompletedAgenda(deletedTexts) {
         const chat = this.getChat();
         if (!chat || deletedTexts.length === 0) return;
 
         const isMatch = (agendaText, deleteText) => {
             if (!agendaText || !deleteText) return false;
-            // 精确匹配 或 互相包含（允许AI缩写/扩写）
+            // Точное совпадение или взаимное содержание (допускается сокращение/расширение ИИ)
             return agendaText === deleteText ||
                    agendaText.includes(deleteText) ||
                    deleteText.includes(agendaText);
@@ -1703,7 +2422,7 @@ class HoraeManager {
         }
     }
 
-    /** 写入/更新场景记忆到 chat[0] */
+    /** Записать/обновить память о локации в chat[0] */
     _updateLocationMemory(locationName, desc) {
         const chat = this.getChat();
         if (!chat?.length || !locationName || !desc) return;
@@ -1713,7 +2432,7 @@ class HoraeManager {
         const mem = firstMsg.horae_meta.locationMemory;
         const now = new Date().toISOString();
 
-        // 子级地点去重：若子级描述的"位于"部分重复了父级的地理信息，则自动缩减
+        // Дедупликация дочерних мест: если «位于»-часть дочернего описания дублирует географию родителя, автоматически сокращается
         const sepMatch = locationName.match(/[·・\-\/\|]/);
         if (sepMatch) {
             const parentName = locationName.substring(0, sepMatch.index).trim();
@@ -1730,7 +2449,7 @@ class HoraeManager {
         } else {
             mem[locationName] = { desc, firstSeen: now, lastUpdated: now };
         }
-        console.log(`[Horae] 场景记忆已更新: ${locationName}`);
+        console.log(`[Horae] Память о локации обновлена: ${locationName}`);
     }
 
     /**
@@ -1738,11 +2457,11 @@ class HoraeManager {
      */
     _deduplicateChildDesc(childDesc, parentDesc, parentName) {
         if (!childDesc || !parentDesc) return childDesc;
-        // 提取父级的"位于"部分
+        // Извлечь «位于»-часть родителя
         const parentLocMatch = parentDesc.match(/^位于(.+?)[。\.]/);
         if (!parentLocMatch) return childDesc;
         const parentLocInfo = parentLocMatch[1].trim();
-        // 若子级描述也包含父级的地理位置关键词（超过一半的字重合），则认为冗余
+        // Если дочернее описание содержит ключевые слова географии родителя (>50% совпадений), считается избыточным
         const parentKeywords = parentLocInfo.replace(/[，,、的]/g, ' ').split(/\s+/).filter(k => k.length >= 2);
         if (parentKeywords.length === 0) return childDesc;
         const childLocMatch = childDesc.match(/^位于(.+?)[。\.]/);
@@ -1752,7 +2471,7 @@ class HoraeManager {
         for (const kw of parentKeywords) {
             if (childLocInfo.includes(kw)) matchCount++;
         }
-        // 超过一半关键词重合，判定子级抄了父级地理位置
+        // >50% совпадений ключевых слов — дочернее скопировало географию родителя
         if (matchCount >= Math.ceil(parentKeywords.length / 2)) {
             const shortName = parentName.length > 4 ? parentName.substring(0, 4) + '…' : parentName;
             const restDesc = childDesc.substring(childLocMatch[0].length).trim();
@@ -1761,15 +2480,15 @@ class HoraeManager {
         return childDesc;
     }
 
-    /** 获取场景记忆 */
+    /** Получить память о локациях */
     getLocationMemory() {
         const chat = this.getChat();
         return chat?.[0]?.horae_meta?.locationMemory || {};
     }
 
     /**
-     * 智能匹配场景记忆（复合地名支持）
-     * 优先级：精确匹配 → 拆分回退父级 → 上下文推断 → 放弃
+     * Умное сопоставление памяти о локациях (поддержка составных названий)
+     * Приоритет: точное совпадение → откат к родителю → контекстный вывод → отказ
      */
     _findLocationMemory(currentLocation, locMem, previousLocation = '') {
         if (!currentLocation || !locMem || Object.keys(locMem).length === 0) return null;
@@ -1778,7 +2497,7 @@ class HoraeManager {
 
         if (locMem[currentLocation]) return tag(currentLocation);
 
-        // 曾用名匹配：检查所有条目的 _aliases 数组
+        // Сопоставление по прежним именам: проверить массив _aliases всех записей
         for (const [name, info] of Object.entries(locMem)) {
             if (info._aliases?.includes(currentLocation)) return tag(name);
         }
@@ -1810,8 +2529,8 @@ class HoraeManager {
     }
 
     /**
-     * 获取全局表格的当前卡片数据（per-card overlay）
-     * 全局表格的结构（表头、名称、提示词、锁定）共享，数据按角色卡分离
+     * Получить данные текущей карточки для глобальных таблиц (per-card overlay)
+     * Структура глобальных таблиц (заголовки, названия, промпты, блокировки) общая, данные разделены по карточкам персонажей
      */
     _getResolvedGlobalTables() {
         const templates = this.settings?.globalTables || [];
@@ -1829,7 +2548,7 @@ class HoraeManager {
             if (!name) continue;
 
             if (!perCardData[name]) {
-                // 首次在此卡使用：从模板初始化（含迁移旧数据）
+                // Первое использование на этой карточке: инициализация из шаблона (с миграцией старых данных)
                 const initData = JSON.parse(JSON.stringify(template.data || {}));
                 perCardData[name] = {
                     data: initData,
@@ -1840,7 +2559,7 @@ class HoraeManager {
                     baseCols: template.cols || 2,
                 };
             } else {
-                // 同步全局模板的表头到 per-card（用户可能在别处改了表头）
+                // Синхронизировать заголовки глобального шаблона в per-card (пользователь мог изменить заголовки в другом месте)
                 const templateData = template.data || {};
                 for (const key of Object.keys(templateData)) {
                     const [r, c] = key.split('-').map(Number);
@@ -1868,15 +2587,17 @@ class HoraeManager {
         return result;
     }
 
-    /** 处理AI回复，解析标签并存储元数据 */
+    /** Обработать ответ ИИ, разобрать теги и сохранить метаданные */
     processAIResponse(messageIndex, messageContent) {
-        let parsed = this.parseHoraeTag(messageContent);
+        // По настройкам пользователя удалять блоки пользовательских тегов целиком, чтобы horae-теги внутри них не загрязняли парсинг
+        const cleanedContent = this._stripCustomTags(messageContent, this.settings?.vectorStripTags);
+        let parsed = this.parseHoraeTag(cleanedContent);
         
-        // 标签解析失败时，自动 fallback 到宽松格式解析
+        // При неудаче парсинга тегов автоматический fallback на нестрогий формат
         if (!parsed) {
-            parsed = this.parseLooseFormat(messageContent);
+            parsed = this.parseLooseFormat(cleanedContent);
             if (parsed) {
-                console.log(`[Horae] #${messageIndex} 未检测到标签，已通过宽松解析提取数据`);
+                console.log(`[Horae] #${messageIndex} Теги не обнаружены, данные извлечены нестрогим парсингом`);
             }
         }
         
@@ -1884,21 +2605,26 @@ class HoraeManager {
             const existingMeta = this.getMessageMeta(messageIndex);
             const newMeta = this.mergeParsedToMeta(existingMeta, parsed);
             
-            // 处理表格更新
+            // Обработка обновлений таблиц
             if (newMeta._tableUpdates) {
-                // 记录表格贡献，用于回退
+                // Записать вклад таблицы для возможности отката
                 newMeta.tableContributions = newMeta._tableUpdates;
                 this.applyTableUpdates(newMeta._tableUpdates);
                 delete newMeta._tableUpdates;
             }
             
-            // 处理AI标记已完成的待办
+            // Обработка задач, отмеченных ИИ как выполненные
             if (parsed.deletedAgenda && parsed.deletedAgenda.length > 0) {
                 this.removeCompletedAgenda(parsed.deletedAgenda);
             }
 
-            // 场景记忆：将 scene_desc 存入 locationMemory
-            if (parsed.scene?.scene_desc && parsed.scene?.location) {
+            // Сцена记忆：将 scene_desc 存入 locationMemory（支持同一回复多场景配对）
+            const descPairs = parsed.scene?._descPairs;
+            if (descPairs?.length > 0) {
+                for (const p of descPairs) {
+                    this._updateLocationMemory(p.location, p.desc);
+                }
+            } else if (parsed.scene?.scene_desc && parsed.scene?.location) {
                 this._updateLocationMemory(parsed.scene.location, parsed.scene.scene_desc);
             }
             
@@ -1949,6 +2675,7 @@ class HoraeManager {
             else if (/^(年龄|age|年纪)$/i.test(key)) info.age = value;
             else if (/^(种族|race|族裔|族群)$/i.test(key)) info.race = value;
             else if (/^(职业|job|class|职务|身份)$/i.test(key)) info.job = value;
+            else if (/^(生日|birthday|birth)$/i.test(key)) info.birthday = value;
             else if (/^(补充|note|备注|其他)$/i.test(key)) info.note = value;
         }
         
@@ -2371,7 +3098,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
   用完：item-:陈酿麦酒
 
 ═══ 【NPC】触发条件与规则 ═══
-格式：npc:名|外貌=性格@与${userName}的关系~性别:值~年龄:值~种族:值~职业:值
+格式：npc:名|外貌=性格@与${userName}的关系~性别:值~年龄:值~种族:值~职业:值~生日:值
 分隔符：| 分名字，= 分外貌与性格，@ 分关系，~ 分扩展字段(key:value)
 
 【何时写】（满足任一条件才输出该NPC的npc:行）
@@ -2395,6 +3122,11 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
   只更新性格：npc:沃尔|=不再沉默/偶尔微笑
   只改职业：npc:沃尔|~职业:退役佣兵
 （注意：未变化的字段和~扩展字段完全不写！系统自动保留原有数据！）
+
+【生日字段（可选扩展字段）】
+  格式：~生日:yyyy/mm/dd 或 ~生日:mm/dd（无年份时仅写月日）
+  ⚠ 仅当角色设定/人物描述中明确提及生日日期时才写！严禁猜测或捏造！
+  ⚠ 没有明确出处的生日一律不写此字段——留空由用户自行填写。
 
 【关系描述规范】
   必须包含对象名且准确：❌客人 ✅${userName}的新访客 / ❌债主 ✅持有${userName}欠条的人 / ❌房东 ✅${userName}的房东 / ❌男朋友 ✅${userName}的男朋友 / ❌恩人 ✅救了${userName}一命的人 / ❌霸凌者 ✅欺负${userName}的人 / ❌暗恋者 ✅暗恋${userName}的人 / ❌仇人 ✅被${userName}杀掉了生父
@@ -2442,7 +3174,7 @@ ${this._generateMustTagsReminder()}
   ✅ event: ← 重要程度|事件摘要
 
 【NPC首次登场时额外必写——缺一不可！】
-  ✅ npc:名|外貌=性格@关系~性别:值~年龄:值~种族:值~职业:值
+  ✅ npc:名|外貌=性格@关系~性别:值~年龄:值~种族:值~职业:值~生日:值(仅已知时写，未知不写)
   ✅ affection:该NPC名=初始好感度（陌生0-20/熟人30-50/朋友50-70/恋人70-90）
 
 以上字段不存在"可写可不写"的情况——它们是强制性的。
@@ -2523,7 +3255,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
   用完：item-:陈酿麦酒
 
 ═══ 【NPC】触发条件与规则 ═══
-格式：npc:名|外貌=性格@与{{user}}的关系~性别:值~年龄:值~种族:值~职业:值
+格式：npc:名|外貌=性格@与{{user}}的关系~性别:值~年龄:值~种族:值~职业:值~生日:值
 分隔符：| 分名字，= 分外貌与性格，@ 分关系，~ 分扩展字段(key:value)
 
 【何时写】（满足任一条件才输出该NPC的npc:行）
@@ -2547,6 +3279,11 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
   只更新性格：npc:沃尔|=不再沉默/偶尔微笑
   只改职业：npc:沃尔|~职业:退役佣兵
 （注意：未变化的字段和~扩展字段完全不写！系统自动保留原有数据！）
+
+【生日字段（可选扩展字段）】
+  格式：~生日:yyyy/mm/dd 或 ~生日:mm/dd（无年份时仅写月日）
+  ⚠ 仅当角色设定/人物描述中明确提及生日日期时才写！严禁猜测或捏造！
+  ⚠ 没有明确出处的生日一律不写此字段——留空由用户自行填写。
 
 【关系描述规范】
   必须包含对象名且准确：❌客人 ✅{{user}}的新访客 / ❌债主 ✅持有{{user}}欠条的人 / ❌房东 ✅{{user}}的房东 / ❌男朋友 ✅{{user}}的男朋友 / ❌恩人 ✅救了{{user}}一命的人 / ❌霸凌者 ✅欺负{{user}}的人 / ❌暗恋者 ✅暗恋{{user}}的人 / ❌仇人 ✅被{{user}}杀掉了生父
@@ -2595,7 +3332,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
   ✅ event: ← 重要程度|事件摘要
 
 【NPC首次登场时额外必写——缺一不可！】
-  ✅ npc:名|外貌=性格@关系~性别:值~年龄:值~种族:值~职业:值
+  ✅ npc:名|外貌=性格@关系~性别:值~年龄:值~种族:值~职业:值~生日:值(仅已知时写，未知不写)
   ✅ affection:该NPC名=初始好感度（陌生0-20/熟人30-50/朋友50-70/恋人70-90）
 
 以上字段不存在"可写可不写"的情况——它们是强制性的。`;
@@ -2670,7 +3407,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
 
         // 为每个表格生成带坐标的示例
         for (const table of allTables) {
-            const tableName = table.name || '自定义表格';
+            const tableName = table.name || 'Пользовательская таблица';
             const rows = table.rows || 2;
             const cols = table.cols || 2;
             prompt += `\n★ 表格「${tableName}」尺寸：${rows - 1}行×${cols - 1}列（数据区行号1-${rows - 1}，列号1-${cols - 1}）`;
@@ -2781,47 +3518,210 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
         const sendBars = this.settings?.sendRpgBars !== false;
         const sendSkills = this.settings?.sendRpgSkills !== false;
         const sendAttrs = this.settings?.sendRpgAttributes !== false;
-        if (!sendBars && !sendSkills && !sendAttrs) return '';
+        const sendEq = !!this.settings?.sendRpgEquipment;
+        const sendRep = !!this.settings?.sendRpgReputation;
+        const sendLvl = !!this.settings?.sendRpgLevel;
+        const sendCur = !!this.settings?.sendRpgCurrency;
+        const sendSh = !!this.settings?.sendRpgStronghold;
+        if (!sendBars && !sendSkills && !sendAttrs && !sendEq && !sendRep && !sendLvl && !sendCur && !sendSh) return '';
         const userName = this.context?.name1 || '主角';
+        const uoBars = !!this.settings?.rpgBarsUserOnly;
+        const uoSkills = !!this.settings?.rpgSkillsUserOnly;
+        const uoAttrs = !!this.settings?.rpgAttrsUserOnly;
+        const uoEq = !!this.settings?.rpgEquipmentUserOnly;
+        const uoRep = !!this.settings?.rpgReputationUserOnly;
+        const uoLvl = !!this.settings?.rpgLevelUserOnly;
+        const uoCur = !!this.settings?.rpgCurrencyUserOnly;
+        const anyUo = uoBars || uoSkills || uoAttrs || uoEq || uoRep || uoLvl || uoCur;
+        const allUo = uoBars && uoSkills && uoAttrs && uoEq && uoRep && uoLvl && uoCur;
         const barCfg = this.settings?.rpgBarConfig || [
             { key: 'hp', name: 'HP' }, { key: 'mp', name: 'MP' }, { key: 'sp', name: 'SP' }
         ];
         const attrCfg = this.settings?.rpgAttributeConfig || [];
-        let p = `═══ 【RPG】 ═══\n你的回复末尾必须包含<horaerpg>标签。归属格式同NPC编号：N编号 全名，${userName}直接写名字不加N。\n`;
+        let p = `═══ 【RPG】 ═══\n你的回复末尾必须包含<horaerpg>标签。`;
+        if (allUo) {
+            p += `所有RPG数据仅追踪${userName}一人，格式中不含归属字段。禁止为NPC输出任何RPG行。\n`;
+        } else if (anyUo) {
+            p += `归属格式同NPC编号：N编号 全名，${userName}直接写名字不加N。部分模块仅追踪${userName}（以下会标注）。\n`;
+        } else {
+            p += `归属格式同NPC编号：N编号 全名，${userName}直接写名字不加N。\n`;
+        }
         if (sendBars) {
             p += `\n【属性条——每回合必写，缺少=不合格！】\n`;
-            p += `必须为 characters: 中每个在场角色输出全部属性条和状态：\n`;
-            for (const bar of barCfg) {
-                if (bar.key === 'hp') {
-                    p += `  ✅ hp:归属=当前/最大\n`;
-                } else {
+            if (uoBars) {
+                p += `仅输出${userName}的属性条和状态：\n`;
+                for (const bar of barCfg) {
+                    p += `  ✅ ${bar.key}:当前/最大(${bar.name})  ← 首次必须标注显示名\n`;
+                }
+                p += `  ✅ status:效果1/效果2  ← 无异常写 正常\n`;
+            } else {
+                p += `必须为 characters: 中每个在场角色输出全部属性条和状态：\n`;
+                for (const bar of barCfg) {
                     p += `  ✅ ${bar.key}:归属=当前/最大(${bar.name})  ← 首次必须标注显示名\n`;
                 }
+                p += `  ✅ status:归属=效果1/效果2  ← 无异常写 =正常\n`;
             }
-            p += `  ✅ status:归属=效果1/效果2  ← 无异常写 =正常\n`;
             p += `规则：\n`;
             p += `  - 战斗/受伤/施法/消耗 → 合理扣减；恢复/休息 → 合理回增\n`;
-            p += `  - 每个在场角色的每个属性条都必须写，漏写任何一人=不合格\n`;
+            if (!uoBars) {
+                p += `  - 每个在场角色的每个属性条都必须写，漏写任何一人=不合格\n`;
+            }
             p += `  - 即使本回合数值无变化，也必须写出当前值\n`;
         }
         if (sendAttrs && attrCfg.length > 0) {
             p += `\n【多维属性】仅首次登场或属性变化时写，无变化可省略\n`;
-            p += `  attr:归属|${attrCfg.map(a => `${a.key}=数值`).join('|')}\n`;
+            if (uoAttrs) {
+                p += `  attr:${attrCfg.map(a => `${a.key}=数值`).join('|')}\n`;
+            } else {
+                p += `  attr:归属|${attrCfg.map(a => `${a.key}=数值`).join('|')}\n`;
+            }
             p += `  数值范围0-100。属性含义：${attrCfg.map(a => `${a.key}(${a.name})`).join('、')}\n`;
         }
         if (sendSkills) {
             p += `\n【技能】仅习得/升级/失去时写，无变化可省略\n`;
-            p += `  skill:归属|技能名|等级|效果描述\n`;
-            p += `  skill-:归属|技能名\n`;
+            if (uoSkills) {
+                p += `  skill:技能名|等级|效果描述\n`;
+                p += `  skill-:技能名\n`;
+            } else {
+                p += `  skill:归属|技能名|等级|效果描述\n`;
+                p += `  skill-:归属|技能名\n`;
+            }
+        }
+        if (sendEq) {
+            const eqCfg = this._getRpgEquipmentConfig();
+            const perChar = eqCfg.perChar || {};
+            const present = new Set(this.getLatestState()?.scene?.characters_present || []);
+            const hasAnySlots = Object.values(perChar).some(c => c.slots?.length > 0);
+            if (hasAnySlots) {
+                p += `\n【装备】角色穿戴/卸下装备时写，无变化可省略\n`;
+                if (uoEq) {
+                    p += `  equip:格位名|装备名|属性1=值,属性2=值\n`;
+                    p += `  unequip:格位名|装备名\n`;
+                    const userCfg = perChar[userName];
+                    if (userCfg?.slots?.length) {
+                        const slotNames = userCfg.slots.map(s => `${s.name}(×${s.maxCount ?? 1})`).join('、');
+                        p += `  格位: ${slotNames}\n`;
+                    }
+                } else {
+                    p += `  equip:归属|格位名|装备名|属性1=值,属性2=值\n`;
+                    p += `  unequip:归属|格位名|装备名\n`;
+                    for (const [owner, cfg] of Object.entries(perChar)) {
+                        if (!cfg.slots?.length) continue;
+                        if (present.size > 0 && !present.has(owner)) continue;
+                        const slotNames = cfg.slots.map(s => `${s.name}(×${s.maxCount ?? 1})`).join('、');
+                        p += `  ${owner} 格位: ${slotNames}\n`;
+                    }
+                }
+                p += `  ⚠ 每个角色只能使用其已注册的格位。属性值为整数。\n`;
+                p += `  ⚠ 普通衣物非赋魔或特殊材料不应有高属性值。\n`;
+            }
+        }
+        if (sendRep) {
+            const repConfig = this._getRpgReputationConfig();
+            if (repConfig.categories.length > 0) {
+                const catNames = repConfig.categories.map(c => c.name).join('、');
+                p += `\n【声望】仅声望变化时写，无变化可省略\n`;
+                if (uoRep) {
+                    p += `  rep:声望分类名=当前值\n`;
+                } else {
+                    p += `  rep:归属|声望分类名=当前值\n`;
+                }
+                p += `  已注册的声望分类: ${catNames}\n`;
+                p += `  ⚠ 禁止创造新的声望分类。只允许使用上述已注册的分类名。\n`;
+            }
+        }
+        if (sendLvl) {
+            p += `\n【等级与经验值】仅升级/降级或经验变化时写，无变化可省略\n`;
+            if (uoLvl) {
+                p += `  level:等级数值\n`;
+                p += `  xp:当前经验/升级所需\n`;
+            } else {
+                p += `  level:归属=等级数值\n`;
+                p += `  xp:归属=当前经验/升级所需\n`;
+            }
+            p += `  经验值获取参考：\n`;
+            p += `  - 与角色等级相近或更强的挑战：获得较多经验(10~50+)\n`;
+            p += `  - 等级差 ≥10 的低级挑战：仅得 1 点经验\n`;
+            p += `  - 日常活动/对话/探索：少量经验(1~5)\n`;
+            p += `  - 升级所需经验随等级递增：建议 升级所需 = 等级 × 100\n`;
+        }
+        if (sendCur) {
+            const curConfig = this._getRpgCurrencyConfig();
+            if (curConfig.denominations.length > 0) {
+                const denomNames = curConfig.denominations.map(d => d.name).join('、');
+                p += `\n【货币——发生交易/拾取/消费时必写！】\n`;
+                if (uoCur) {
+                    p += `格式: currency:币名=±变化量\n`;
+                    p += `示例:\n`;
+                    p += `  currency:${curConfig.denominations[0].name}=+10\n`;
+                    p += `  currency:${curConfig.denominations[0].name}=-3\n`;
+                    if (curConfig.denominations.length > 1) {
+                        p += `  currency:${curConfig.denominations[1].name}=+50\n`;
+                    }
+                    p += `也可写绝对值: currency:币名=数量\n`;
+                } else {
+                    p += `格式: currency:归属|币名=±变化量\n`;
+                    p += `示例:\n`;
+                    p += `  currency:${userName}|${curConfig.denominations[0].name}=+10\n`;
+                    p += `  currency:${userName}|${curConfig.denominations[0].name}=-3\n`;
+                    if (curConfig.denominations.length > 1) {
+                        p += `  currency:${userName}|${curConfig.denominations[1].name}=+50\n`;
+                    }
+                    p += `也可写绝对值: currency:归属|币名=数量\n`;
+                }
+                p += `已注册币种: ${denomNames}\n`;
+                p += `⚠ 禁止使用未注册的币种名。任何涉及金钱的行为（买卖/拾取/奖赏/偷窃）都必须写 currency 行。\n`;
+            }
+        }
+        if (!!this.settings?.sendRpgStronghold) {
+            const rpg = this.getChat()?.[0]?.horae_meta?.rpg;
+            const nodes = rpg?.strongholds || [];
+            p += `\n【据点/基地】据点状态变化时写（升级/建造/损毁/描述变更），无变化可省略\n`;
+            p += `格式: base:据点路径=等级 或 base:据点路径|desc=描述\n`;
+            p += `路径用 > 分隔层级\n`;
+            p += `示例:\n`;
+            p += `  base:主角庄园=3\n`;
+            p += `  base:主角庄园>锻造区>锻造炉=2\n`;
+            p += `  base:主角庄园|desc=坐落于河谷的石砌庄园，配有围墙和瞭望塔\n`;
+            if (nodes.length > 0) {
+                const rootNodes = nodes.filter(n => !n.parent);
+                const summary = rootNodes.map(r => {
+                    const kids = nodes.filter(n => n.parent === r.id);
+                    const kidStr = kids.length > 0 ? `(${kids.map(k => k.name).join('、')})` : '';
+                    return `${r.name}${r.level != null ? ' Lv.' + r.level : ''}${kidStr}`;
+                }).join('；');
+                p += `当前据点: ${summary}\n`;
+            }
         }
         return p;
+    }
+
+    /** 获取当前对话的装备配置 */
+    _getRpgEquipmentConfig() {
+        const rpg = this.getChat()?.[0]?.horae_meta?.rpg;
+        return rpg?.equipmentConfig || { locked: false, perChar: {} };
+    }
+
+    /** 获取当前对话的声望配置 */
+    _getRpgReputationConfig() {
+        const rpg = this.getChat()?.[0]?.horae_meta?.rpg;
+        return rpg?.reputationConfig || { categories: [], _deletedCategories: [] };
+    }
+
+    /** 获取当前对话的货币配置 */
+    _getRpgCurrencyConfig() {
+        const rpg = this.getChat()?.[0]?.horae_meta?.rpg;
+        return rpg?.currencyConfig || { denominations: [] };
     }
 
     /** 动态生成必须包含的标签提醒（RPG 开启时追加 <horaerpg>） */
     _generateMustTagsReminder() {
         const tags = ['<horae>...</horae>', '<horaeevent>...</horaeevent>'];
         const rpgActive = this.settings?.rpgMode &&
-            (this.settings.sendRpgBars !== false || this.settings.sendRpgSkills !== false || this.settings.sendRpgAttributes !== false);
+            (this.settings.sendRpgBars !== false || this.settings.sendRpgSkills !== false ||
+             this.settings.sendRpgAttributes !== false || !!this.settings.sendRpgReputation ||
+             !!this.settings.sendRpgEquipment || !!this.settings.sendRpgLevel || !!this.settings.sendRpgCurrency ||
+             !!this.settings.sendRpgStronghold);
         if (rpgActive) tags.push('<horaerpg>...</horaerpg>');
         const count = tags.length === 2 ? '两个' : `${tags.length}个`;
         return `你的回复末尾必须包含 ${tags.join(' 和 ')} ${count}标签。\n缺少任何一个标签=不合格。`;
@@ -2838,7 +3738,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
             affection: {},
             npcs: {},
             scene: {},
-            agenda: [],   // 待办事项
+            agenda: [],   // Задачи
             deletedAgenda: []  // 已完成的待办事项
         };
 
@@ -2933,7 +3833,7 @@ event:重要程度|事件简述（30-50字，重要程度：一般/重要/关键
                     itemName = itemName.substring(0, pipeIdx).trim();
                 }
                 
-                // 去掉无意义的数量标记
+                // Удалить бессмысленные метки количества
                 itemName = itemName.replace(/[\(（]1[\)）]$/, '').trim();
                 itemName = itemName.replace(new RegExp(`[\\(（]1[${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();
                 itemName = itemName.replace(new RegExp(`[\\(（][${COUNTING_CLASSIFIERS}][\\)）]$`), '').trim();

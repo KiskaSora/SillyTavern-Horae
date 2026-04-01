@@ -1,6 +1,6 @@
 /**
  * Horae - Embedding Web Worker
- * 使用 Transformers.js 在后台线程进行文本向量化
+ * Векторизация текста в фоновом потоке с помощью Transformers.js
  */
 
 let pipeline = null;
@@ -33,7 +33,7 @@ self.onmessage = async (e) => {
 
             case 'embed': {
                 if (!extractor) {
-                    self.postMessage({ type: 'error', id, message: '模型未初始化' });
+                    self.postMessage({ type: 'error', id, message: 'Модель не инициализирована' });
                     return;
                 }
                 const texts = data.texts;

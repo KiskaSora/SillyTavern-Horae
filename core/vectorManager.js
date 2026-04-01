@@ -1,8 +1,8 @@
 /**
- * Horae - 向量记忆管理器
- * 基于 Transformers.js 的本地向量检索系统
+ * Horae — Менеджер векторной памяти
+ * Локальная система векторного поиска на основе Transformers.js
  *
- * 数据按 chatId 隔离，向量存 IndexedDB，轻量索引存 chat[0].horae_meta.vectorIndex
+ * Данные изолированы по chatId, векторы в IndexedDB, лёгкий индекс в chat[0].horae_meta.vectorIndex
  */
 
 import { calculateDetailedRelativeTime } from '../utils/timeUtils.js';
@@ -56,7 +56,7 @@ export class VectorManager {
     }
 
     // ========================================
-    // 生命周期
+    // Жизненный цикл
     // ========================================
 
     async initModel(model, dtype, onProgress) {
@@ -72,7 +72,7 @@ export class VectorManager {
             this.worker = new Worker(workerUrl, { type: 'module' });
 
             await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error('模型加载超时（5分钟）')), 300000);
+                const timeout = setTimeout(() => reject(new Error('Таймаут загрузки модели (5 минут)')), 300000);
 
                 this.worker.onmessage = (e) => {
                     const { type, data, dimensions: dims } = e.data;
@@ -97,7 +97,7 @@ export class VectorManager {
 
                 this.worker.onerror = (err) => {
                     clearTimeout(timeout);
-                    reject(new Error(err.message || 'Worker 加载失败'));
+                    reject(new Error(err.message || 'Ошибка загрузки Worker'));
                 };
 
                 this.worker.postMessage({ type: 'init', data: { model, dtype: dtype || 'q8' } });
@@ -115,14 +115,14 @@ export class VectorManager {
                 }
             };
 
-            console.log(`[Horae Vector] 模型已加载: ${model} (${this.dimensions}维)`);
+            console.log(`[Horae Vector] Модель загружена: ${model} (${this.dimensions}D)`);
         } finally {
             this.isLoading = false;
         }
     }
 
     /**
-     * 初始化 API 模式（OpenAI 兼容的 embedding endpoint）
+     * Инициализация API-режима (OpenAI-совместимый embedding endpoint)
      */
     async initApi(url, key, model) {
         if (this.isLoading) return;
@@ -141,11 +141,11 @@ export class VectorManager {
             // 探测维度：发一条测试文本
             const testResult = await this._embedApi(['test']);
             if (!testResult?.vectors?.[0]) {
-                throw new Error('API 连接失败或返回格式异常，请检查地址、密钥和模型名称是否正确');
+                throw new Error('Ошибка подключения API или неверный формат ответа. Проверьте адрес, ключ и название модели');
             }
             this.dimensions = testResult.vectors[0].length;
             this.isReady = true;
-            console.log(`[Horae Vector] API 模式已就绪: ${model} (${this.dimensions}维)`);
+            console.log(`[Horae Vector] API-режим готов: ${model} (${this.dimensions}D)`);
         } finally {
             this.isLoading = false;
         }
@@ -177,7 +177,7 @@ export class VectorManager {
     }
 
     /**
-     * 切换聊天：加载对应 chatId 的向量索引
+     * Переключение чата: загрузить векторный индекс для chatId
      */
     async loadChat(chatId, chat) {
         this.chatId = chatId;
@@ -190,7 +190,17 @@ export class VectorManager {
         try {
             await this._openDB();
             const stored = await this._loadAllVectors();
+            const staleKeys = [];
             for (const item of stored) {
+                if (item.messageIndex >= chat.length) {
+                    staleKeys.push(item.messageIndex);
+                    continue;
+                }
+                const doc = this.buildVectorDocument(chat[item.messageIndex]?.horae_meta);
+                if (doc && this._hashString(doc) !== item.hash) {
+                    staleKeys.push(item.messageIndex);
+                    continue;
+                }
                 this.vectors.set(item.messageIndex, {
                     vector: item.vector,
                     hash: item.hash,
@@ -199,20 +209,24 @@ export class VectorManager {
                 this._updateTermCounts(item.document, 1);
                 this.totalDocuments++;
             }
-            console.log(`[Horae Vector] 已加载 ${this.vectors.size} 条向量 (chatId: ${chatId})`);
+            if (staleKeys.length > 0) {
+                for (const idx of staleKeys) await this._deleteVector(idx);
+                console.log(`[Horae Vector] Очищено ${staleKeys.length} устаревших/вне ветки векторов`);
+            }
+            console.log(`[Horae Vector] Загружено ${this.vectors.size} векторов (chatId: ${chatId})`);
         } catch (err) {
-            console.warn('[Horae Vector] 加载向量索引失败:', err);
+            console.warn('[Horae Vector] Ошибка загрузки векторного индекса:', err);
         }
     }
 
     // ========================================
-    // 文档构建
+    // Построение документов
     // ========================================
 
     /**
-     * 将 horae_meta 序列化为检索文本
-     * 事件摘要为核心（占主要权重），场景/角色/NPC 为辅
-     * 去掉物品、服装、心情等噪音，让 embedding 集中在语义关键内容
+     * Сериализовать horae_meta в текст для поиска
+     * Сводки событий — основа (максимальный вес), сцена/персонажи/NPC — вспомогательные
+     * Убрать шум от предметов, одежды, настроения, чтобы embedding фокусировался на семантически важном
      */
     buildVectorDocument(meta) {
         if (!meta) return '';
@@ -254,15 +268,35 @@ export class VectorManager {
                 : meta.timestamp.story_date);
         }
 
+        // RPG milestones: level changes, equipment events, stronghold changes
+        const rpg = meta._rpgChanges;
+        if (rpg) {
+            if (rpg.levels && Object.keys(rpg.levels).length > 0) {
+                for (const [owner, lv] of Object.entries(rpg.levels)) {
+                    parts.push(`${owner} повысил уровень до Lv.${lv}`);
+                }
+            }
+            for (const eq of (rpg.equipment || [])) {
+                parts.push(`${eq.owner} экипировал ${eq.name}(${eq.slot})`);
+            }
+            for (const u of (rpg.unequip || [])) {
+                parts.push(`${u.owner} снял ${u.name}(${u.slot})`);
+            }
+            for (const bc of (rpg.baseChanges || [])) {
+                if (bc.field === 'level') parts.push(`Опорный пункт ${bc.path} повышен до Lv.${bc.value}`);
+            }
+        }
+
         return parts.join(' | ');
     }
 
     // ========================================
-    // 索引操作
+    // Операции с индексом
     // ========================================
 
     async addMessage(messageIndex, meta) {
         if (!this.isReady || !this.chatId) return;
+        if (meta?._skipHorae) return;
 
         const doc = this.buildVectorDocument(meta);
         if (!doc) return;
@@ -299,7 +333,7 @@ export class VectorManager {
     }
 
     /**
-     * 批量建索引（用于历史记录）
+     * Пакетное построение индекса (для истории сообщений)
      * @returns {{ indexed: number, skipped: number }}
      */
     async batchIndex(chat, onProgress) {
@@ -309,6 +343,7 @@ export class VectorManager {
         for (let i = 0; i < chat.length; i++) {
             const meta = chat[i].horae_meta;
             if (!meta || chat[i].is_user) continue;
+            if (meta._skipHorae) continue;
             const doc = this.buildVectorDocument(meta);
             if (!doc) continue;
             const hash = this._hashString(doc);
@@ -366,11 +401,11 @@ export class VectorManager {
     }
 
     // ========================================
-    // 查询与召回
+    // Запросы и поиск
     // ========================================
 
     /**
-     * 构建状态查询文本（当前场景/角色/事件）
+     * Построить текст запроса по состоянию (текущая сцена/персонажи/события)
      */
     buildStateQuery(currentState, lastMeta) {
         const parts = [];
@@ -393,7 +428,7 @@ export class VectorManager {
     }
 
     /**
-     * 清理用户消息为查询文本
+     * Очистить сообщение пользователя в текст запроса
      */
     cleanUserMessage(rawMessage) {
         if (!rawMessage) return '';
@@ -405,26 +440,26 @@ export class VectorManager {
     }
 
     /**
-     * 向量检索
+     * Векторный поиск
      * @param {string} queryText
      * @param {number} topK
      * @param {number} threshold
-     * @param {Set<number>} excludeIndices - 排除的消息索引（已在上下文中）
+     * @param {Set<number>} excludeIndices - исключаемые индексы сообщений (уже в контексте)
      * @returns {Promise<Array<{messageIndex: number, similarity: number, document: string}>>}
      */
     async search(queryText, topK = 5, threshold = 0.72, excludeIndices = new Set(), pureMode = false) {
         if (!this.isReady || !queryText || this.vectors.size === 0) return [];
 
         const prepared = this._prepareText(queryText, true);
-        console.log('[Horae Vector] 开始 embedding 查询...');
+        console.log('[Horae Vector] Начат embedding-запрос...');
         const result = await this._embed([prepared]);
         if (!result?.vectors?.[0]) {
-            console.warn('[Horae Vector] embedding 返回空结果:', result);
+            console.warn('[Horae Vector] embedding вернул пустой результат:', result);
             return [];
         }
 
         const queryVec = result.vectors[0];
-        console.log(`[Horae Vector] 查询向量维度: ${queryVec.length}，开始对比 ${this.vectors.size} 条...`);
+        console.log(`[Horae Vector] Размерность вектора запроса: ${queryVec.length}, сравнение с ${this.vectors.size} записями...`);
 
         const scored = [];
         const allScored = [];
@@ -442,7 +477,7 @@ export class VectorManager {
 
         allScored.sort((a, b) => b.similarity - a.similarity);
         const bestSim = allScored.length > 0 ? allScored[0].similarity : 0;
-        console.log(`[Horae Vector] 搜索了 ${searchedCount} 条 | 最高相似度=${bestSim.toFixed(4)} | 超过阈值(${threshold}): ${scored.length} 条`);
+        console.log(`[Horae Vector] Поиск по ${searchedCount} записям | макс. сходство=${bestSim.toFixed(4)} | выше порога(${threshold}): ${scored.length}`);
         if (scored.length === 0 && allScored.length > 0) {
             console.log(`[Horae Vector] 阈值下 Top-5 候选:`);
             for (const c of allScored.slice(0, 5)) {
@@ -453,18 +488,18 @@ export class VectorManager {
         scored.sort((a, b) => b.similarity - a.similarity);
 
         const adjusted = pureMode ? scored : this._adjustThresholdByFrequency(scored, threshold);
-        if (!pureMode) console.log(`[Horae Vector] 频率过滤后: ${adjusted.length} 条`);
+        if (!pureMode) console.log(`[Horae Vector] После частотного фильтра: ${adjusted.length}`);
 
         const deduped = this._deduplicateResults(adjusted);
-        console.log(`[Horae Vector] 去重后: ${deduped.length} 条`);
+        console.log(`[Horae Vector] После дедупликации: ${deduped.length}`);
 
         return deduped.slice(0, topK);
     }
 
     /**
-     * 策略B：高频内容惩罚
-     * 只在文档中 >80% 的词都是公共词（出现在 >60% 文档中）时才轻微提高阈值，
-     * 避免角色名等必然高频词误杀有效结果。
+     * Стратегия B: штраф высокочастотного контента
+     * Слегка повышать порог только если >80% слов документа являются общими (встречаются в >60% документов),
+     * чтобы имена персонажей и другие неизбежно частые слова не отсекали валидные результаты.
      */
     _adjustThresholdByFrequency(results, baseThreshold) {
         if (results.length < 2 || this.totalDocuments < 10) return results;
@@ -489,7 +524,7 @@ export class VectorManager {
     }
 
     /**
-     * 策略C：折叠高度相似的结果
+     * Стратегия C: свёртка высокопохожих результатов
      */
     _deduplicateResults(results) {
         if (results.length <= 1) return results;
@@ -514,11 +549,11 @@ export class VectorManager {
     }
 
     // ========================================
-    // 召回 Prompt 构建
+    // Построение промпта для recall
     // ========================================
 
     /**
-     * 智能召回：结构化查询 + 向量搜索并行，合并结果
+     * Умный recall: структурированный запрос + векторный поиск параллельно, объединение результатов
      */
     async generateRecallPrompt(horaeManager, skipLast, settings) {
         const chat = horaeManager.getChat();
@@ -541,26 +576,26 @@ export class VectorManager {
         const merged = new Map();
 
         const pureMode = !!settings.vectorPureMode;
-        if (pureMode) console.log('[Horae Vector] 纯向量模式已启用，跳过关键词启发式');
+        if (pureMode) console.log('[Horae Vector] Режим чистых векторов включён, пропуск эвристики ключевых слов');
 
         const structuredResults = this._structuredQuery(userQuery, chat, state, excludeIndices, topK, pureMode);
-        console.log(`[Horae Vector] 结构化查询: ${structuredResults.length} 条命中`);
+        console.log(`[Horae Vector] Структурированный запрос: ${structuredResults.length} попаданий`);
         for (const r of structuredResults) {
             merged.set(r.messageIndex, r);
         }
 
         const hybridResults = await this._hybridSearch(userQuery, state, horaeManager, skipLast, settings, excludeIndices, topK, threshold, pureMode);
-        console.log(`[Horae Vector] 向量混合搜索: ${hybridResults.length} 条命中`);
+        console.log(`[Horae Vector] Гибридный векторный поиск: ${hybridResults.length} попаданий`);
         for (const r of hybridResults) {
             if (!merged.has(r.messageIndex)) {
                 merged.set(r.messageIndex, r);
             }
         }
 
-        // 多人卡角色相关性加权：
-        // 收集"相关角色" = 用户消息中提到的角色 + 当前在场角色
-        // 对涉及相关角色的结果施加小幅正向加权，优先召回相关事件
-        // 不过滤任何结果，确保跨角色引用（如向A提起B）仍能召回
+        // Взвешивание по релевантности персонажей (мульти-карточка):
+        // Собрать «релевантных персонажей» = упомянутые в сообщении пользователя + текущие присутствующие
+        // Применить небольшой положительный вес к результатам с релевантными персонажами, приоритет recall связанных событий
+        // Не фильтровать никакие результаты, чтобы перекрёстные ссылки персонажей (напр. упоминание B при разговоре с A) всё ещё recall
         const relevantChars = new Set(state.scene?.characters_present || []);
         const allKnownChars = new Set();
         for (let i = 0; i < chat.length; i++) {
@@ -590,26 +625,27 @@ export class VectorManager {
                     r.similarity += 0.03;
                 }
             }
-            console.log(`[Horae Vector] 角色加权: 相关角色=[${[...relevantChars].join(',')}]`);
+            console.log(`[Horae Vector] Взвешивание по персонажам: релевантные=[${[...relevantChars].join(',')}]`);
         }
 
         results.sort((a, b) => b.similarity - a.similarity);
 
-        // Rerank：对候选结果做二次精排
+        // Rerank: вторичная сортировка кандидатов
         if (settings.vectorRerankEnabled && settings.vectorRerankModel && results.length > 1) {
             const rerankCandidates = results.slice(0, topK * 3);
             const rerankQuery = userQuery || this.buildStateQuery(state, null);
             if (rerankQuery) {
                 try {
                     const useFullText = !!settings.vectorRerankFullText;
+                    const _stripTags = settings.vectorStripTags || '';
                     const rerankDocs = rerankCandidates.map(r => {
                         if (useFullText) {
-                            const fullText = this._extractCleanText(chat[r.messageIndex]?.mes);
+                            const fullText = this._extractCleanText(chat[r.messageIndex]?.mes, _stripTags);
                             return fullText || r.document;
                         }
                         return r.document;
                     });
-                    console.log(`[Horae Vector] Rerank 模式: ${useFullText ? '全文精排' : '摘要排序'}`);
+                    console.log(`[Horae Vector] Режим Rerank: ${useFullText ? 'полнотекстовая сортировка' : 'сортировка по сводкам'}`);
 
                     const reranked = await this._rerank(
                         rerankQuery,
@@ -618,7 +654,7 @@ export class VectorManager {
                         settings
                     );
                     if (reranked && reranked.length > 0) {
-                        console.log(`[Horae Vector] Rerank 完成: ${reranked.length} 条`);
+                        console.log(`[Horae Vector] Rerank завершён: ${reranked.length} записей`);
                         results = reranked.map(rr => {
                             const original = rerankCandidates[rr.index];
                             return {
@@ -629,14 +665,14 @@ export class VectorManager {
                         });
                     }
                 } catch (err) {
-                    console.warn('[Horae Vector] Rerank 失败，使用原始排序:', err.message);
+                    console.warn('[Horae Vector] Ошибка Rerank, используется исходный порядок:', err.message);
                 }
             }
         }
 
         results = results.slice(0, topK);
 
-        console.log(`[Horae Vector] === 最终合并: ${results.length} 条 ===`);
+        console.log(`[Horae Vector] === Итоговое объединение: ${results.length} записей ===`);
         for (const r of results) {
             console.log(`  #${r.messageIndex} sim=${r.similarity.toFixed(3)} [${r.source}]`);
         }
@@ -646,17 +682,17 @@ export class VectorManager {
         const currentDate = state.timestamp?.story_date;
         const fullTextCount = Math.min(settings.vectorFullTextCount ?? 3, topK);
         const fullTextThreshold = settings.vectorFullTextThreshold ?? 0.9;
-        const recallText = this._buildRecallText(results, currentDate, chat, fullTextCount, fullTextThreshold);
-        console.log(`[Horae Vector] 召回文本 (${recallText.length}字):\n${recallText}`);
+        const recallText = this._buildRecallText(results, currentDate, chat, fullTextCount, fullTextThreshold, settings.vectorStripTags || '');
+        console.log(`[Horae Vector] Текст recall (${recallText.length} симв.):\n${recallText}`);
         return recallText;
     }
 
     // ========================================
-    // 结构化查询（精准，不需要向量）
+    // Структурированный запрос (точный, без векторов)
     // ========================================
 
     /**
-     * 从用户消息解析意图，直接查询 horae_meta 结构化数据
+     * Разобрать намерение из сообщения пользователя, напрямую запросить структурированные данные horae_meta
      */
     _structuredQuery(userQuery, chat, state, excludeIndices, topK, pureMode = false) {
         if (!userQuery || chat.length === 0) return [];
@@ -694,8 +730,8 @@ export class VectorManager {
             for (const charName of mentionedChars) {
                 const idx = this._findFirstAppearance(chat, charName, excludeIndices);
                 if (idx !== -1) {
-                    results.push({ messageIndex: idx, similarity: 1.0, document: `[结构化] ${charName}首次出现`, source: 'structured' });
-                    console.log(`[Horae Vector] 结构化查询: "${charName}" 首次出现于 #${idx}`);
+                    results.push({ messageIndex: idx, similarity: 1.0, document: `[Структурированный] ${charName} первое появление`, source: 'structured' });
+                    console.log(`[Horae Vector] Структурированный запрос: "${charName}" впервые появился в #${idx}`);
                 }
             }
         }
@@ -706,8 +742,8 @@ export class VectorManager {
                 for (const charName of mentionedChars) {
                     const idx = this._findLastCostume(chat, charName, costumeKw, excludeIndices);
                     if (idx !== -1) {
-                        results.push({ messageIndex: idx, similarity: 1.0, document: `[结构化] ${charName}穿${costumeKw}`, source: 'structured' });
-                        console.log(`[Horae Vector] 结构化查询: "${charName}" 上次穿 "${costumeKw}" 于 #${idx}`);
+                        results.push({ messageIndex: idx, similarity: 1.0, document: `[Структурированный] ${charName} носит ${costumeKw}`, source: 'structured' });
+                        console.log(`[Horae Vector] Структурированный запрос: "${charName}" последний раз носил "${costumeKw}" в #${idx}`);
                     }
                 }
             }
@@ -718,7 +754,7 @@ export class VectorManager {
             if (costumeKw) {
                 const matches = this._findCostumeMatches(chat, costumeKw, excludeIndices, topK);
                 for (const m of matches) {
-                    results.push({ messageIndex: m.idx, similarity: 0.95, document: `[结构化] 服装匹配:${costumeKw}`, source: 'structured' });
+                    results.push({ messageIndex: m.idx, similarity: 0.95, document: `[Структурированный] совпадение одежды:${costumeKw}`, source: 'structured' });
                 }
             }
         }
@@ -729,8 +765,8 @@ export class VectorManager {
                 const targetChar = mentionedChars[0] || null;
                 const idx = this._findLastMood(chat, targetChar, moodKw, excludeIndices);
                 if (idx !== -1) {
-                    results.push({ messageIndex: idx, similarity: 1.0, document: `[结构化] 情绪匹配:${moodKw}`, source: 'structured' });
-                    console.log(`[Horae Vector] 结构化查询: 上次 "${moodKw}" 于 #${idx}`);
+                    results.push({ messageIndex: idx, similarity: 1.0, document: `[Структурированный] совпадение эмоции:${moodKw}`, source: 'structured' });
+                    console.log(`[Horae Vector] Структурированный запрос: последний раз "${moodKw}" в #${idx}`);
                 }
             }
         }
@@ -739,7 +775,7 @@ export class VectorManager {
             const giftResults = this._findGiftItems(chat, mentionedChars, excludeIndices, topK);
             for (const r of giftResults) {
                 results.push(r);
-                console.log(`[Horae Vector] 结构化查询: 礼物/赠品 #${r.messageIndex} [${r.document}]`);
+                console.log(`[Horae Vector] Структурированный запрос: подарки #${r.messageIndex} [${r.document}]`);
             }
         }
 
@@ -747,7 +783,7 @@ export class VectorManager {
             const impResults = this._findImportantItems(chat, excludeIndices, topK);
             for (const r of impResults) {
                 results.push(r);
-                console.log(`[Horae Vector] 结构化查询: 重要物品 #${r.messageIndex} [${r.document}]`);
+                console.log(`[Horae Vector] Структурированный запрос: важные предметы #${r.messageIndex} [${r.document}]`);
             }
         }
 
@@ -755,11 +791,11 @@ export class VectorManager {
             const evtResults = this._findImportantEvents(chat, excludeIndices, topK);
             for (const r of evtResults) {
                 results.push(r);
-                console.log(`[Horae Vector] 结构化查询: 重要事件 #${r.messageIndex} [${r.document}]`);
+                console.log(`[Horae Vector] Структурированный запрос: важные события #${r.messageIndex} [${r.document}]`);
             }
         }
 
-        // 纯向量模式下跳过关键词启发式（主题事件搜索、事件词组匹配），完全依赖向量语义
+        // В режиме чистых векторов пропуск эвристики ключевых слов, полная опора на семантику векторов
         if (!pureMode) {
             if (hasCeremonyKw || hasPromiseKw || hasLossKw || hasRevelationKw || hasPowerKw) {
                 const thematicResults = this._findThematicEvents(chat, {
@@ -768,7 +804,7 @@ export class VectorManager {
                 }, excludeIndices, topK);
                 for (const r of thematicResults) {
                     results.push(r);
-                    console.log(`[Horae Vector] 结构化查询: 主题事件 #${r.messageIndex} [${r.document}]`);
+                    console.log(`[Horae Vector] Структурированный запрос: тематические события #${r.messageIndex} [${r.document}]`);
                 }
             }
 
@@ -784,8 +820,8 @@ export class VectorManager {
     }
 
     /**
-     * 上下文窗口扩展：对每个命中消息，把前后相邻的 AI 消息也加进来
-     * RP 中相邻消息是连续事件，天然相关
+     * Расширение контекстного окна: для каждого найденного сообщения добавить соседние AI-сообщения
+     * В RP соседние сообщения — последовательные события, естественно связаны
      */
     _expandContextWindow(results, chat, excludeIndices) {
         const resultIds = new Set(results.map(r => r.messageIndex));
@@ -801,7 +837,7 @@ export class VectorManager {
                     contextToAdd.push({
                         messageIndex: i,
                         similarity: r.similarity * 0.85,
-                        document: `[上文] #${idx}的前置事件`,
+                        document: `[Контекст] предшествующее событие #${idx}`,
                         source: 'context',
                     });
                     resultIds.add(i);
@@ -816,7 +852,7 @@ export class VectorManager {
                     contextToAdd.push({
                         messageIndex: i,
                         similarity: r.similarity * 0.85,
-                        document: `[下文] #${idx}的后续事件`,
+                        document: `[Контекст] последующее событие #${idx}`,
                         source: 'context',
                     });
                     resultIds.add(i);
@@ -826,7 +862,7 @@ export class VectorManager {
         }
 
         if (contextToAdd.length > 0) {
-            console.log(`[Horae Vector] 上下文扩展: +${contextToAdd.length} 条`);
+            console.log(`[Horae Vector] Расширение контекста: +${contextToAdd.length} записей`);
             for (const c of contextToAdd) console.log(`  #${c.messageIndex} [${c.document}]`);
         }
 
@@ -836,14 +872,14 @@ export class VectorManager {
     }
 
     /**
-     * 事件关键词搜索：从用户文本直接扫描已知类别词汇，扩展后搜索事件摘要
+     * Поиск по ключевым словам событий: сканировать известные категории слов из текста пользователя, затем искать в сводках событий
      */
     _eventKeywordSearch(userQuery, chat, mentionedChars, skipIds, excludeIndices, limit) {
         const detected = this._detectCategoryTerms(userQuery);
         if (detected.length === 0) return [];
 
         const expanded = this._expandByCategory(detected);
-        console.log(`[Horae Vector] 事件搜索: 检测到=[${detected.join(',')}] 扩展后=[${expanded.join(',')}]`);
+        console.log(`[Horae Vector] Поиск событий: обнаружено=[${detected.join(',')}] после расширения=[${expanded.join(',')}]`);
 
         const scored = [];
         for (let i = 0; i < chat.length; i++) {
@@ -867,7 +903,7 @@ export class VectorManager {
                 scored.push({
                     messageIndex: i,
                     similarity: 0.85 + matchCount * 0.02,
-                    document: `[事件匹配] ${matched.join(',')}`,
+                    document: `[Совп. событий] ${matched.join(',')}`,
                     source: 'structured',
                     _matchCount: matchCount,
                 });
@@ -877,7 +913,7 @@ export class VectorManager {
         scored.sort((a, b) => b._matchCount - a._matchCount || b.similarity - a.similarity);
         const top = scored.slice(0, limit);
         if (top.length > 0) {
-            console.log(`[Horae Vector] 事件搜索命中 ${top.length} 条:`);
+            console.log(`[Horae Vector] Поиск событий: ${top.length} попаданий:`);
             for (const r of top) console.log(`  #${r.messageIndex} matches=${r._matchCount} [${r.document}]`);
         }
         return top;
@@ -908,7 +944,7 @@ export class VectorManager {
     }
 
     /**
-     * 直接从用户文本中扫描 TERM_CATEGORIES 中的已知词汇（无需分词）
+     * Сканировать известные слова из TERM_CATEGORIES прямо в тексте пользователя (без токенизации)
      */
     _detectCategoryTerms(text) {
         const found = [];
@@ -923,7 +959,7 @@ export class VectorManager {
     }
 
     /**
-     * 将检测到的词扩展到同类别的所有词
+     * Расширить обнаруженные слова на все слова той же категории
      */
     _expandByCategory(keywords) {
         const expanded = new Set(keywords);
@@ -1002,8 +1038,8 @@ export class VectorManager {
     }
 
     /**
-     * 查找与礼物/赠品相关的消息
-     * 通过 item.holder 变化或事件文本中的赠送关键词定位
+     * Найти сообщения, связанные с подарками/дарением
+     * Определить по изменению item.holder или ключевым словам дарения в тексте событий
      */
     _findGiftItems(chat, mentionedChars, excludeIndices, limit) {
         const giftKws = ['赠送', '送给', '收到', '收下', '转赠', '信物', '定情', '礼物', '聘礼', '嫁妆'];
@@ -1049,7 +1085,7 @@ export class VectorManager {
                 results.push({
                     messageIndex: i,
                     similarity: 0.95,
-                    document: `[结构化] 礼物/赠品: ${matchedItems.join('; ')}`,
+                    document: `[Структурированный] Подарки: ${matchedItems.join('; ')}`,
                     source: 'structured',
                 });
             }
@@ -1058,7 +1094,7 @@ export class VectorManager {
     }
 
     /**
-     * 查找包含重要/关键物品的消息（importance '!' 或 '!!'）
+     * Найти сообщения с важными/ключевыми предметами (importance '!' или '!!')
      */
     _findImportantItems(chat, excludeIndices, limit) {
         const results = [];
@@ -1077,7 +1113,7 @@ export class VectorManager {
                 results.push({
                     messageIndex: i,
                     similarity: 0.95,
-                    document: `[结构化] 重要物品: ${importantNames.join(', ')}`,
+                    document: `[Структурированный] Важные предметы: ${importantNames.join(', ')}`,
                     source: 'structured',
                 });
             }
@@ -1086,7 +1122,7 @@ export class VectorManager {
     }
 
     /**
-     * 查找重要/关键级别的事件
+     * Найти события уровня важное/ключевое
      */
     _findImportantEvents(chat, excludeIndices, limit) {
         const results = [];
@@ -1101,7 +1137,7 @@ export class VectorManager {
                     results.push({
                         messageIndex: i,
                         similarity: evt.level === '关键' ? 1.0 : 0.95,
-                        document: `[结构化] ${evt.level}事件: ${(evt.summary || '').substring(0, 30)}`,
+                        document: `[Структурированный] ${evt.level}-событие: ${(evt.summary || '').substring(0, 30)}`,
                         source: 'structured',
                     });
                     break;
@@ -1112,8 +1148,8 @@ export class VectorManager {
     }
 
     /**
-     * 主题事件搜索：仪式/承诺/失去/揭露/能力变化
-     * 结合事件文本和 TERM_CATEGORIES 做精准匹配
+     * Тематический поиск событий: церемонии/обещания/потери/разоблачения/изменения способностей
+     * Точное сопоставление текста событий с TERM_CATEGORIES
      */
     _findThematicEvents(chat, flags, excludeIndices, limit) {
         const activeCategories = [];
@@ -1145,7 +1181,7 @@ export class VectorManager {
                     results.push({
                         messageIndex: i,
                         similarity: 0.90 + Math.min(hits.length, 5) * 0.02,
-                        document: `[结构化] 主题事件(${activeCategories.join('+')}): ${hits.join(',')}`,
+                        document: `[Структурированный] Тематическое событие(${activeCategories.join('+')}): ${hits.join(',')}`,
                         source: 'structured',
                     });
                     break;
@@ -1156,7 +1192,7 @@ export class VectorManager {
     }
 
     // ========================================
-    // 向量+关键词混合搜索（兜底）
+    // Гибридный поиск: вектор + ключевые слова (резервный)
     // ========================================
 
     async _hybridSearch(userQuery, state, horaeManager, skipLast, settings, excludeIndices, topK, threshold, pureMode = false) {
@@ -1171,7 +1207,7 @@ export class VectorManager {
         if (userQuery) {
             const intentThreshold = Math.max(threshold - 0.25, 0.4);
             const intentResults = await this.search(userQuery, topK * 2, intentThreshold, excludeIndices, pureMode);
-            console.log(`[Horae Vector] 意图搜索: ${intentResults.length} 条`);
+            console.log(`[Horae Vector] Поиск по намерению: ${intentResults.length} записей`);
             for (const r of intentResults) {
                 merged.set(r.messageIndex, { ...r, source: 'intent' });
             }
@@ -1179,7 +1215,7 @@ export class VectorManager {
 
         if (stateQuery) {
             const stateResults = await this.search(stateQuery, topK * 2, threshold, excludeIndices, pureMode);
-            console.log(`[Horae Vector] 状态搜索: ${stateResults.length} 条`);
+            console.log(`[Horae Vector] Поиск по состоянию: ${stateResults.length} записей`);
             for (const r of stateResults) {
                 const existing = merged.get(r.messageIndex);
                 if (!existing || r.similarity > existing.similarity) {
@@ -1192,7 +1228,7 @@ export class VectorManager {
         results.sort((a, b) => b.similarity - a.similarity);
         results = this._deduplicateResults(results).slice(0, topK);
 
-        console.log(`[Horae Vector] 混合搜索结果: ${results.length} 条`);
+        console.log(`[Horae Vector] Результаты гибридного поиска: ${results.length} записей`);
         for (const r of results) {
             console.log(`  #${r.messageIndex} sim=${r.similarity.toFixed(4)} [${r.source}] | ${r.document.substring(0, 80)}`);
         }
@@ -1200,8 +1236,8 @@ export class VectorManager {
         return results;
     }
 
-    _buildRecallText(results, currentDate, chat, fullTextCount = 3, fullTextThreshold = 0.9) {
-        const lines = ['[记忆回溯——以下为与当前情境相关的历史片段，仅供参考，非当前上下文]'];
+    _buildRecallText(results, currentDate, chat, fullTextCount = 3, fullTextThreshold = 0.9, stripTags = '') {
+        const lines = ['[Воспоминания — ниже исторические фрагменты, связанные с текущей ситуацией, только для справки, не текущий контекст]'];
 
         for (let rank = 0; rank < results.length; rank++) {
             const r = results[rank];
@@ -1211,10 +1247,10 @@ export class VectorManager {
             const isFullText = fullTextCount > 0 && rank < fullTextCount && r.similarity >= fullTextThreshold;
 
             if (isFullText) {
-                const rawText = this._extractCleanText(chat[r.messageIndex]?.mes);
+                const rawText = this._extractCleanText(chat[r.messageIndex]?.mes, stripTags);
                 if (rawText) {
                     const timeTag = this._buildTimeTag(meta?.timestamp, currentDate);
-                    lines.push(`#${r.messageIndex} ${timeTag ? timeTag + ' ' : ''}[全文回顾]\n${rawText}`);
+                    lines.push(`#${r.messageIndex} ${timeTag ? timeTag + ' ' : ''}[Полный текст]\n${rawText}`);
                     continue;
                 }
             }
@@ -1224,7 +1260,7 @@ export class VectorManager {
             const timeTag = this._buildTimeTag(meta?.timestamp, currentDate);
             if (timeTag) parts.push(timeTag);
 
-            if (meta?.scene?.location) parts.push(`场景:${meta.scene.location}`);
+            if (meta?.scene?.location) parts.push(`Сцена:${meta.scene.location}`);
 
             const chars = meta?.scene?.characters_present || [];
             const costumes = meta?.costumes || {};
@@ -1264,18 +1300,25 @@ export class VectorManager {
         return lines.length > 1 ? lines.join('\n') : '';
     }
 
-    _extractCleanText(mes) {
+    _extractCleanText(mes, stripTags) {
         if (!mes) return '';
-        return mes
+        let text = mes
             .replace(/<think>[\s\S]*?<\/think>/gi, '')
             .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<[^>]*>/g, '')
-            .trim();
+            .replace(/<!--[\s\S]*?-->/g, '');
+        if (stripTags) {
+            const tags = stripTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
+            for (const tag of tags) {
+                const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                text = text.replace(new RegExp(`<${escaped}(?:\\s[^>]*)?>[\\s\\S]*?</${escaped}>`, 'gi'), '');
+            }
+        }
+        return text.replace(/<[^>]*>/g, '').trim();
     }
 
     /**
-     * 构建时间标签：(相对时间 绝对日期 时间)
-     * 例：(前天 霜降月第一日 19:10) 或 (今天 07:55)
+     * Построить метку времени: (относительное время, абсолютная дата, время)
+     * Пример: (позавчера Месяц Инея 1-й день 19:10) или (сегодня 07:55)
      */
     _buildTimeTag(timestamp, currentDate) {
         if (!timestamp) return '';
@@ -1306,27 +1349,27 @@ export class VectorManager {
         if (result.days === null || result.days === undefined) return '';
 
         const { days, fromDate, toDate } = result;
-        if (days === 0) return '(今天)';
-        if (days === 1) return '(昨天)';
-        if (days === 2) return '(前天)';
-        if (days === 3) return '(大前天)';
+        if (days === 0) return '(сегодня)';
+        if (days === 1) return '(вчера)';
+        if (days === 2) return '(позавчера)';
+        if (days === 3) return '(3 дня назад)';
         if (days >= 4 && days <= 13 && fromDate) {
-            const WD = ['日', '一', '二', '三', '四', '五', '六'];
-            return `(上周${WD[fromDate.getDay()]})`;
+            const WD = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+            return `(пред. ${WD[fromDate.getDay()]})`;
         }
         if (days >= 20 && days < 60 && fromDate && toDate && fromDate.getMonth() !== toDate.getMonth()) {
-            return `(上个月${fromDate.getDate()}号)`;
+            return `(${fromDate.getDate()} пр. мес.)`;
         }
         if (days >= 300 && fromDate && toDate && fromDate.getFullYear() < toDate.getFullYear()) {
-            return `(去年${fromDate.getMonth() + 1}月)`;
+            return `(${fromDate.getMonth() + 1} мес. пр. г.)`;
         }
-        if (days > 0 && days < 30) return `(${days}天前)`;
-        if (days > 0) return `(${Math.round(days / 30)}个月前)`;
+        if (days > 0 && days < 30) return `(${days} дн. назад)`;
+        if (days > 0) return `(${Math.round(days / 30)} мес. назад)`;
         return '';
     }
 
     // ========================================
-    // Worker 通信
+    // Коммуникация с Worker
     // ========================================
 
     _embed(texts) {
@@ -1339,7 +1382,7 @@ export class VectorManager {
             setTimeout(() => {
                 if (this._pendingCallbacks.has(id)) {
                     this._pendingCallbacks.delete(id);
-                    reject(new Error('Embedding 超时'));
+                    reject(new Error('Таймаут Embedding'));
                 }
             }, 30000);
         });
@@ -1365,20 +1408,20 @@ export class VectorManager {
             }
             const json = await resp.json();
             if (!json.data || !Array.isArray(json.data)) {
-                throw new Error('API 返回格式异常：缺少 data 数组');
+                throw new Error('Неверный формат ответа API: отсутствует массив data');
             }
             const vectors = json.data
                 .sort((a, b) => a.index - b.index)
                 .map(d => d.embedding);
             return { vectors };
         } catch (err) {
-            console.error('[Horae Vector] API embedding 失败:', err);
+            console.error('[Horae Vector] Ошибка API embedding:', err);
             throw err;
         }
     }
 
     /**
-     * Rerank API 调用（Cohere/Jina/Qwen 兼容格式）
+     * Вызов Rerank API (формат, совместимый с Cohere/Jina/Qwen)
      * @returns {Array<{index: number, relevance_score: number}>}
      */
     async _rerank(query, documents, topN, settings) {
@@ -1386,10 +1429,10 @@ export class VectorManager {
         const apiKey = settings.vectorRerankKey || settings.vectorApiKey || '';
         const model = settings.vectorRerankModel || '';
 
-        if (!baseUrl || !model) throw new Error('Rerank API 地址或模型未配置');
+        if (!baseUrl || !model) throw new Error('Адрес Rerank API или модель не настроены');
 
         const endpoint = `${baseUrl}/rerank`;
-        console.log(`[Horae Vector] Rerank 请求: ${documents.length} 条候选 → ${endpoint}`);
+        console.log(`[Horae Vector] Rerank запрос: ${documents.length} кандидатов → ${endpoint}`);
 
         const resp = await fetch(endpoint, {
             method: 'POST',
@@ -1413,7 +1456,7 @@ export class VectorManager {
         const json = await resp.json();
         const results = json.results || json.data;
         if (!Array.isArray(results)) {
-            throw new Error('Rerank API 返回格式异常：缺少 results 数组');
+            throw new Error('Неверный формат ответа Rerank API: отсутствует массив results');
         }
 
         return results.map(r => ({
@@ -1427,7 +1470,16 @@ export class VectorManager {
     // ========================================
 
     async _openDB() {
-        if (this.db) return;
+        if (this.db) {
+            try {
+                this.db.transaction(STORE_NAME, 'readonly');
+                return;
+            } catch (_) {
+                console.warn('[Horae Vector] DB connection stale, reconnecting...');
+                try { this.db.close(); } catch (__) {}
+                this.db = null;
+            }
+        }
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onupgradeneeded = () => {
@@ -1437,7 +1489,19 @@ export class VectorManager {
                     store.createIndex('chatId', 'chatId', { unique: false });
                 }
             };
-            req.onsuccess = () => { this.db = req.result; resolve(); };
+            req.onblocked = () => {
+                console.warn('[Horae Vector] DB upgrade blocked by another tab, closing old connection');
+            };
+            req.onsuccess = () => {
+                this.db = req.result;
+                this.db.onversionchange = () => {
+                    this.db.close();
+                    this.db = null;
+                    console.log('[Horae Vector] DB closed due to version change in another tab');
+                };
+                this.db.onclose = () => { this.db = null; };
+                resolve();
+            };
             req.onerror = () => reject(req.error);
         });
     }
@@ -1502,7 +1566,7 @@ export class VectorManager {
     }
 
     // ========================================
-    // 工具函数
+    // Утилиты
     // ========================================
 
     _hasOriginalEvents(meta) {

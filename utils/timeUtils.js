@@ -1,12 +1,12 @@
-/** Horae - 时间工具函数 */
+/** Horae — Утилиты для работы со временем */
 
-/** 中文周几映射 */
+/** Названия дней недели */
 const WEEKDAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
-/** 季节名称 */
-const SEASONS = ['冬季', '冬季', '春季', '春季', '春季', '夏季', '夏季', '夏季', '秋季', '秋季', '秋季', '冬季'];
+/** Названия сезонов по месяцам (индекс = номер месяца 0–11) */
+const SEASONS = ['зима', 'зима', 'весна', 'весна', 'весна', 'лето', 'лето', 'лето', 'осень', 'осень', 'осень', 'зима'];
 
-/** 中文数字映射 */
+/** Маппинг китайских числительных (нужен для парсинга фэнтезийных дат из ответа ИИ) */
 const CHINESE_NUMS = {
     '零': 0, '〇': 0,
     '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
@@ -18,7 +18,7 @@ const CHINESE_NUMS = {
     '三十一': 31, '卅': 30, '卅一': 31
 };
 
-/** 从日期字符串中提取日数 */
+/** Извлечь номер дня из строки даты */
 function extractDayNumber(dateStr) {
     if (!dateStr) return null;
     
@@ -26,13 +26,13 @@ function extractDayNumber(dateStr) {
                        dateStr.match(/(\d+)(?:日|号)/);
     if (arabicMatch) return parseInt(arabicMatch[1]);
     
-    // 中文数字匹配
+    // Поиск по китайским числительным
     const sortedEntries = Object.entries(CHINESE_NUMS).sort((a, b) => b[0].length - a[0].length);
     
     for (const [cn, num] of sortedEntries) {
         const patterns = [
             new RegExp(`第${cn}日`),
-            new RegExp(`第${cn}(?![\u4e00-\u9fa5])`),  // 第X 后面不跟汉字
+            new RegExp(`第${cn}(?![\u4e00-\u9fa5])`),  // 第X — после не идёт иероглиф
             new RegExp(`[月]${cn}日`),
             new RegExp(`${cn}日`)
         ];
@@ -50,11 +50,11 @@ function extractDayNumber(dateStr) {
     return null;
 }
 
-/** 从日期字符串中提取月份标识 */
+/** Извлечь идентификатор месяца из строки даты */
 function extractMonthIdentifier(dateStr) {
     if (!dateStr) return null;
     
-    // 匹配"X月"格式
+    // Формат «X月» (X-й месяц)
     const monthMatch = dateStr.match(/([^\s\d]+月)/);
     if (monthMatch) return monthMatch[1];
     
@@ -64,17 +64,17 @@ function extractMonthIdentifier(dateStr) {
     return null;
 }
 
-/** 解析剧情日期字符串 */
+/** Разобрать строку даты сюжета */
 export function parseStoryDate(dateStr) {
     if (!dateStr) return null;
     
-    // 清理AI写的周几标注
+    // Очистить пометку дня недели от ИИ
     let cleanStr = dateStr.trim();
     
     const aiWeekdayMatch = cleanStr.match(/\(([日一二三四五六])\)/); 
     cleanStr = cleanStr.replace(/\s*\([日一二三四五六]\)\s*/g, ' ').trim();
     
-    // 无效日期按奇幻日历处理
+    // Невалидная дата → обработать как фэнтезийный календарь
     if (/[xX]{2}|[?？]{2}/.test(cleanStr)) {
         return { 
             type: 'fantasy',
@@ -83,7 +83,7 @@ export function parseStoryDate(dateStr) {
         };
     }
     
-    // 标准数字格式
+    // Стандартный числовой формат
     const fullMatch = cleanStr.match(/^(\d{4,})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
     if (fullMatch) {
         const year = parseInt(fullMatch[1]);
@@ -103,15 +103,15 @@ export function parseStoryDate(dateStr) {
         }
     }
     
-    // X年M月D日格式
-    // 这个必须在纯 X月X日 之前，否则会丢失年份
+    // Формат X年M月D日 (X г. M мес. D дн.)
+    // Должен идти до чистого X月X日, иначе год потеряется
     const yearCnMatch = cleanStr.match(/(\d+)年\s*(\d{1,2})月(\d{1,2})日?/);
     if (yearCnMatch) {
         const year = parseInt(yearCnMatch[1]);
         const month = parseInt(yearCnMatch[2]);
         const day = parseInt(yearCnMatch[3]);
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            // 提取历法前缀
+            // Извлечь префикс календарной системы
             const fullMatchStr = yearCnMatch[0];
             const prefixEnd = cleanStr.indexOf(fullMatchStr);
             const calendarPrefix = cleanStr.substring(0, prefixEnd).trim() || undefined;
@@ -119,7 +119,7 @@ export function parseStoryDate(dateStr) {
         }
     }
     
-    // X月X日格式
+    // Формат X月X日 (X мес. X дн.)
     const cnMatch = cleanStr.match(/(\d{1,2})月(\d{1,2})日?/);
     if (cnMatch) {
         const month = parseInt(cnMatch[1]);
@@ -129,7 +129,7 @@ export function parseStoryDate(dateStr) {
         }
     }
     
-    // 奇幻日历格式
+    // Фэнтезийный календарь
     const monthId = extractMonthIdentifier(cleanStr);
     const dayNum = extractDayNumber(cleanStr);
     
@@ -146,7 +146,7 @@ export function parseStoryDate(dateStr) {
     return null;
 }
 
-/** 计算两个日期之间的天数差 */
+/** Вычислить разницу в днях между двумя датами */
 export function calculateRelativeTime(fromDate, toDate) {
     if (!fromDate || !toDate) return null;
     
@@ -162,7 +162,7 @@ export function calculateRelativeTime(fromDate, toDate) {
     
     if (!from || !to) return null;
     
-    // 标准格式精确计算
+    // Стандартный формат — точное вычисление
     if (from.type === 'standard' && to.type === 'standard') {
         const defaultYear = 2024;
         const fromYear = from.year || to.year || defaultYear;
@@ -183,16 +183,16 @@ export function calculateRelativeTime(fromDate, toDate) {
         const fromMonth = from.monthId || from.month;
         const toMonth = to.monthId || to.month;
         
-        // 同月精确计算
+        // Один месяц — точное вычисление
         if (fromMonth && toMonth && fromMonth === toMonth && 
             fromDay !== null && toDay !== null) {
             return toDay - fromDay;
         }
         
-        // 跨月估算
+        // Разные месяцы — оценка
         if (fromDay !== null && toDay !== null) {
             if (fromMonth && toMonth && fromMonth !== toMonth) {
-                return toDay > fromDay ? -998 : -997; // -998=之后, -997=之前
+                return toDay > fromDay ? -998 : -997; // -998=после, -997=до
             }
             return toDay - fromDay;
         }
@@ -203,15 +203,15 @@ export function calculateRelativeTime(fromDate, toDate) {
     return null;
 }
 
-/** 格式化相对时间描述 */
+/** Форматировать описание относительного времени */
 export function formatRelativeTime(days, options = {}) {
-    if (days === null || days === undefined) return '未知';
+    if (days === null || days === undefined) return 'неизвестно';
     
     if (days === -999) return 'ранее';
     if (days === -998) return 'после';
     if (days === -997) return 'до';
     
-    // 近几天
+    // Ближайшие дни
     if (days === 0) return 'Сегодня';
     if (days === 1) return 'Вчера';
     if (days === 2) return 'Позавчера';
@@ -225,13 +225,13 @@ export function formatRelativeTime(days, options = {}) {
     if (days > 0) {
         if (days < 7) return `${days} дн. назад`;
         
-        // 上周几
+        // Прошлая неделя
         if (days >= 4 && days <= 13 && fromDate) {
             const weekday = fromDate.getDay();
             return `пред. ${WEEKDAY_NAMES[weekday]}`;
         }
         
-        // 上个月
+        // Прошлый месяц
         if (days >= 20 && days < 60 && fromDate && toDate) {
             const fromMonth = fromDate.getMonth();
             const toMonth = toDate.getMonth();
@@ -286,10 +286,10 @@ export function formatRelativeTime(days, options = {}) {
     }
 }
 
-/** 格式化剧情日期为标准格式 */
+/** Форматировать дату сюжета в стандартный вид */
 export function formatStoryDate(dateObj, includeWeekday = false) {
     if (!dateObj) return '';
-    // 奇幻日历保留原始字符串
+    // Фэнтезийный календарь — сохранить исходную строку
     if (dateObj.raw && !dateObj.month) {
         let result = dateObj.raw;
         if (includeWeekday && dateObj.aiWeekday && !result.includes(`(${dateObj.aiWeekday})`)) {
@@ -303,7 +303,7 @@ export function formatStoryDate(dateObj, includeWeekday = false) {
     
     if (dateObj.year) {
         if (prefix) {
-            // 保留历法前缀
+            // Сохранить префикс календарной системы
             dateStr = `${prefix}${dateObj.year}年${dateObj.month}月${dateObj.day}日`;
         } else {
             dateStr = `${dateObj.year}/${dateObj.month}/${dateObj.day}`;
@@ -314,7 +314,7 @@ export function formatStoryDate(dateObj, includeWeekday = false) {
     
     if (includeWeekday && dateObj.month && dateObj.day) {
         const refYear = dateObj.year || new Date().getFullYear();
-        // setFullYear 避免年份自动偏移
+        // setFullYear — чтобы избежать автоматического сдвига года
         const date = new Date(0);
         date.setFullYear(refYear, dateObj.month - 1, dateObj.day);
         const weekday = WEEKDAY_NAMES[date.getDay()];
@@ -324,7 +324,7 @@ export function formatStoryDate(dateObj, includeWeekday = false) {
     return dateStr;
 }
 
-/** 格式化完整的剧情日期时间 */
+/** Форматировать полную дату и время сюжета */
 export function formatFullDateTime(dateStr, timeStr) {
     const parsed = parseStoryDate(dateStr);
     if (!parsed) return dateStr + (timeStr ? ' ' + timeStr : '');
@@ -333,7 +333,7 @@ export function formatFullDateTime(dateStr, timeStr) {
     return dateWithWeekday + (timeStr ? ' ' + timeStr : '');
 }
 
-/** 获取当前系统时间 */
+/** Получить текущее системное время */
 export function getCurrentSystemTime() {
     const now = new Date();
     return {
@@ -342,7 +342,7 @@ export function getCurrentSystemTime() {
     };
 }
 
-/** 生成时间参考信息 */
+/** Сгенерировать справочную информацию о времени */
 export function generateTimeReference(currentDate) {
     const current = parseStoryDate(currentDate);
     if (!current) return null;
@@ -351,7 +351,7 @@ export function generateTimeReference(currentDate) {
         return {
             current: currentDate,
             type: 'fantasy',
-            note: '奇幻日历模式，相对日期由插件自动计算'
+            note: 'Режим фэнтезийного календаря, относительные даты вычисляются плагином автоматически'
         };
     }
     
@@ -376,10 +376,10 @@ export function generateTimeReference(currentDate) {
     };
 }
 
-/** 计算两个日期之间的详细差异 */
+/** Вычислить подробную разницу между двумя датами */
 export function calculateDetailedRelativeTime(fromDateStr, toDateStr) {
     const days = calculateRelativeTime(fromDateStr, toDateStr);
-    if (days === null) return { days: null, relative: '未知' };
+    if (days === null) return { days: null, relative: 'неизвестно' };
     
     const from = parseStoryDate(fromDateStr);
     const to = parseStoryDate(toDateStr);
@@ -402,7 +402,7 @@ export function calculateDetailedRelativeTime(fromDateStr, toDateStr) {
     return { days, fromDate, toDate, relative };
 }
 
-/** 从当前日期减去指定天数 */
+/** Вычесть указанное количество дней из даты */
 export function subtractDays(dateStr, days) {
     const parsed = parseStoryDate(dateStr);
     if (!parsed || parsed.type === 'fantasy') return dateStr;
@@ -418,14 +418,14 @@ export function subtractDays(dateStr, days) {
     return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-/** 十二地支 → 起始小时（初=首小时，正=次小时） */
+/** Двенадцать земных ветвей → начальный час (初=первый час, 正=второй час) */
 const EARTHLY_BRANCH_HOURS = {
     '子': 23, '丑': 1, '寅': 3, '卯': 5,
     '辰': 7, '巳': 9, '午': 11, '未': 13,
     '申': 15, '酉': 17, '戌': 19, '亥': 21
 };
 
-/** 获取时间段描述 */
+/** Получить описание времени суток */
 export function getTimeOfDay(timeStr) {
     if (!timeStr) return '';
     
@@ -436,12 +436,19 @@ export function getTimeOfDay(timeStr) {
         hour = parseInt(match24[1]);
     }
     
+    // Распознавание китайских обозначений времени суток (для совместимости с ответами ИИ)
     const matchCN = timeStr.match(/(凌晨|早上|上午|中午|下午|傍晚|晚上|深夜)/);
     if (matchCN) {
-        return matchCN[1];
+        // Возвращаем русский эквивалент
+        const cnToRu = {
+            '凌晨': 'ночь', '早上': 'раннее утро', '上午': 'утро',
+            '中午': 'полдень', '下午': 'день', '傍晚': 'вечер',
+            '晚上': 'вечер', '深夜': 'глубокая ночь'
+        };
+        return cnToRu[matchCN[1]] || matchCN[1];
     }
     
-    // 十二地支时辰兜底（子丑寅卯辰巳午未申酉戌亥 + 可选"时"/"初"/"正"）
+    // Двенадцать земных ветвей (子丑寅卯辰巳午未申酉戌亥 + опциональное "时"/"初"/"正")
     if (hour === null) {
         const branchMatch = timeStr.match(/([子丑寅卯辰巳午未申酉戌亥])时?(?:初|正)?/);
         if (branchMatch) {
@@ -453,14 +460,14 @@ export function getTimeOfDay(timeStr) {
     }
     
     if (hour !== null) {
-        if (hour >= 0 && hour < 5) return '凌晨';
-        if (hour >= 5 && hour < 8) return '早上';
-        if (hour >= 8 && hour < 11) return '上午';
-        if (hour >= 11 && hour < 13) return '中午';
-        if (hour >= 13 && hour < 17) return '下午';
-        if (hour >= 17 && hour < 19) return '傍晚';
-        if (hour >= 19 && hour < 23) return '晚上';
-        return '深夜';
+        if (hour >= 0 && hour < 5) return 'ночь';
+        if (hour >= 5 && hour < 8) return 'раннее утро';
+        if (hour >= 8 && hour < 11) return 'утро';
+        if (hour >= 11 && hour < 13) return 'полдень';
+        if (hour >= 13 && hour < 17) return 'день';
+        if (hour >= 17 && hour < 19) return 'вечер';
+        if (hour >= 19 && hour < 23) return 'вечер';
+        return 'глубокая ночь';
     }
     
     return '';
