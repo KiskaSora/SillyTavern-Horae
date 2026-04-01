@@ -124,7 +124,7 @@ export class VectorManager {
     /**
      * Инициализация API-режима (OpenAI-совместимый embedding endpoint)
      */
-    async initApi(url, key, model) {
+    async initApi(url, key, model, embedEndpoint = '') {
         if (this.isLoading) return;
         this.isLoading = true;
         this.isReady = false;
@@ -136,6 +136,7 @@ export class VectorManager {
             this._apiUrl = url.replace(/\/+$/, '');
             this._apiKey = key;
             this._apiModel = model;
+            this._embedEndpoint = embedEndpoint ? embedEndpoint.trim() : '';
             this.modelName = model;
 
             // 探测维度：发一条测试文本
@@ -162,6 +163,7 @@ export class VectorManager {
         this._apiUrl = '';
         this._apiKey = '';
         this._apiModel = '';
+        this._embedEndpoint = '';
     }
 
     async _disposeWorker() {
@@ -1389,7 +1391,7 @@ export class VectorManager {
     }
 
     async _embedApi(texts) {
-        const endpoint = `${this._apiUrl}/embeddings`;
+        const endpoint = this._embedEndpoint || `${this._apiUrl}/embeddings`;
         try {
             const resp = await fetch(endpoint, {
                 method: 'POST',

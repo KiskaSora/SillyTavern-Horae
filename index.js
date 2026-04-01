@@ -178,6 +178,7 @@ const DEFAULT_SETTINGS = {
     vectorApiUrl: '',                  // Адрес Embedding API, совместимого с OpenAI
     vectorApiKey: '',                  // Ключ API
     vectorApiModel: '',                // Название удалённой Embedding-модели
+    vectorEmbedEndpoint: '',           // Кастомный полный URL endpoint embeddings (если пусто — используется {vectorApiUrl}/embeddings)
     vectorPureMode: false,             // Режим чистых векторов (оптимизация для мощных моделей, отключает эвристику ключевых слов)
     vectorRerankEnabled: false,        // Включить вторичную сортировку Rerank
     vectorRerankFullText: false,       // Rerank использует полный текст вместо сводок (требует модель с длинным контекстом, например Qwen3-Reranker)
@@ -8525,6 +8526,18 @@ function initSettingsEvents() {
     });
 
     $('#horae-btn-test-sub-api').on('click', testSubApiConnection);
+    $('#horae-btn-fetch-models').on('click', () => _fetchAndFillModelList(
+        'horae-setting-auto-summary-api-url',
+        'horae-setting-auto-summary-api-key',
+        'horae-setting-auto-summary-model',
+        'horae-summary-model-datalist'
+    ));
+    $('#horae-btn-fetch-embed-models').on('click', () => _fetchAndFillModelList(
+        'horae-setting-vector-api-url',
+        'horae-setting-vector-api-key',
+        'horae-setting-vector-api-model',
+        'horae-embed-model-datalist'
+    ));
     
     $('#horae-setting-panel-width').on('change', function() {
         let val = parseInt(this.value) || 100;
@@ -8866,6 +8879,11 @@ function initSettingsEvents() {
         saveSettings();
     });
 
+    $('#horae-setting-vector-embed-endpoint').on('change', function() {
+        settings.vectorEmbedEndpoint = this.value.trim();
+        saveSettings();
+    });
+
     $('#horae-setting-vector-api-model').on('change', function() {
         settings.vectorApiModel = this.value.trim();
         saveSettings();
@@ -9062,6 +9080,7 @@ function syncSettingsToUI() {
     $('#horae-setting-vector-api-url').val(settings.vectorApiUrl || '');
     $('#horae-setting-vector-api-key').val(settings.vectorApiKey || '');
     $('#horae-setting-vector-api-model').val(settings.vectorApiModel || '');
+    $('#horae-setting-vector-embed-endpoint').val(settings.vectorEmbedEndpoint || '');
     $('#horae-setting-vector-pure-mode').prop('checked', !!settings.vectorPureMode);
     $('#horae-setting-vector-rerank-enabled').prop('checked', !!settings.vectorRerankEnabled);
     $('#horae-vector-rerank-options').toggle(!!settings.vectorRerankEnabled);
@@ -9177,10 +9196,11 @@ async function _initVectorModel() {
             const apiUrl = settings.vectorApiUrl;
             const apiKey = settings.vectorApiKey;
             const apiModel = settings.vectorApiModel;
+            const embedEndpoint = settings.vectorEmbedEndpoint || '';
             if (!apiUrl || !apiKey || !apiModel) {
                 throw new Error('Заполните адрес API, ключ и название модели полностью');
             }
-            await vectorManager.initApi(apiUrl, apiKey, apiModel);
+            await vectorManager.initApi(apiUrl, apiKey, apiModel, embedEndpoint);
         } else {
             await vectorManager.initModel(
                 settings.vectorModel || 'Xenova/bge-small-zh-v1.5',
@@ -9430,6 +9450,72 @@ function _syncSubApiSettingsFromDom() {
     } catch (_) {}
 }
 
+/**
+ * Загружает список моделей с сервера и заполняет datalist + устанавливает значение input.
+ * Работает и для авто-сводки, и для векторного API.
+ */
+async function _fetchAndFillModelList(urlFieldId, keyFieldId, modelFieldId, datalistId) {
+    const rawUrl = (document.getElementById(urlFieldId)?.value || '').trim();
+    const apiKey = (document.getElementById(keyFieldId)?.value || '').trim();
+    if (!rawUrl) {
+        showToast('Сначала укажите адрес API', 'warning');
+        return;
+    }
+
+    const btn = document.querySelector(`[data-fetch-for="${datalistId}"]`);
+
+    // Определяем URL для запроса списка моделей
+    const isGemini = /gemini/i.test(rawUrl);
+    let fetchUrl;
+    if (isGemini) {
+        let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '').replace(/\/v\d+(beta\d*|alpha\d*)?(?:\/.*)?$/i, '');
+        const isGoogle = /googleapis\.com|generativelanguage/i.test(base);
+        fetchUrl = `${base}/v1beta/models` + (isGoogle && apiKey ? `?key=${apiKey}` : '');
+    } else {
+        let base = rawUrl.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
+        if (!base.endsWith('/v1')) base = base.replace(/\/+$/, '') + '/v1';
+        fetchUrl = `${base}/models`;
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    showToast('Загружаю список моделей...', 'info');
+    try {
+        const resp = await fetch(fetchUrl, { method: 'GET', headers, signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error(`${resp.status}: ${errText.slice(0, 150)}`);
+        }
+        const data = await resp.json();
+        const models = isGemini
+            ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName).filter(Boolean)
+            : (data.data || data || []).map(m => m.id || m.name).filter(Boolean);
+
+        if (!models.length) {
+            showToast('Сервер вернул пустой список моделей', 'warning');
+            return;
+        }
+
+        // Заполняем datalist
+        const datalist = document.getElementById(datalistId);
+        if (datalist) {
+            datalist.innerHTML = models.map(m => `<option value="${m}"></option>`).join('');
+        }
+
+        // Если поле пустое — подставляем первую модель
+        const inputEl = document.getElementById(modelFieldId);
+        if (inputEl && !inputEl.value) {
+            inputEl.value = models[0];
+            inputEl.dispatchEvent(new Event('change'));
+        }
+
+        showToast(`Загружено моделей: ${models.length}. Кликните на поле и выберите или введите вручную.`, 'success');
+    } catch (err) {
+        showToast(`Ошибка загрузки моделей: ${err.message || err}`, 'error');
+    }
+}
+
 /** Тест подключения к дополнительному API (только запрос списка моделей, без расхода генераций) */
 async function testSubApiConnection() {
     _syncSubApiSettingsFromDom();
@@ -9464,8 +9550,13 @@ async function testSubApiConnection() {
         }
         const data = await resp.json();
         const models = isGemini
-            ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName)
-            : (data.data || data || []).map(m => m.id || m.name);
+            ? (data.models || []).map(m => m.name?.replace('models/', '') || m.displayName).filter(Boolean)
+            : (data.data || data || []).map(m => m.id || m.name).filter(Boolean);
+        // Заполняем datalist авто-сводки
+        const dl = document.getElementById('horae-summary-model-datalist');
+        if (dl && models.length) {
+            dl.innerHTML = models.map(m => `<option value="${m}"></option>`).join('');
+        }
         const matchStr = model && models.some(m => m && m.toLowerCase().includes(model.toLowerCase()))
             ? `✓ Целевая модель «${model}» найдена` : (model ? `⚠ Модель «${model}» не найдена в списке, проверьте имя` : '');
         showToast(`Дополнительный API подключён! Моделей: ${models.length}${matchStr ? '. ' + matchStr : ''}`, 'success');

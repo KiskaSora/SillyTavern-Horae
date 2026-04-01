@@ -864,10 +864,9 @@
                                 <div class="horae-setting-item">
                                     <label>Модель</label>
                                     <div style="display:flex; gap:4px; align-items:center;">
-                                        <select id="horae-setting-auto-summary-model" class="horae-edit-field" style="flex:1; min-width:0;">
-                                            <option value="">-- Сначала загрузите список моделей --</option>
-                                        </select>
-                                        <button id="horae-btn-fetch-models" class="horae-btn" style="white-space:nowrap; padding:4px 8px;" title="Загрузить список моделей">
+                                        <input type="text" id="horae-setting-auto-summary-model" class="horae-edit-field" list="horae-summary-model-datalist" placeholder="Введите вручную или загрузите список →" style="flex:1; min-width:0;" autocomplete="off">
+                                        <datalist id="horae-summary-model-datalist"></datalist>
+                                        <button id="horae-btn-fetch-models" class="horae-btn" style="white-space:nowrap; padding:4px 8px;" title="Загрузить список моделей с сервера">
                                             <i class="fa-solid fa-arrows-rotate"></i>
                                         </button>
                                     </div>
@@ -955,6 +954,13 @@
                                 </div>
                                 <div class="horae-setting-item">
                                     <label>
+                                        Endpoint embeddings (необязательно)
+                                        <input type="text" id="horae-setting-vector-embed-endpoint" placeholder="Оставьте пустым — будет использован {адрес}/embeddings">
+                                    </label>
+                                    <span class="horae-setting-sub-hint">Если провайдер использует нестандартный путь — укажите полный URL сюда. Например: https://xexexexe.sbs/v1/embeddings</span>
+                                </div>
+                                <div class="horae-setting-item">
+                                    <label>
                                         Ключ API
                                         <input type="password" id="horae-setting-vector-api-key" placeholder="sk-...">
                                     </label>
@@ -962,10 +968,9 @@
                                 <div class="horae-setting-item">
                                     <label>Embedding-модель</label>
                                     <div style="display:flex; gap:4px; align-items:center;">
-                                        <select id="horae-setting-vector-api-model" class="horae-edit-field" style="flex:1; min-width:0;">
-                                            <option value="">-- Сначала загрузите список моделей --</option>
-                                        </select>
-                                        <button id="horae-btn-fetch-embed-models" class="horae-btn" style="white-space:nowrap; padding:4px 8px;" title="Загрузить список моделей">
+                                        <input type="text" id="horae-setting-vector-api-model" class="horae-edit-field" list="horae-embed-model-datalist" placeholder="Введите вручную или загрузите список →" style="flex:1; min-width:0;" autocomplete="off">
+                                        <datalist id="horae-embed-model-datalist"></datalist>
+                                        <button id="horae-btn-fetch-embed-models" class="horae-btn" style="white-space:nowrap; padding:4px 8px;" title="Загрузить список моделей с сервера">
                                             <i class="fa-solid fa-arrows-rotate"></i>
                                         </button>
                                     </div>
